@@ -1,0 +1,3 @@
+(lang dune 3.0)
+(name shotgun_compiler)
+(using menhir 2.1)

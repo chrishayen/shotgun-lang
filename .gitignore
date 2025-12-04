@@ -1,0 +1,54 @@
+# OCaml / Dune
+_build/
+*.install
+*.merlin
+.merlin
+_opam/
+
+# Compiled output
+*.exe
+*.o
+*.a
+*.so
+*.dylib
+*.cmo
+*.cmi
+*.cma
+*.cmx
+*.cmxa
+*.cmxs
+*.native
+*.byte
+
+# Generated C files
+*.c
+!tree-sitter-shotgun/src/*.c
+
+# Generated binaries
+demo
+demo.c
+
+# Tree-sitter
+tree-sitter-shotgun/node_modules/
+tree-sitter-shotgun/build/
+tree-sitter-shotgun/target/
+
+# Editor
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+overnight.log
+nohup.out
+
+# Temp
+/tmp/

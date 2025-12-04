@@ -1,0 +1,14 @@
+# Add this to ~/.config/helix/languages.toml
+
+[[language]]
+name = "shotgun"
+scope = "source.shotgun"
+injection-regex = "shotgun"
+file-types = ["bs"]
+comment-token = "//"
+indent = { tab-width = 4, unit = "    " }
+roots = []
+
+[[grammar]]
+name = "shotgun"
+source = { path = "/home/chris/Code/shotgun/tree-sitter-shotgun" }
