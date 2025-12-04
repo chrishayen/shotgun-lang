@@ -95,7 +95,7 @@
     <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
 
     <span class="ty">int</span> a = results.<span class="fn">recv</span>()
-    <span class="ty">int</span> b = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>) <span class="kw">or</span> <span class="nu">0</span>
+    <span class="ty">int</span> b = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>)
 
     <span class="fn">print</span>(<span class="st">"got {a} and {b}"</span>)
 }</code></pre>
