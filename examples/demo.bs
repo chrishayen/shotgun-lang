@@ -47,7 +47,7 @@ fn run_concurrent {
 // Main
 
 fn main {
-    [Person] people = [
+    Person[] people = [
         Person { name: "Alice", age: 30, email: "alice@example.com" },
         Person { name: "Bob", age: 25, email: none },
     ]

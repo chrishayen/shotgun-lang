@@ -151,8 +151,8 @@ module.exports = grammar({
     ),
 
     array_type: $ => seq(
+      choice($.primitive_type, $.type_identifier),
       '[',
-      $._type,
       ']',
     ),
 
@@ -171,6 +171,7 @@ module.exports = grammar({
 
     _statement: $ => choice(
       $.variable_declaration,
+      $.const_declaration,
       $.return_statement,
       $.if_statement,
       $.for_statement,
@@ -181,6 +182,13 @@ module.exports = grammar({
 
     variable_declaration: $ => seq(
       $._type,
+      field('name', $.identifier),
+      '=',
+      $._expression,
+    ),
+
+    const_declaration: $ => seq(
+      'const',
       field('name', $.identifier),
       '=',
       $._expression,

@@ -90,6 +90,7 @@ type pattern =
 (* Statements *)
 type stmt =
   | SVarDecl of typ * string * expr
+  | SConstDecl of string * expr  (* name, initializer - type inferred *)
   | SReturn of expr option
   | SIf of expr * stmt list * stmt list option
   | SFor of string * expr * stmt list

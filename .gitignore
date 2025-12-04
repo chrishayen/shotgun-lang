@@ -27,11 +27,21 @@ _opam/
 # Generated binaries
 demo
 demo.c
+examples/test
+examples/const_test
 
 # Tree-sitter
 tree-sitter-shotgun/node_modules/
 tree-sitter-shotgun/build/
 tree-sitter-shotgun/target/
+tree-sitter-shotgun/.editorconfig
+tree-sitter-shotgun/.gitattributes
+tree-sitter-shotgun/.gitignore
+tree-sitter-shotgun/Package.swift
+tree-sitter-shotgun/package-lock.json
+tree-sitter-shotgun/pyproject.toml
+tree-sitter-shotgun/setup.py
+tree-sitter-shotgun/src/node-types.json
 
 # Editor
 *~
@@ -49,6 +59,10 @@ Thumbs.db
 *.log
 overnight.log
 nohup.out
+
+# Temp files
+OVERNIGHT.md
+compiler/FIXES.md
 
 # Temp
 /tmp/

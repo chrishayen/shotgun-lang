@@ -1,0 +1,4 @@
+fn main {
+    const x = 42
+    x = 100
+}

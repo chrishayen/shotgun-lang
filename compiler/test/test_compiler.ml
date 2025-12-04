@@ -160,7 +160,7 @@ let test_parser () =
   );
 
   test "parser: array literal" (fun () ->
-    let ast = parse "fn test { [int] nums = [1, 2, 3] }" in
+    let ast = parse "fn test { int[] nums = [1, 2, 3] }" in
     match ast with
     | [Ast.IFunction (_, _, _, [Ast.SVarDecl (Ast.TArray Ast.TInt, "nums", Ast.EArrayLit elems)])] ->
       assert (List.length elems = 3)

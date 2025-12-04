@@ -32,6 +32,7 @@ let keywords = [
   "f64", F64;
   "u32", U32;
   "u64", U64;
+  "const", CONST;
 ]
 
 let keyword_table = Hashtbl.create 50

@@ -60,7 +60,7 @@ let parse_interp_string s =
 %token RETURN IF ELSE FOR IN MATCH
 %token GO CHAN WAIT
 %token AND OR NOT
-%token SELF NONE TRUE FALSE
+%token SELF NONE TRUE FALSE CONST
 
 (* Type keywords *)
 %token STR INT BOOL F32 F64 U32 U64
@@ -193,7 +193,7 @@ typ:
   | U32 { TU32 }
   | U64 { TU64 }
   | CHAN t = typ { TChan t }
-  | LBRACKET t = typ RBRACKET { TArray t }
+  | t = primitive_or_user LBRACKET RBRACKET { TArray t }
   | name = TYPE_IDENT { TUser name }
   | t = primitive_or_user QUESTION { TOptional t }
   ;
@@ -219,6 +219,7 @@ stmt:
 
 stmt_inner:
   | t = typ name = IDENT EQ e = expr { SVarDecl (t, name, e) }
+  | CONST name = IDENT EQ e = expr { SConstDecl (name, e) }
   | RETURN { SReturn None }
   | RETURN e = expr { SReturn (Some e) }
   | IF cond = expr then_block = block { SIf (cond, then_block, None) }

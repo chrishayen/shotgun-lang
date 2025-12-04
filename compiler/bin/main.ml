@@ -52,7 +52,7 @@ let emit_c env ast =
 
 (* Compile C code to binary *)
 let compile_c c_file output_name =
-  let cmd = Printf.sprintf "gcc -Wall -Wextra -std=gnu99 -pthread -o %s %s"
+  let cmd = Printf.sprintf "gcc -Wall -Wextra -Wno-unused-function -Wno-unused-variable -std=gnu99 -pthread -o %s %s"
               output_name c_file in
   let result = Sys.command cmd in
   if result = 0 then Ok ()

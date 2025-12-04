@@ -96,7 +96,7 @@ Person :: birthday(self) {
 }
 
 fn main {
-    [Person] people = [
+    Person[] people = [
         Person { name: "Alice", age: 30, email: "alice@example.com" },
         Person { name: "Bob", age: 25, email: none },
     ]
@@ -204,10 +204,121 @@ fn handle_request(Request req) Response {
 Mental model: everything dies at end of scope unless you put it somewhere that outlives the scope.
 
 ```
-[Person] cache = []  // lives until you clear it
+Person[] cache = []  // lives until you clear it
 ```
 
 For long-lived stuff, you explicitly hold it somewhere.
+
+---
+
+## Quick Reference
+
+### Variables
+```
+int x = 5
+str name = "Alice"
+bool flag = true
+f64 pi = 3.14159
+```
+
+### Functions
+```
+fn greet(str name) {
+    print("Hello, {name}")
+}
+
+fn add(int a, int b) int {
+    return a + b
+}
+
+fn main {
+    greet("world")
+}
+```
+
+### Structs & Methods
+```
+Person :: struct {
+    name str
+    age  int
+}
+
+Person :: greet(self) str {
+    return "Hi, I'm {self.name}"
+}
+
+fn main {
+    Person p = Person { name: "Alice", age: 30 }
+    print(p.greet())
+}
+```
+
+### If/Else
+```
+if x > 10 {
+    print("big")
+} else if x > 5 {
+    print("medium")
+} else {
+    print("small")
+}
+```
+
+### For Loops
+```
+int[] nums = [1, 2, 3, 4, 5]
+for n in nums {
+    print(n)
+}
+```
+
+### Optionals
+```
+str? maybe_name = none
+str? actual_name = "Bob"
+
+str result = maybe_name or "default"
+str name = actual_name or return
+```
+
+### Logical Operators
+```
+if x > 0 and y > 0 {
+    print("both positive")
+}
+
+if x == 0 or y == 0 {
+    print("at least one zero")
+}
+
+if not done {
+    print("still working")
+}
+```
+
+### Comparison
+```
+x == y    // equal
+x != y    // not equal
+x < y     // less than
+x > y     // greater than
+x <= y    // less or equal
+x >= y    // greater or equal
+```
+
+### Arrays
+```
+int[] numbers = [1, 2, 3]
+str[] names = ["Alice", "Bob"]
+```
+
+### Channels (concurrency)
+```
+chan int c = chan()
+go some_func(c)
+int val = c.recv()
+c.send(42)
+```
 
 ---
 

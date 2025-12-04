@@ -4,7 +4,7 @@ open Ast
 
 (* Symbol table entry *)
 type symbol =
-  | SVar of typ
+  | SVar of typ * bool  (* type, is_const *)
   | SFunc of param list * typ option
   | SMethod of string * param list * typ option  (* type name, params, return *)
   | SStruct of field list
@@ -21,7 +21,7 @@ type env = {
   impls: (string * string, impl_method list) Hashtbl.t;  (* (type, trait) -> methods *)
   in_method: bool;
   current_type: string option;
-  mutable errors_list: string list;
+  errors_list: string list ref;  (* Use ref so it's shared across scopes *)
 }
 
 let create_env () = {
@@ -33,15 +33,29 @@ let create_env () = {
   impls = Hashtbl.create 32;
   in_method = false;
   current_type = None;
-  errors_list = [];
+  errors_list = ref [];
 }
 
 let add_error env msg =
-  env.errors_list <- msg :: env.errors_list
+  env.errors_list := msg :: !(env.errors_list)
 
 let push_scope env =
   (* Create a new env with a copy of symbols for scoping *)
   { env with symbols = Hashtbl.copy env.symbols }
+
+(* Check that optional params come after required params *)
+let check_param_order env params =
+  let rec check seen_optional = function
+    | [] -> ()
+    | PSelf :: rest -> check seen_optional rest
+    | PNamed (typ, name) :: rest ->
+      let is_optional = match typ with TOptional _ -> true | _ -> false in
+      if seen_optional && not is_optional then
+        add_error env (Printf.sprintf "Required parameter '%s' cannot follow optional parameter" name)
+      else
+        check (seen_optional || is_optional) rest
+  in
+  check false params
 
 (* Register all top-level declarations first *)
 let register_item env = function
@@ -96,7 +110,7 @@ let rec infer_expr_type env expr =
   | ENone -> None  (* Can be any optional type *)
   | EIdent name ->
     (match Hashtbl.find_opt env.symbols name with
-     | Some (SVar t) -> Some t
+     | Some (SVar (t, _)) -> Some t
      | _ -> None)
   | EBinary (op, _l, _r) ->
     (match op with
@@ -178,7 +192,16 @@ let rec check_expr env expr =
   | EParen e -> check_expr env e
   | EAssign (_, lhs, rhs) ->
     check_expr env lhs;
-    check_expr env rhs
+    check_expr env rhs;
+    (* Check for const reassignment *)
+    (match lhs with
+     | EIdent name ->
+       (match Hashtbl.find_opt env.symbols name with
+        | Some (SVar (_, is_const)) ->
+          if is_const then
+            add_error env (Printf.sprintf "Cannot reassign const variable '%s'" name)
+        | _ -> ())
+     | _ -> ())
   | EString parts ->
     List.iter (function
       | SLiteral _ -> ()
@@ -193,7 +216,15 @@ let rec check_stmt env stmt =
     if not (type_exists env typ) then
       add_error env (Printf.sprintf "Unknown type in declaration of %s" name);
     check_expr env expr;
-    Hashtbl.replace env.symbols name (SVar typ)
+    Hashtbl.replace env.symbols name (SVar (typ, false))
+  | SConstDecl (name, expr) ->
+    check_expr env expr;
+    (* Infer type from expression *)
+    let typ = match infer_expr_type env expr with
+      | Some t -> t
+      | None -> TUser "unknown"  (* fallback *)
+    in
+    Hashtbl.replace env.symbols name (SVar (typ, true))
   | SReturn (Some e) ->
     check_expr env e
   | SReturn None -> ()
@@ -214,7 +245,7 @@ let rec check_stmt env stmt =
       | Some (TArray t) -> t
       | _ -> TUser "unknown"
     in
-    Hashtbl.replace body_env.symbols var (SVar var_type);
+    Hashtbl.replace body_env.symbols var (SVar (var_type, false));
     List.iter (check_stmt body_env) body
   | SMatch (e, arms) ->
     check_expr env e;
@@ -229,23 +260,25 @@ let rec check_stmt env stmt =
 
 (* Check a function body *)
 let check_function env params body =
+  check_param_order env params;
   let func_env = push_scope env in
   List.iter (function
     | PSelf -> ()  (* self handled separately *)
-    | PNamed (t, name) -> Hashtbl.replace func_env.symbols name (SVar t)
+    | PNamed (t, name) -> Hashtbl.replace func_env.symbols name (SVar (t, false))
   ) params;
   List.iter (check_stmt func_env) body
 
 (* Check a method body *)
 let check_method env type_name params body =
+  check_param_order env params;
   let method_env = { (push_scope env) with
     in_method = true;
     current_type = Some type_name
   } in
-  Hashtbl.replace method_env.symbols "self" (SVar (TUser type_name));
+  Hashtbl.replace method_env.symbols "self" (SVar (TUser type_name, false));
   List.iter (function
     | PSelf -> ()
-    | PNamed (t, name) -> Hashtbl.replace method_env.symbols name (SVar t)
+    | PNamed (t, name) -> Hashtbl.replace method_env.symbols name (SVar (t, false))
   ) params;
   List.iter (check_stmt method_env) body
 
@@ -280,10 +313,10 @@ let analyze program =
   List.iter (register_item env) program;
   (* Second pass: check all items *)
   List.iter (check_item env) program;
-  if env.errors_list = [] then
+  if !(env.errors_list) = [] then
     Ok env
   else
-    Error (List.rev env.errors_list)
+    Error (List.rev !(env.errors_list))
 
 (* Query type of an expression given an env and local variable types *)
 let rec get_expr_type env locals expr =
@@ -302,7 +335,7 @@ let rec get_expr_type env locals expr =
      | Some t -> Some t
      | None ->
        match Hashtbl.find_opt env.symbols name with
-       | Some (SVar t) -> Some t
+       | Some (SVar (t, _)) -> Some t
        | _ -> None)
   | EBinary (op, _, _) ->
     (match op with

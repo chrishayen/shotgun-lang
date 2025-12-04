@@ -1,0 +1,7 @@
+fn main {
+    const x = 42
+    const name = "chris"
+
+    print(x)
+    print(name)
+}
