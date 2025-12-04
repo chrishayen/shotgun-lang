@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Guide - shotgun</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="index.html" class="logo">shotgun</a>
+            <div class="links">
+                <a href="quickstart.html">Quick Start</a>
+                <a href="guide.html">Guide</a>
+                <a href="examples.html">Examples</a>
+                <a href="https://github.com/chrishayen/shotgun">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>Language Guide</h1>
+
+        <p>A complete reference to the shotgun programming language.</p>
+
+        <h2>Basics</h2>
+
+        <h3>Primitive Types</h3>
+
+        <p>shotgun has the following primitive types:</p>
+
+        <ul>
+            <li><code>int</code> - 64-bit signed integer</li>
+            <li><code>str</code> - string</li>
+            <li><code>bool</code> - boolean (<code>true</code> or <code>false</code>)</li>
+            <li><code>f32</code> - 32-bit floating point</li>
+            <li><code>f64</code> - 64-bit floating point</li>
+            <li><code>u32</code> - 32-bit unsigned integer</li>
+            <li><code>u64</code> - 64-bit unsigned integer</li>
+        </ul>
+
+        <h3>Variables</h3>
+
+        <p>Variables are declared with their type followed by the name and value:</p>
+
+        <pre><code><span class="ty">int</span> x = <span class="nu">5</span>
+<span class="ty">str</span> name = <span class="st">"Alice"</span>
+<span class="ty">bool</span> active = <span class="kw">true</span>
+<span class="ty">f64</span> pi = <span class="nu">3.14159</span></code></pre>
+
+        <h3>Constants</h3>
+
+        <p>Use <code>const</code> for values that don't change. Type is inferred:</p>
+
+        <pre><code><span class="kw">const</span> max_size = <span class="nu">100</span>
+<span class="kw">const</span> greeting = <span class="st">"Hello"</span></code></pre>
+
+        <h3>Comments</h3>
+
+        <pre><code><span class="cm">// This is a single-line comment</span>
+
+<span class="ty">int</span> x = <span class="nu">5</span>  <span class="cm">// inline comment</span></code></pre>
+
+        <h2>Functions</h2>
+
+        <p>Functions are declared with <code>fn</code>:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">greet</span>(<span class="ty">str</span> name) {
+    <span class="fn">print</span>(<span class="st">"Hello, {name}!"</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">add</span>(<span class="ty">int</span> a, <span class="ty">int</span> b) <span class="ty">int</span> {
+    <span class="kw">return</span> a + b
+}</code></pre>
+
+        <p>The main entry point is <code>fn main</code>:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="fn">greet</span>(<span class="st">"World"</span>)
+}</code></pre>
+
+        <h2>Structs</h2>
+
+        <p>Define data structures with <code>struct</code>:</p>
+
+        <pre><code><span class="ty">Person</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    name  <span class="ty">str</span>
+    age   <span class="ty">int</span>
+    email <span class="ty">str?</span>  <span class="cm">// optional field</span>
+}</code></pre>
+
+        <p>Create instances with named fields:</p>
+
+        <pre><code><span class="ty">Person</span> alice = <span class="ty">Person</span> {
+    name: <span class="st">"Alice"</span>,
+    age: <span class="nu">30</span>,
+    email: <span class="st">"alice@example.com"</span>,
+}
+
+<span class="ty">Person</span> bob = <span class="ty">Person</span> {
+    name: <span class="st">"Bob"</span>,
+    age: <span class="nu">25</span>,
+    email: <span class="kw">none</span>,
+}</code></pre>
+
+        <p>Access fields with dot notation:</p>
+
+        <pre><code><span class="fn">print</span>(alice.name)  <span class="cm">// "Alice"</span>
+<span class="fn">print</span>(bob.age)     <span class="cm">// 25</span></code></pre>
+
+        <h2>Methods</h2>
+
+        <p>Add methods to structs with the <code>::</code> syntax:</p>
+
+        <pre><code><span class="ty">Person</span> <span class="kw">::</span> <span class="fn">greet</span>(self) <span class="ty">str</span> {
+    <span class="kw">return</span> <span class="st">"Hello, I'm {self.name}!"</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">is_adult</span>(self) <span class="ty">bool</span> {
+    <span class="kw">return</span> self.age >= <span class="nu">18</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">birthday</span>(self) {
+    self.age += <span class="nu">1</span>
+}</code></pre>
+
+        <p>Call methods on instances:</p>
+
+        <pre><code><span class="ty">Person</span> p = <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span>, email: <span class="kw">none</span> }
+<span class="fn">print</span>(p.<span class="fn">greet</span>())     <span class="cm">// "Hello, I'm Alice!"</span>
+<span class="fn">print</span>(p.<span class="fn">is_adult</span>())  <span class="cm">// true</span></code></pre>
+
+        <h2>Traits</h2>
+
+        <p>Traits define shared behavior:</p>
+
+        <pre><code><span class="ty">Stringer</span> <span class="kw">::</span> <span class="kw">trait</span> {
+    <span class="fn">to_string</span>(self) <span class="ty">str</span>
+}
+
+<span class="ty">Comparable</span> <span class="kw">::</span> <span class="kw">trait</span> {
+    <span class="fn">compare</span>(self, other) <span class="ty">int</span>
+}</code></pre>
+
+        <p>Implement traits for your types:</p>
+
+        <pre><code><span class="ty">Person</span> <span class="kw">::</span> <span class="kw">impl</span> <span class="ty">Stringer</span> {
+    <span class="fn">to_string</span>(self) <span class="ty">str</span> {
+        <span class="kw">return</span> <span class="st">"{self.name} ({self.age})"</span>
+    }
+}</code></pre>
+
+        <h2>Optional Types</h2>
+
+        <p>Use <code>?</code> suffix to mark a type as optional:</p>
+
+        <pre><code><span class="ty">str?</span> maybe_name = <span class="kw">none</span>
+<span class="ty">str?</span> actual_name = <span class="st">"Alice"</span></code></pre>
+
+        <h3>The <code>or</code> operator</h3>
+
+        <p>Handle optionals cleanly with <code>or</code>:</p>
+
+        <pre><code><span class="cm">// Provide a default value</span>
+<span class="ty">str</span> name = maybe_name <span class="kw">or</span> <span class="st">"Unknown"</span>
+
+<span class="cm">// Return early if none</span>
+<span class="ty">str</span> name = maybe_name <span class="kw">or return</span>
+
+<span class="cm">// Return a specific value if none</span>
+<span class="ty">str</span> name = maybe_name <span class="kw">or return</span> <span class="st">"default"</span></code></pre>
+
+        <h3>Truthiness</h3>
+
+        <p>Optional values are truthy when present:</p>
+
+        <pre><code><span class="kw">if</span> person.email {
+    <span class="fn">send_email</span>(person.email)
+}</code></pre>
+
+        <h2>Error Handling</h2>
+
+        <p>Define error types:</p>
+
+        <pre><code><span class="ty">FileNotFound</span> <span class="kw">::</span> <span class="kw">error</span> {
+    path <span class="ty">str</span>
+}
+
+<span class="ty">ParseError</span> <span class="kw">::</span> <span class="kw">error</span> {
+    line    <span class="ty">int</span>
+    message <span class="ty">str</span>
+}</code></pre>
+
+        <p>Functions can return a value or an error:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">read_config</span>(<span class="ty">str</span> path) <span class="ty">Config</span> <span class="kw">or</span> <span class="ty">Error</span> {
+    <span class="ty">str</span> contents = <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
+    <span class="ty">Config</span> cfg = <span class="fn">parse</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> { line: <span class="nu">1</span>, message: <span class="st">"invalid"</span> }
+    <span class="kw">return</span> cfg
+}</code></pre>
+
+        <p>Handle errors with <code>or</code>:</p>
+
+        <pre><code><span class="ty">Config</span> cfg = <span class="fn">read_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or error</span> <span class="ty">StartupError</span> {}
+<span class="ty">Config</span> cfg = <span class="fn">read_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or return</span></code></pre>
+
+        <h2>Arrays</h2>
+
+        <p>Arrays use the <code>[]</code> suffix:</p>
+
+        <pre><code><span class="ty">int[]</span> numbers = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>, <span class="nu">4</span>, <span class="nu">5</span>]
+<span class="ty">str[]</span> names = [<span class="st">"Alice"</span>, <span class="st">"Bob"</span>, <span class="st">"Charlie"</span>]
+<span class="ty">Person[]</span> people = []</code></pre>
+
+        <p>Access elements by index:</p>
+
+        <pre><code><span class="ty">int</span> first = numbers[<span class="nu">0</span>]
+<span class="ty">str</span> name = names[<span class="nu">1</span>]</code></pre>
+
+        <h2>Control Flow</h2>
+
+        <h3>If/Else</h3>
+
+        <pre><code><span class="kw">if</span> x > <span class="nu">10</span> {
+    <span class="fn">print</span>(<span class="st">"big"</span>)
+} <span class="kw">else if</span> x > <span class="nu">5</span> {
+    <span class="fn">print</span>(<span class="st">"medium"</span>)
+} <span class="kw">else</span> {
+    <span class="fn">print</span>(<span class="st">"small"</span>)
+}</code></pre>
+
+        <h3>For Loops</h3>
+
+        <p>Iterate over collections:</p>
+
+        <pre><code><span class="ty">int[]</span> nums = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
+
+<span class="kw">for</span> n <span class="kw">in</span> nums {
+    <span class="fn">print</span>(n)
+}
+
+<span class="kw">for</span> person <span class="kw">in</span> people {
+    <span class="fn">print</span>(person.<span class="fn">greet</span>())
+}</code></pre>
+
+        <h3>Match</h3>
+
+        <p>Pattern matching:</p>
+
+        <pre><code><span class="kw">match</span> status {
+    <span class="nu">200</span> -> <span class="fn">print</span>(<span class="st">"OK"</span>)
+    <span class="nu">404</span> -> <span class="fn">print</span>(<span class="st">"Not found"</span>)
+    <span class="nu">500</span> -> <span class="fn">print</span>(<span class="st">"Server error"</span>)
+    _ -> <span class="fn">print</span>(<span class="st">"Unknown"</span>)
+}</code></pre>
+
+        <h3>Logical Operators</h3>
+
+        <p>Use <code>and</code>, <code>or</code>, and <code>not</code>:</p>
+
+        <pre><code><span class="kw">if</span> x > <span class="nu">0</span> <span class="kw">and</span> y > <span class="nu">0</span> {
+    <span class="fn">print</span>(<span class="st">"both positive"</span>)
+}
+
+<span class="kw">if</span> x == <span class="nu">0</span> <span class="kw">or</span> y == <span class="nu">0</span> {
+    <span class="fn">print</span>(<span class="st">"at least one zero"</span>)
+}
+
+<span class="kw">if not</span> done {
+    <span class="fn">print</span>(<span class="st">"still working"</span>)
+}</code></pre>
+
+        <h2>Concurrency</h2>
+
+        <h3>Goroutines</h3>
+
+        <p>Launch lightweight threads with <code>go</code>:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">do_work</span>() {
+    <span class="cm">// expensive computation</span>
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="kw">go</span> <span class="fn">do_work</span>()
+    <span class="kw">go</span> <span class="fn">do_work</span>()
+    <span class="cm">// both run concurrently</span>
+}</code></pre>
+
+        <h3>Channels</h3>
+
+        <p>Communicate between goroutines with channels:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">producer</span>(<span class="ty">chan int</span> out) {
+    out.<span class="fn">send</span>(<span class="nu">42</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+
+    <span class="kw">go</span> <span class="fn">producer</span>(results)
+
+    <span class="ty">int</span> value = results.<span class="fn">recv</span>()  <span class="cm">// blocking receive</span>
+    <span class="fn">print</span>(value)  <span class="cm">// 42</span>
+}</code></pre>
+
+        <p>Non-blocking receive with fallback:</p>
+
+        <pre><code><span class="ty">int</span> value = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>) <span class="kw">or</span> <span class="nu">0</span></code></pre>
+
+        <h2>String Interpolation</h2>
+
+        <p>Strings interpolate expressions by default:</p>
+
+        <pre><code><span class="ty">str</span> name = <span class="st">"Alice"</span>
+<span class="ty">int</span> age = <span class="nu">30</span>
+
+<span class="fn">print</span>(<span class="st">"Hello, {name}!"</span>)
+<span class="fn">print</span>(<span class="st">"{name} is {age} years old"</span>)
+<span class="fn">print</span>(<span class="st">"Next year: {age + 1}"</span>)</code></pre>
+
+        <p>Escape braces with backslash:</p>
+
+        <pre><code><span class="fn">print</span>(<span class="st">"Use \{name\} for interpolation"</span>)</code></pre>
+
+        <h2>Operators</h2>
+
+        <h3>Arithmetic</h3>
+
+        <pre><code>a + b    <span class="cm">// addition</span>
+a - b    <span class="cm">// subtraction</span>
+a * b    <span class="cm">// multiplication</span>
+a / b    <span class="cm">// division</span>
+a % b    <span class="cm">// modulo</span></code></pre>
+
+        <h3>Comparison</h3>
+
+        <pre><code>x == y   <span class="cm">// equal</span>
+x != y   <span class="cm">// not equal</span>
+x < y    <span class="cm">// less than</span>
+x > y    <span class="cm">// greater than</span>
+x <= y   <span class="cm">// less or equal</span>
+x >= y   <span class="cm">// greater or equal</span></code></pre>
+
+        <h3>Assignment</h3>
+
+        <pre><code>x = <span class="nu">5</span>    <span class="cm">// assign</span>
+x += <span class="nu">1</span>   <span class="cm">// add and assign</span>
+x -= <span class="nu">1</span>   <span class="cm">// subtract and assign</span>
+x *= <span class="nu">2</span>   <span class="cm">// multiply and assign</span>
+x /= <span class="nu">2</span>   <span class="cm">// divide and assign</span></code></pre>
+
+        <h2>Memory Management</h2>
+
+        <p>shotgun uses scope-based arenas. The compiler figures out where to allocate:</p>
+
+        <ul>
+            <li><strong>Stack</strong> - local values that don't escape</li>
+            <li><strong>Arena</strong> - values that escape, freed when scope ends</li>
+        </ul>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">handle_request</span>(<span class="ty">Request</span> req) <span class="ty">Response</span> {
+    <span class="ty">Person</span> p = <span class="ty">Person</span> { ... }  <span class="cm">// arena, freed when function returns</span>
+    <span class="ty">int</span> x = <span class="nu">5</span>                    <span class="cm">// stack</span>
+    <span class="kw">return</span> <span class="fn">build_response</span>(p)
+}</code></pre>
+
+        <p>Mental model: everything dies at end of scope unless you store it somewhere that outlives the scope.</p>
+
+    </div>
+
+    <footer>
+        <p>shotgun is open source. <a href="https://github.com/chrishayen/shotgun">View on GitHub</a></p>
+    </footer>
+</body>
+</html>

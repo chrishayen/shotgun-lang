@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.4.0
+          dune-cache: true
+
+      - name: Install dependencies
+        run: opam install . --deps-only --with-test -y
+        working-directory: compiler
+
+      - name: Build compiler
+        run: opam exec -- dune build
+        working-directory: compiler
+
+      - name: Run unit tests
+        run: opam exec -- dune test
+        working-directory: compiler
+
+      - name: Run integration tests
+        run: ./tests/run_tests.sh
+
+      - name: Prepare release binary
+        run: cp compiler/_build/default/bin/main.exe shotgun-linux-x86_64
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: shotgun-linux-x86_64
+          generate_release_notes: true

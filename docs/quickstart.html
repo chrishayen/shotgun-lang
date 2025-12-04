@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Start - shotgun</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="index.html" class="logo">shotgun</a>
+            <div class="links">
+                <a href="quickstart.html">Quick Start</a>
+                <a href="guide.html">Guide</a>
+                <a href="examples.html">Examples</a>
+                <a href="https://github.com/chrishayen/shotgun">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>Quick Start</h1>
+
+        <p>Get up and running with shotgun in a few minutes.</p>
+
+        <p style="background: var(--code-bg); padding: 1rem; border-radius: 6px; margin-bottom: 2rem;"><strong>Note:</strong> shotgun is in early development. There is no standard library yet. The compiler generates C code that you can link with your own runtime.</p>
+
+        <h2>Prerequisites</h2>
+
+        <p>shotgun is written in OCaml. You'll need:</p>
+
+        <ul>
+            <li><a href="https://opam.ocaml.org/">opam</a> - the OCaml package manager</li>
+            <li>OCaml 5.4.0 or later</li>
+            <li>A C compiler (gcc or clang)</li>
+        </ul>
+
+        <h2>Installation</h2>
+
+        <h3>1. Install OCaml and opam</h3>
+
+        <p>On macOS:</p>
+
+        <pre><code>brew install opam
+opam init
+opam switch create 5.4.0</code></pre>
+
+        <p>On Linux (Debian/Ubuntu):</p>
+
+        <pre><code>apt install opam
+opam init
+opam switch create 5.4.0</code></pre>
+
+        <h3>2. Clone and build</h3>
+
+        <pre><code>git clone https://github.com/chrishayen/shotgun.git
+cd shotgun
+eval $(opam env)
+cd compiler && dune build</code></pre>
+
+        <h3>3. Add to your PATH (optional)</h3>
+
+        <pre><code>alias shotgun="dune exec --root /path/to/shotgun/compiler -- shotgun"</code></pre>
+
+        <p>Or copy the binary:</p>
+
+        <pre><code>cp compiler/_build/default/bin/main.exe ~/.local/bin/shotgun</code></pre>
+
+        <h2>Hello, World</h2>
+
+        <p>Create a file called <code>hello.bs</code>:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="fn">print</span>(<span class="st">"Hello, shotgun!"</span>)
+}</code></pre>
+
+        <p>Compile and run:</p>
+
+        <pre><code>shotgun build hello.bs
+./hello</code></pre>
+
+        <p>You should see:</p>
+
+        <pre><code>Hello, shotgun!</code></pre>
+
+        <h2>Compiler Commands</h2>
+
+        <p>The shotgun compiler supports several commands:</p>
+
+        <pre><code><span class="cm"># Compile to executable</span>
+shotgun build file.bs
+
+<span class="cm"># Compile with custom output name</span>
+shotgun build file.bs -o myprogram
+
+<span class="cm"># Output generated C code only</span>
+shotgun emit-c file.bs
+
+<span class="cm"># Type check without compiling</span>
+shotgun check file.bs
+
+<span class="cm"># Parse and show AST (debugging)</span>
+shotgun parse file.bs</code></pre>
+
+        <h2>Your First Program</h2>
+
+        <p>Let's write something more interesting. Create <code>greet.bs</code>:</p>
+
+        <pre><code><span class="ty">Person</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    name <span class="ty">str</span>
+    age  <span class="ty">int</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">greet</span>(self) <span class="ty">str</span> {
+    <span class="kw">return</span> <span class="st">"Hi, I'm {self.name} and I'm {self.age} years old."</span>
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">Person</span> alice = <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span> }
+    <span class="fn">print</span>(alice.<span class="fn">greet</span>())
+}</code></pre>
+
+        <p>Compile and run:</p>
+
+        <pre><code>shotgun build greet.bs && ./greet</code></pre>
+
+        <p>Output:</p>
+
+        <pre><code>Hi, I'm Alice and I'm 30 years old.</code></pre>
+
+        <h2>Next Steps</h2>
+
+        <ul>
+            <li>Read the <a href="guide.html">Language Guide</a> to learn all the features</li>
+            <li>Browse the <a href="examples.html">Examples</a> to see real code</li>
+            <li>Check out the <a href="https://github.com/chrishayen/shotgun">source code</a> on GitHub</li>
+        </ul>
+    </div>
+
+    <footer>
+        <p>shotgun is open source. <a href="https://github.com/chrishayen/shotgun">View on GitHub</a></p>
+    </footer>
+</body>
+</html>

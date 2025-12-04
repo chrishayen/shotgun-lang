@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examples - shotgun</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="index.html" class="logo">shotgun</a>
+            <div class="links">
+                <a href="quickstart.html">Quick Start</a>
+                <a href="guide.html">Guide</a>
+                <a href="examples.html">Examples</a>
+                <a href="https://github.com/chrishayen/shotgun">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>Examples</h1>
+
+        <p>Real shotgun code to learn from.</p>
+
+        <h2>Complete Program</h2>
+
+        <p>This example demonstrates structs, methods, traits, optionals, concurrency, and iteration:</p>
+
+        <pre><code><span class="cm">// Define a struct with an optional field</span>
+<span class="ty">Person</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    name  <span class="ty">str</span>
+    age   <span class="ty">int</span>
+    email <span class="ty">str?</span>
+}
+
+<span class="cm">// Add methods to the struct</span>
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">greet</span>(self) <span class="ty">str</span> {
+    <span class="kw">return</span> <span class="st">"Hello, {self.name}!"</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">is_adult</span>(self) <span class="ty">bool</span> {
+    <span class="kw">return</span> self.age >= <span class="nu">18</span>
+}
+
+<span class="cm">// Define a trait</span>
+<span class="ty">Stringer</span> <span class="kw">::</span> <span class="kw">trait</span> {
+    <span class="fn">to_string</span>(self) <span class="ty">str</span>
+}
+
+<span class="cm">// Implement the trait for Person</span>
+<span class="ty">Person</span> <span class="kw">::</span> <span class="kw">impl</span> <span class="ty">Stringer</span> {
+    <span class="fn">to_string</span>(self) <span class="ty">str</span> {
+        <span class="kw">return</span> self.name
+    }
+}
+
+<span class="cm">// A function that uses channels</span>
+<span class="kw">fn</span> <span class="fn">fetch_data</span>(<span class="ty">chan int</span> out) {
+    out.<span class="fn">send</span>(<span class="nu">42</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">run_concurrent</span> {
+    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+
+    <span class="cm">// Launch two goroutines</span>
+    <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
+    <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
+
+    <span class="ty">int</span> a = results.<span class="fn">recv</span>()               <span class="cm">// blocking receive</span>
+    <span class="ty">int</span> b = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>)  <span class="cm">// with timeout</span>
+
+    <span class="fn">print</span>(<span class="st">"got {a} and {b}"</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="cm">// Create an array of people</span>
+    <span class="ty">Person[]</span> people = [
+        <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span>, email: <span class="st">"alice@example.com"</span> },
+        <span class="ty">Person</span> { name: <span class="st">"Bob"</span>, age: <span class="nu">25</span>, email: <span class="kw">none</span> },
+    ]
+
+    <span class="cm">// Iterate and filter</span>
+    <span class="kw">for</span> p <span class="kw">in</span> people {
+        <span class="kw">if</span> p.<span class="fn">is_adult</span>() <span class="kw">and</span> p.email {
+            <span class="fn">print</span>(p.<span class="fn">greet</span>())
+        }
+    }
+
+    <span class="fn">run_concurrent</span>()
+}</code></pre>
+
+        <h2>Optional Handling</h2>
+
+        <p>Different ways to handle optional values:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">find_user</span>(<span class="ty">str</span> id) <span class="ty">User?</span> {
+    <span class="cm">// Return none if not found</span>
+    <span class="kw">return</span> <span class="kw">none</span>
+}
+
+<span class="kw">fn</span> <span class="fn">process_user</span>(<span class="ty">str</span> id) {
+    <span class="ty">User?</span> maybe_user = <span class="fn">find_user</span>(id)
+
+    <span class="cm">// Option 1: Provide a default</span>
+    <span class="ty">User</span> user = maybe_user <span class="kw">or</span> <span class="ty">User</span> { name: <span class="st">"Guest"</span> }
+
+    <span class="cm">// Option 2: Early return if none</span>
+    <span class="ty">User</span> user = maybe_user <span class="kw">or return</span>
+
+    <span class="cm">// Option 3: Check truthiness</span>
+    <span class="kw">if</span> maybe_user {
+        <span class="fn">print</span>(<span class="st">"Found: {maybe_user.name}"</span>)
+    }
+}</code></pre>
+
+        <h2>Error Handling</h2>
+
+        <p>Define and handle errors explicitly:</p>
+
+        <pre><code><span class="cm">// Define error types</span>
+<span class="ty">FileNotFound</span> <span class="kw">::</span> <span class="kw">error</span> {
+    path <span class="ty">str</span>
+}
+
+<span class="ty">ParseError</span> <span class="kw">::</span> <span class="kw">error</span> {
+    line    <span class="ty">int</span>
+    message <span class="ty">str</span>
+}
+
+<span class="cm">// Function that can fail</span>
+<span class="kw">fn</span> <span class="fn">load_config</span>(<span class="ty">str</span> path) <span class="ty">Config</span> <span class="kw">or</span> <span class="ty">Error</span> {
+    <span class="ty">str</span> contents = <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
+
+    <span class="ty">Config</span> cfg = <span class="fn">parse_config</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> {
+        line: <span class="nu">1</span>,
+        message: <span class="st">"Invalid config format"</span>,
+    }
+
+    <span class="kw">return</span> cfg
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="cm">// Handle the error</span>
+    <span class="ty">Config</span> cfg = <span class="fn">load_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or</span> {
+        <span class="fn">print</span>(<span class="st">"Failed to load config, using defaults"</span>)
+        <span class="kw">return</span>
+    }
+
+    <span class="fn">print</span>(<span class="st">"Loaded config successfully"</span>)
+}</code></pre>
+
+        <h2>Concurrent Data Processing</h2>
+
+        <p>Process data in parallel with goroutines and channels:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">process_item</span>(<span class="ty">int</span> id, <span class="ty">chan int</span> out) {
+    <span class="cm">// Simulate work</span>
+    <span class="ty">int</span> result = id * <span class="nu">2</span>
+    out.<span class="fn">send</span>(result)
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">int[]</span> items = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>, <span class="nu">4</span>, <span class="nu">5</span>]
+    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+
+    <span class="cm">// Launch workers</span>
+    <span class="kw">for</span> item <span class="kw">in</span> items {
+        <span class="kw">go</span> <span class="fn">process_item</span>(item, results)
+    }
+
+    <span class="cm">// Collect results</span>
+    <span class="ty">int</span> total = <span class="nu">0</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> items {
+        <span class="ty">int</span> r = results.<span class="fn">recv</span>()
+        total += r
+    }
+
+    <span class="fn">print</span>(<span class="st">"Total: {total}"</span>)  <span class="cm">// 30</span>
+}</code></pre>
+
+        <h2>String Interpolation</h2>
+
+        <p>Build strings naturally:</p>
+
+        <pre><code><span class="ty">Person</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    first <span class="ty">str</span>
+    last  <span class="ty">str</span>
+    age   <span class="ty">int</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">full_name</span>(self) <span class="ty">str</span> {
+    <span class="kw">return</span> <span class="st">"{self.first} {self.last}"</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">bio</span>(self) <span class="ty">str</span> {
+    <span class="kw">return</span> <span class="st">"{self.full_name()} is {self.age} years old"</span>
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">Person</span> p = <span class="ty">Person</span> { first: <span class="st">"Alice"</span>, last: <span class="st">"Smith"</span>, age: <span class="nu">30</span> }
+
+    <span class="fn">print</span>(p.<span class="fn">bio</span>())
+    <span class="cm">// Output: Alice Smith is 30 years old</span>
+
+    <span class="cm">// Expressions work too</span>
+    <span class="fn">print</span>(<span class="st">"Next year: {p.age + 1}"</span>)
+    <span class="cm">// Output: Next year: 31</span>
+}</code></pre>
+
+        <h2>Pattern Matching</h2>
+
+        <p>Match on values cleanly:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">http_status</span>(<span class="ty">int</span> code) <span class="ty">str</span> {
+    <span class="kw">match</span> code {
+        <span class="nu">200</span> -> <span class="kw">return</span> <span class="st">"OK"</span>
+        <span class="nu">201</span> -> <span class="kw">return</span> <span class="st">"Created"</span>
+        <span class="nu">400</span> -> <span class="kw">return</span> <span class="st">"Bad Request"</span>
+        <span class="nu">401</span> -> <span class="kw">return</span> <span class="st">"Unauthorized"</span>
+        <span class="nu">404</span> -> <span class="kw">return</span> <span class="st">"Not Found"</span>
+        <span class="nu">500</span> -> <span class="kw">return</span> <span class="st">"Internal Server Error"</span>
+        _ -> <span class="kw">return</span> <span class="st">"Unknown"</span>
+    }
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="fn">print</span>(<span class="fn">http_status</span>(<span class="nu">200</span>))  <span class="cm">// OK</span>
+    <span class="fn">print</span>(<span class="fn">http_status</span>(<span class="nu">404</span>))  <span class="cm">// Not Found</span>
+    <span class="fn">print</span>(<span class="fn">http_status</span>(<span class="nu">999</span>))  <span class="cm">// Unknown</span>
+}</code></pre>
+
+    </div>
+
+    <footer>
+        <p>shotgun is open source. <a href="https://github.com/chrishayen/shotgun">View on GitHub</a></p>
+    </footer>
+</body>
+</html>

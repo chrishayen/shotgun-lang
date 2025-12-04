@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>shotgun - A Systems Language for App Developers</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="index.html" class="logo">shotgun</a>
+            <div class="links">
+                <a href="quickstart.html">Quick Start</a>
+                <a href="guide.html">Guide</a>
+                <a href="examples.html">Examples</a>
+                <a href="https://github.com/chrishayen/shotgun">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-wide">
+        <div class="hero">
+            <h1>shotgun</h1>
+            <p class="tagline">A systems language for app developers</p>
+            <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.9rem;">Early development. No standard library yet.</p>
+            <div class="buttons">
+                <a href="quickstart.html" class="btn btn-primary">Get Started</a>
+                <a href="guide.html" class="btn btn-secondary">Read the Guide</a>
+            </div>
+        </div>
+
+        <pre><code><span class="cm">// Clean syntax that reads like prose</span>
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    name  <span class="ty">str</span>
+    age   <span class="ty">int</span>
+    email <span class="ty">str?</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="fn">greet</span>(self) <span class="ty">str</span> {
+    <span class="kw">return</span> <span class="st">"Hello, {self.name}!"</span>
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">Person</span> p = <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span>, email: <span class="kw">none</span> }
+    <span class="fn">print</span>(p.<span class="fn">greet</span>())
+}</code></pre>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Clean Syntax</h3>
+                <p>No semicolons, minimal punctuation. Code that reads like a well-formatted article.</p>
+            </div>
+            <div class="feature">
+                <h3>Optional Types</h3>
+                <p>Handle nulls safely with <code>str?</code> and the <code>or</code> operator for clean fallbacks.</p>
+            </div>
+            <div class="feature">
+                <h3>Green Threads</h3>
+                <p>Lightweight concurrency with <code>go</code> and channels. No callback hell.</p>
+            </div>
+            <div class="feature">
+                <h3>Compiles to C</h3>
+                <p>Generate portable C code. Easy interop with existing C libraries.</p>
+            </div>
+        </div>
+
+        <h2>Why shotgun?</h2>
+
+        <p>shotgun combines the best ideas from modern systems languages:</p>
+
+        <ul>
+            <li><strong>Odin's</strong> simplicity and data-oriented design</li>
+            <li><strong>Zig's</strong> explicit memory control without the cryptic syntax</li>
+            <li><strong>Python's</strong> clean aesthetics and readability</li>
+            <li><strong>Rust's</strong> safety without borrow checker complexity</li>
+        </ul>
+
+        <p>The result is a language where systems programming feels approachable. Write performant code without fighting your tools.</p>
+
+        <h2>A Taste of the Language</h2>
+
+        <h3>Error Handling</h3>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">read_config</span>(<span class="ty">str</span> path) <span class="ty">Config</span> <span class="kw">or</span> <span class="ty">Error</span> {
+    <span class="ty">str</span> contents = <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
+    <span class="ty">Config</span> cfg = <span class="fn">parse</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> { line: <span class="nu">10</span> }
+    <span class="kw">return</span> cfg
+}</code></pre>
+
+        <h3>Concurrency</h3>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+
+    <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
+    <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
+
+    <span class="ty">int</span> a = results.<span class="fn">recv</span>()
+    <span class="ty">int</span> b = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>) <span class="kw">or</span> <span class="nu">0</span>
+
+    <span class="fn">print</span>(<span class="st">"got {a} and {b}"</span>)
+}</code></pre>
+
+        <h3>Traits</h3>
+
+        <pre><code><span class="ty">Stringer</span> <span class="kw">::</span> <span class="kw">trait</span> {
+    <span class="fn">to_string</span>(self) <span class="ty">str</span>
+}
+
+<span class="ty">Person</span> <span class="kw">::</span> <span class="kw">impl</span> <span class="ty">Stringer</span> {
+    <span class="fn">to_string</span>(self) <span class="ty">str</span> {
+        <span class="kw">return</span> self.name
+    }
+}</code></pre>
+
+    </div>
+
+    <footer>
+        <p>shotgun is open source. <a href="https://github.com/chrishayen/shotgun">View on GitHub</a></p>
+    </footer>
+</body>
+</html>
