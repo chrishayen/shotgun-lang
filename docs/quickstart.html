@@ -14,7 +14,7 @@
                 <a href="quickstart.html">Quick Start</a>
                 <a href="guide.html">Guide</a>
                 <a href="examples.html">Examples</a>
-                <a href="https://github.com/chrishayen/shotgun">GitHub</a>
+                <a href="https://github.com/chrishayen/shotgun-lang">GitHub</a>
             </div>
         </div>
     </nav>
@@ -28,7 +28,7 @@
 
         <h2>Prerequisites</h2>
 
-        <p>shotgun is written in OCaml. You'll need:</p>
+        <p>The shotgun compiler is written in OCaml. You'll need:</p>
 
         <ul>
             <li><a href="https://opam.ocaml.org/">opam</a> - the OCaml package manager</li>
@@ -38,7 +38,19 @@
 
         <h2>Installation</h2>
 
-        <h3>1. Install OCaml and opam</h3>
+        <h3>Option 1: Download Binary (Linux only)</h3>
+
+        <p>Download the latest release from <a href="https://github.com/chrishayen/shotgun-lang/releases">GitHub Releases</a>:</p>
+
+        <pre><code>curl -LO https://github.com/chrishayen/shotgun-lang/releases/latest/download/shotgun-linux-x86_64
+chmod +x shotgun-linux-x86_64
+mv shotgun-linux-x86_64 ~/.local/bin/shotgun</code></pre>
+
+        <p style="background: var(--code-bg); padding: 1rem; border-radius: 6px;">Only Linux x86_64 binaries are available. macOS/Windows not supported.</p>
+
+        <h3>Option 2: Build from Source</h3>
+
+        <h4>1. Install OCaml and opam</h4>
 
         <p>On macOS:</p>
 
@@ -52,14 +64,14 @@ opam switch create 5.4.0</code></pre>
 opam init
 opam switch create 5.4.0</code></pre>
 
-        <h3>2. Clone and build</h3>
+        <h4>2. Clone and build</h4>
 
-        <pre><code>git clone https://github.com/chrishayen/shotgun.git
-cd shotgun
+        <pre><code>git clone https://github.com/chrishayen/shotgun-lang.git
+cd shotgun-lang
 eval $(opam env)
-cd compiler && dune build</code></pre>
+cd compiler && opam install . --deps-only -y && dune build</code></pre>
 
-        <h3>3. Add to your PATH (optional)</h3>
+        <h4>3. Add to your PATH (optional)</h4>
 
         <pre><code>alias shotgun="dune exec --root /path/to/shotgun/compiler -- shotgun"</code></pre>
 
@@ -134,12 +146,12 @@ shotgun parse file.bs</code></pre>
         <ul>
             <li>Read the <a href="guide.html">Language Guide</a> to learn all the features</li>
             <li>Browse the <a href="examples.html">Examples</a> to see real code</li>
-            <li>Check out the <a href="https://github.com/chrishayen/shotgun">source code</a> on GitHub</li>
+            <li>Check out the <a href="https://github.com/chrishayen/shotgun-lang">source code</a> on GitHub</li>
         </ul>
     </div>
 
     <footer>
-        <p>shotgun is open source. <a href="https://github.com/chrishayen/shotgun">View on GitHub</a></p>
+        <p>shotgun is open source. <a href="https://github.com/chrishayen/shotgun-lang">GitHub</a> | <a href="https://x.com/shotgundotdev">X</a> | <a href="mailto:chris@shotgun.dev">chris@shotgun.dev</a></p>
     </footer>
 </body>
 </html>

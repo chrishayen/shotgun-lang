@@ -20,7 +20,8 @@ fn say_hello(str? world) {
 }
 
 Person :: struct {
-    name str    
+    name str
+    email str?
 }
 
 Person :: say_hello(self) {
