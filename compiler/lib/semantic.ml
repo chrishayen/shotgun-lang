@@ -318,6 +318,13 @@ let analyze program =
   else
     Error (List.rev !(env.errors_list))
 
+(* Run semantic analysis and return env with warnings *)
+let analyze_with_warnings program =
+  let env = create_env () in
+  List.iter (register_item env) program;
+  List.iter (check_item env) program;
+  (env, List.rev !(env.errors_list))
+
 (* Query type of an expression given an env and local variable types *)
 let rec get_expr_type env locals expr =
   match expr with

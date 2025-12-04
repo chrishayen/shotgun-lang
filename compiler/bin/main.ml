@@ -96,12 +96,8 @@ let cmd_emit_c filename =
     prerr_endline e;
     exit 1
   | Ok ast ->
-    let env = match check_program ast with
-      | Error e ->
-        prerr_endline ("Warning: " ^ e);
-        Semantic.create_env ()
-      | Ok env -> env
-    in
+    let (env, warnings) = Semantic.analyze_with_warnings ast in
+    List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
     let c_code = emit_c env ast in
     print_string c_code;
     exit 0
@@ -112,12 +108,8 @@ let cmd_build filename output_opt =
     prerr_endline e;
     exit 1
   | Ok ast ->
-    let env = match check_program ast with
-      | Error e ->
-        prerr_endline ("Warning: " ^ e);
-        Semantic.create_env ()
-      | Ok env -> env
-    in
+    let (env, warnings) = Semantic.analyze_with_warnings ast in
+    List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
     let c_code = emit_c env ast in
     let base = basename_no_ext filename in
     let c_file = base ^ ".c" in

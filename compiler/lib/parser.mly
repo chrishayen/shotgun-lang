@@ -1,6 +1,15 @@
 %{
 open Ast
 
+(* Parse a simple expression for interpolation: "x" or "x.y" or "x.y.z" *)
+let parse_interp_expr s =
+  let parts = String.split_on_char '.' s in
+  match parts with
+  | [] -> EIdent s
+  | [single] -> EIdent single
+  | first :: rest ->
+    List.fold_left (fun acc field -> EMember (acc, field)) (EIdent first) rest
+
 (* Parse interpolated string into parts *)
 let parse_interp_string s =
   let len = String.length s in
@@ -35,8 +44,8 @@ let parse_interp_string s =
       done;
       let interp_end = !i in
       let interp = String.sub s interp_start (interp_end - interp_start) in
-      (* For now, just treat the interpolation as an identifier reference *)
-      parts := SInterp (EIdent interp) :: !parts;
+      (* Parse the interpolation expression *)
+      parts := SInterp (parse_interp_expr interp) :: !parts;
       incr i  (* skip closing } *)
     end else begin
       Buffer.add_char text_buf s.[!i];

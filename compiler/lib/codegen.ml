@@ -121,14 +121,6 @@ let rec gen_expr ctx indent expr =
   | EBool false -> emit "false"
   | ENone -> emit "NULL"
   | EIdent "self" -> emit "self"
-  | EIdent name when String.contains name '.' ->
-    (* Handle "self.field" as a single identifier (from string interpolation) *)
-    let parts = String.split_on_char '.' name in
-    (match parts with
-     | "self" :: rest ->
-       emit "self->";
-       emit (String.concat "." rest)
-     | _ -> emit name)
   | EIdent name -> emit name
   | EBinary (op, l, r) ->
     emit "(";
@@ -558,7 +550,7 @@ let gen_method ctx type_name method_name params ret body =
   emit type_name;
   emit "_";
   emit method_name;
-  emit "(";
+  emit "(const ";
   emit type_name;
   emit "* self";
   List.iter (function
@@ -692,7 +684,7 @@ let gen_method_decl type_name method_name params ret =
   emit type_name;
   emit "_";
   emit method_name;
-  emit "(";
+  emit "(const ";
   emit type_name;
   emit "* self";
   List.iter (function
