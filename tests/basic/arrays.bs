@@ -1,0 +1,15 @@
+// Test: Array literals and operations
+fn main {
+    int[] numbers = [1, 2, 3, 4, 5]
+    str[] names = ["Alice", "Bob", "Charlie"]
+
+    int first = numbers[0]
+    str second_name = names[1]
+
+    print("First number: {first}")
+    print("Second name: {second_name}")
+
+    for n in numbers {
+        print("Number: {n}")
+    }
+}

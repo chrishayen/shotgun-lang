@@ -1,0 +1,15 @@
+// Test: Struct field access
+Person :: struct {
+    name str
+    age int
+}
+
+fn main {
+    Person p = Person { name: "Alice", age: 30 }
+
+    str n = p.name
+    int a = p.age
+
+    print("Name: {n}")
+    print("Age: {a}")
+}

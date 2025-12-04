@@ -1,0 +1,24 @@
+// Test: Functions with return values
+fn double(int x) int {
+    return x * 2
+}
+
+fn make_greeting(str name) str {
+    return "Hello, {name}!"
+}
+
+fn is_positive(int n) bool {
+    if n > 0 {
+        return true
+    }
+    return false
+}
+
+fn main {
+    int d = double(21)
+    str g = make_greeting("World")
+    bool pos = is_positive(5)
+
+    print("Double of 21: {d}")
+    print(g)
+}

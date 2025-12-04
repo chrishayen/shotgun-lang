@@ -1,0 +1,4 @@
+// Test: Should FAIL - using self outside of method
+fn main {
+    int x = self.value
+}

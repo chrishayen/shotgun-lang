@@ -1,0 +1,13 @@
+// Test: For loop iteration
+fn main {
+    int[] numbers = [1, 2, 3, 4, 5]
+
+    for n in numbers {
+        print("Number: {n}")
+    }
+
+    str[] names = ["Alice", "Bob", "Charlie"]
+    for name in names {
+        print("Hello, {name}")
+    }
+}

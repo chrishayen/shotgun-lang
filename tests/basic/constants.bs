@@ -1,0 +1,10 @@
+// Test: Const declarations
+fn main {
+    const max_size = 100
+    const pi = 3.14159
+    const greeting = "Hello"
+
+    print("Max size: {max_size}")
+    print("Pi: {pi}")
+    print("Greeting: {greeting}")
+}

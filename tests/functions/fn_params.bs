@@ -1,0 +1,15 @@
+// Test: Functions with parameters
+fn add(int a, int b) int {
+    return a + b
+}
+
+fn greet_person(str name) {
+    print("Hello, {name}!")
+}
+
+fn main {
+    int result = add(5, 3)
+    print("5 + 3 = {result}")
+
+    greet_person("Alice")
+}

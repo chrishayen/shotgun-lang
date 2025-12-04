@@ -1,0 +1,21 @@
+// Test: Trait implementation
+Stringer :: trait {
+    to_string(self) str
+}
+
+Person :: struct {
+    name str
+    age int
+}
+
+Person :: impl Stringer {
+    to_string(self) str {
+        return "Person: {self.name}, age {self.age}"
+    }
+}
+
+fn main {
+    Person p = Person { name: "Alice", age: 30 }
+    str s = p.to_string()
+    print(s)
+}

@@ -1,0 +1,21 @@
+// Test: Method invocation
+Counter :: struct {
+    value int
+}
+
+Counter :: get(self) int {
+    return self.value
+}
+
+Counter :: increment(self) int {
+    return self.value + 1
+}
+
+fn main {
+    Counter c = Counter { value: 10 }
+    int v = c.get()
+    int next = c.increment()
+
+    print("Value: {v}")
+    print("Next: {next}")
+}

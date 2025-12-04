@@ -1,0 +1,13 @@
+// Test: Trait definition
+Stringer :: trait {
+    to_string(self) str
+}
+
+Printable :: trait {
+    print(self)
+    debug(self) str
+}
+
+fn main {
+    print("Traits defined")
+}

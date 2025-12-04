@@ -1,0 +1,10 @@
+// Test: Variable declarations with types
+fn main {
+    int x = 42
+    str name = "Alice"
+    bool active = true
+    f64 pi = 3.14159
+
+    print("x = {x}")
+    print("name = {name}")
+}

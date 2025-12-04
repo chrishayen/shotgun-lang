@@ -1,0 +1,12 @@
+// Test: Struct literal instantiation
+Person :: struct {
+    name str
+    age int
+}
+
+fn main {
+    Person alice = Person { name: "Alice", age: 30 }
+    Person bob = Person { name: "Bob", age: 25 }
+
+    print("Created two Person structs")
+}

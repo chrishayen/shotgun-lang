@@ -1,0 +1,4 @@
+// Test: Should FAIL - using undefined struct type
+fn main {
+    Foo f = Foo { x: 1 }
+}

@@ -1,0 +1,15 @@
+// Test: Struct definition with various field types
+Person :: struct {
+    name str
+    age int
+    active bool
+}
+
+Point :: struct {
+    x f64
+    y f64
+}
+
+fn main {
+    print("Structs defined")
+}
