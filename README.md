@@ -2,6 +2,8 @@
 
 A systems language for app developers that combines Odin's simplicity, Zig's comptime, Python's clean aesthetics, and Rust's safety - without the complexity.
 
+> **Note:** Shotgun is in early development. Expect breaking changes.
+
 **Documentation:** https://shotgun.dev
 
 ## Building from Source
