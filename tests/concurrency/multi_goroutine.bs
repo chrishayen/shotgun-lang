@@ -1,0 +1,17 @@
+fn sender(chan int out, int value) {
+    out.send(value)
+}
+
+fn main {
+    chan int ch = chan()
+    go sender(ch, 10)
+    go sender(ch, 20)
+    go sender(ch, 30)
+
+    int a = ch.recv()
+    int b = ch.recv()
+    int c = ch.recv()
+
+    int total = a + b + c
+    print(total)
+}

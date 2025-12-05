@@ -9,6 +9,25 @@ let emit s = Buffer.add_string buf s
 let emitln s = Buffer.add_string buf s; Buffer.add_char buf '\n'
 let emit_indent n = for _ = 1 to n do Buffer.add_string buf "    " done
 
+(* Goroutine wrapper tracking *)
+type go_info = {
+  go_id: int;
+  go_func: string;
+  go_arg_types: typ list;
+}
+
+let go_counter = ref 0
+let go_wrappers : go_info list ref = ref []
+
+let reset_go_state () =
+  go_counter := 0;
+  go_wrappers := []
+
+let next_go_id () =
+  let id = !go_counter in
+  go_counter := id + 1;
+  id
+
 (* Convert Shotgun type to C type *)
 let rec c_type = function
   | TInt -> "int64_t"
@@ -227,7 +246,13 @@ and gen_call ctx indent callee args =
     (* Method call: obj.method(args) -> Type_method(&obj, args) *)
     (match method_name with
      | "send" ->
-       emit "chan_send(";
+       let elem_type_name = match get_type ctx obj with
+         | Some (TChan t) -> c_type_name t
+         | _ -> "int64"  (* fallback *)
+       in
+       emit "chan_send_";
+       emit elem_type_name;
+       emit "(";
        gen_expr ctx indent obj;
        emit ", ";
        (match args with
@@ -235,7 +260,13 @@ and gen_call ctx indent callee args =
         | _ -> emit "/* invalid args */");
        emit ")"
      | "recv" ->
-       emit "chan_recv(";
+       let elem_type_name = match get_type ctx obj with
+         | Some (TChan t) -> c_type_name t
+         | _ -> "int64"  (* fallback *)
+       in
+       emit "chan_recv_";
+       emit elem_type_name;
+       emit "(";
        gen_expr ctx indent obj;
        emit ")"
      | _ ->
@@ -414,7 +445,13 @@ let rec gen_stmt ctx indent stmt =
     emit " ";
     emit name;
     emit " = ";
-    gen_expr ctx indent expr;
+    (* Special case: typed channel creation *)
+    (match typ, expr with
+     | TChan elem_typ, EChan ->
+       emit "chan_create_";
+       emit (c_type_name elem_typ);
+       emit "()"
+     | _ -> gen_expr ctx indent expr);
     emitln ";"
   | SConstDecl (name, expr) ->
     (* Infer type from expression *)
@@ -496,11 +533,47 @@ let rec gen_stmt ctx indent stmt =
     emit_indent indent;
     emitln "}"
   | SGo e ->
-    (* For now, just call the function directly with a TODO comment *)
-    emitln "/* TODO: spawn goroutine */";
-    emit_indent indent;
-    gen_expr ctx indent e;
-    emitln ";"
+    (* Spawn a goroutine using pthreads *)
+    (match e with
+     | ECall (EIdent _, args) ->
+       (* Use the pre-scanned go_id (must match scan order) *)
+       let go_id = next_go_id () in
+
+       (* Emit pthread spawn code *)
+       emitln "{";
+       emit_indent (indent + 1);
+       emit "_go_";
+       emit (string_of_int go_id);
+       emit "_args* _args = malloc(sizeof(_go_";
+       emit (string_of_int go_id);
+       emitln "_args));";
+
+       (* Assign arguments *)
+       List.iteri (fun i arg ->
+         emit_indent (indent + 1);
+         emit "_args->arg";
+         emit (string_of_int i);
+         emit " = ";
+         gen_expr ctx indent arg;
+         emitln ";"
+       ) args;
+
+       emit_indent (indent + 1);
+       emitln "pthread_t _t;";
+       emit_indent (indent + 1);
+       emit "pthread_create(&_t, NULL, _go_";
+       emit (string_of_int go_id);
+       emitln "_wrapper, _args);";
+       emit_indent (indent + 1);
+       emitln "pthread_detach(_t);";
+       emit_indent indent;
+       emitln "}"
+     | _ ->
+       (* Fallback for complex expressions *)
+       emitln "/* unsupported go expression */";
+       emit_indent indent;
+       gen_expr ctx indent e;
+       emitln ";")
   | SExpr e ->
     gen_expr ctx indent e;
     emitln ";"
@@ -644,12 +717,169 @@ let gen_prelude () =
   emitln "typedef struct { float* data; size_t len; size_t cap; } Array_f32;";
   emitln "typedef struct { double* data; size_t len; size_t cap; } Array_f64;";
   emitln "";
-  emitln "/* Channel stubs */";
-  emitln "typedef struct { void* data; } Chan_int64;";
-  emitln "static Chan_int64* chan_create(void) { return calloc(1, sizeof(Chan_int64)); }";
-  emitln "static void chan_send(Chan_int64* c, int64_t v) { (void)c; (void)v; /* TODO */ }";
-  emitln "static int64_t chan_recv(Chan_int64* c) { (void)c; return 0; /* TODO */ }";
+  emitln "/* Channel runtime */";
+  emitln "typedef struct {";
+  emitln "    pthread_mutex_t mutex;";
+  emitln "    pthread_cond_t not_empty;";
+  emitln "    pthread_cond_t not_full;";
+  emitln "    void* buffer;";
+  emitln "    size_t elem_size;";
+  emitln "    size_t capacity;";
+  emitln "    size_t size;";
+  emitln "    size_t head;";
+  emitln "    size_t tail;";
+  emitln "} ShotgunChan;";
+  emitln "";
+  emitln "static ShotgunChan* shotgun_chan_create(size_t elem_size) {";
+  emitln "    ShotgunChan* c = malloc(sizeof(ShotgunChan));";
+  emitln "    pthread_mutex_init(&c->mutex, NULL);";
+  emitln "    pthread_cond_init(&c->not_empty, NULL);";
+  emitln "    pthread_cond_init(&c->not_full, NULL);";
+  emitln "    c->elem_size = elem_size;";
+  emitln "    c->capacity = 1;";
+  emitln "    c->buffer = malloc(elem_size * c->capacity);";
+  emitln "    c->size = c->head = c->tail = 0;";
+  emitln "    return c;";
+  emitln "}";
+  emitln "";
+  emitln "static void shotgun_chan_send(ShotgunChan* c, void* val) {";
+  emitln "    pthread_mutex_lock(&c->mutex);";
+  emitln "    while (c->size == c->capacity) {";
+  emitln "        pthread_cond_wait(&c->not_full, &c->mutex);";
+  emitln "    }";
+  emitln "    memcpy((char*)c->buffer + c->tail * c->elem_size, val, c->elem_size);";
+  emitln "    c->tail = (c->tail + 1) % c->capacity;";
+  emitln "    c->size++;";
+  emitln "    pthread_cond_signal(&c->not_empty);";
+  emitln "    pthread_mutex_unlock(&c->mutex);";
+  emitln "}";
+  emitln "";
+  emitln "static void shotgun_chan_recv(ShotgunChan* c, void* out) {";
+  emitln "    pthread_mutex_lock(&c->mutex);";
+  emitln "    while (c->size == 0) {";
+  emitln "        pthread_cond_wait(&c->not_empty, &c->mutex);";
+  emitln "    }";
+  emitln "    memcpy(out, (char*)c->buffer + c->head * c->elem_size, c->elem_size);";
+  emitln "    c->head = (c->head + 1) % c->capacity;";
+  emitln "    c->size--;";
+  emitln "    pthread_cond_signal(&c->not_full);";
+  emitln "    pthread_mutex_unlock(&c->mutex);";
+  emitln "}";
+  emitln "";
+  emitln "/* Type-safe channel wrappers */";
+  emitln "typedef ShotgunChan Chan_int64;";
+  emitln "static inline Chan_int64* chan_create_int64(void) { return shotgun_chan_create(sizeof(int64_t)); }";
+  emitln "static inline void chan_send_int64(Chan_int64* c, int64_t v) { shotgun_chan_send(c, &v); }";
+  emitln "static inline int64_t chan_recv_int64(Chan_int64* c) { int64_t v; shotgun_chan_recv(c, &v); return v; }";
+  emitln "";
+  emitln "typedef ShotgunChan Chan_str;";
+  emitln "static inline Chan_str* chan_create_str(void) { return shotgun_chan_create(sizeof(char*)); }";
+  emitln "static inline void chan_send_str(Chan_str* c, char* v) { shotgun_chan_send(c, &v); }";
+  emitln "static inline char* chan_recv_str(Chan_str* c) { char* v; shotgun_chan_recv(c, &v); return v; }";
+  emitln "";
+  emitln "typedef ShotgunChan Chan_bool;";
+  emitln "static inline Chan_bool* chan_create_bool(void) { return shotgun_chan_create(sizeof(bool)); }";
+  emitln "static inline void chan_send_bool(Chan_bool* c, bool v) { shotgun_chan_send(c, &v); }";
+  emitln "static inline bool chan_recv_bool(Chan_bool* c) { bool v; shotgun_chan_recv(c, &v); return v; }";
+  emitln "";
+  emitln "typedef ShotgunChan Chan_f64;";
+  emitln "static inline Chan_f64* chan_create_f64(void) { return shotgun_chan_create(sizeof(double)); }";
+  emitln "static inline void chan_send_f64(Chan_f64* c, double v) { shotgun_chan_send(c, &v); }";
+  emitln "static inline double chan_recv_f64(Chan_f64* c) { double v; shotgun_chan_recv(c, &v); return v; }";
   emitln ""
+
+(* Generate goroutine wrapper struct and function *)
+let gen_go_wrapper info =
+  let id = info.go_id in
+  let func_name = info.go_func in
+  let arg_types = info.go_arg_types in
+
+  (* Generate wrapper struct *)
+  emitln "";
+  emit "typedef struct { ";
+  List.iteri (fun i t ->
+    emit (c_type t);
+    emit " arg";
+    emit (string_of_int i);
+    emit "; "
+  ) arg_types;
+  emit "} _go_";
+  emit (string_of_int id);
+  emitln "_args;";
+
+  (* Generate wrapper function *)
+  emit "static void* _go_";
+  emit (string_of_int id);
+  emitln "_wrapper(void* _raw) {";
+  emit "    _go_";
+  emit (string_of_int id);
+  emit "_args* _args = (_go_";
+  emit (string_of_int id);
+  emitln "_args*)_raw;";
+  emit "    ";
+  emit func_name;
+  emit "(";
+  List.iteri (fun i _ ->
+    if i > 0 then emit ", ";
+    emit "_args->arg";
+    emit (string_of_int i)
+  ) arg_types;
+  emitln ");";
+  emitln "    free(_args);";
+  emitln "    return NULL;";
+  emitln "}"
+
+(* Generate all collected goroutine wrappers *)
+let gen_go_wrappers () =
+  List.iter gen_go_wrapper (List.rev !go_wrappers)
+
+(* Scan statements for go calls to collect wrapper info (first pass) *)
+let rec scan_stmt_for_go ctx stmt =
+  match stmt with
+  | SVarDecl (typ, name, _) ->
+    add_local ctx name typ
+  | SConstDecl (name, expr) ->
+    (match get_type ctx expr with
+     | Some t -> add_local ctx name t
+     | None -> ())
+  | SGo e ->
+    (match e with
+     | ECall (EIdent func_name, args) ->
+       let go_id = next_go_id () in
+       let arg_types = List.filter_map (fun arg -> get_type ctx arg) args in
+       go_wrappers := { go_id; go_func = func_name; go_arg_types = arg_types } :: !go_wrappers
+     | _ -> ())
+  | SIf (_, then_stmts, else_stmts) ->
+    List.iter (scan_stmt_for_go ctx) then_stmts;
+    (match else_stmts with Some stmts -> List.iter (scan_stmt_for_go ctx) stmts | None -> ())
+  | SFor (var, iter, body) ->
+    (* Add loop variable to scope *)
+    (match get_type ctx iter with
+     | Some (TArray t) -> add_local ctx var t
+     | _ -> ());
+    List.iter (scan_stmt_for_go ctx) body
+  | SMatch (_, arms) ->
+    List.iter (fun (_, stmts) -> List.iter (scan_stmt_for_go ctx) stmts) arms
+  | _ -> ()
+
+let scan_function_for_go ctx params body =
+  let func_ctx = { ctx with locals = Hashtbl.copy ctx.locals } in
+  List.iter (function
+    | PNamed (t, pname) -> Hashtbl.replace func_ctx.locals pname t
+    | PSelf -> ()
+  ) params;
+  List.iter (scan_stmt_for_go func_ctx) body
+
+let scan_program_for_go ctx program =
+  List.iter (function
+    | IFunction (_, params, _, body) ->
+      scan_function_for_go ctx params body
+    | IMethod (_, _, params, _, body) ->
+      scan_function_for_go ctx params body
+    | IImpl (_, _, methods) ->
+      List.iter (fun m -> scan_function_for_go ctx m.im_params m.im_body) methods
+    | _ -> ()
+  ) program
 
 (* Generate forward declaration for function *)
 let gen_function_decl name params ret =
@@ -700,6 +930,7 @@ let gen_method_decl type_name method_name params ret =
 (* Generate program *)
 let generate env program =
   Buffer.clear buf;
+  reset_go_state ();
   let ctx = create_ctx env in
   gen_prelude ();
 
@@ -761,6 +992,13 @@ let generate env program =
     | IUses _ -> ()  (* Skip imports *)
     | _ -> ()
   ) program;
+
+  (* Scan for go statements and generate wrappers *)
+  scan_program_for_go ctx program;
+  gen_go_wrappers ();
+
+  (* Reset go counter for actual codegen (must match scan order) *)
+  go_counter := 0;
 
   (* Generate remaining items *)
   List.iter (function

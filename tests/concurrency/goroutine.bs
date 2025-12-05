@@ -1,0 +1,10 @@
+fn worker(chan int out) {
+    out.send(42)
+}
+
+fn main {
+    chan int ch = chan()
+    go worker(ch)
+    int result = ch.recv()
+    print(result)
+}
