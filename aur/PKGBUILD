@@ -1,5 +1,5 @@
 # Maintainer: Chris Hayen <chris at shotgun dot dev>
-pkgname=shotgun
+pkgname=shotgun-lang
 pkgver=VERSION_PLACEHOLDER
 pkgrel=1
 pkgdesc="A systems programming language"
