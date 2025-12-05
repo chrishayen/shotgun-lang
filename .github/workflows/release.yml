@@ -40,8 +40,36 @@ jobs:
       - name: Prepare release binary
         run: cp compiler/_build/default/bin/main.exe shotgun-linux-x86_64
 
+      - name: Package tree-sitter grammar
+        run: |
+          mkdir -p tree-sitter-shotgun-pkg/src/tree_sitter
+          mkdir -p tree-sitter-shotgun-pkg/queries
+          cp tree-sitter-shotgun/src/parser.c tree-sitter-shotgun-pkg/src/
+          cp tree-sitter-shotgun/src/grammar.json tree-sitter-shotgun-pkg/src/
+          cp tree-sitter-shotgun/src/node-types.json tree-sitter-shotgun-pkg/src/
+          cp tree-sitter-shotgun/src/tree_sitter/*.h tree-sitter-shotgun-pkg/src/tree_sitter/
+          cp tree-sitter-shotgun/queries/highlights.scm tree-sitter-shotgun-pkg/queries/
+          tar -czvf tree-sitter-shotgun.tar.gz -C tree-sitter-shotgun-pkg .
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: shotgun-linux-x86_64
+          files: |
+            shotgun-linux-x86_64
+            tree-sitter-shotgun.tar.gz
           generate_release_notes: true
+
+      - name: Prepare PKGBUILD
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/" aur/PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: shotgun
+          pkgbuild: ./aur/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ github.ref_name }}"
