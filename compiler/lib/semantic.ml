@@ -71,6 +71,9 @@ let register_item env = function
     Hashtbl.replace env.impls (type_name, trait_name) methods
   | IFunction (name, params, ret, _body) ->
     Hashtbl.replace env.symbols name (SFunc (params, ret))
+  | IUses _paths ->
+    (* TODO: resolve imports and merge symbols *)
+    ()
 
 (* Type equality check *)
 let rec types_equal t1 t2 =
@@ -305,6 +308,8 @@ let check_item env = function
     check_function env params body
   | IError (_name, _fields) ->
     ()  (* Just a type definition *)
+  | IUses _paths ->
+    ()  (* TODO: validate imports exist *)
 
 (* Run semantic analysis on a program *)
 let analyze program =

@@ -16,12 +16,37 @@ module.exports = grammar({
     source_file: $ => repeat($._item),
 
     _item: $ => choice(
+      $.uses_statement,
       $.struct_definition,
       $.trait_definition,
       $.impl_block,
       $.method_definition,
       $.function_definition,
       $.error_definition,
+    ),
+
+    // uses: std.io, std.json  OR  uses:\n  - std.io\n  - std.json
+    uses_statement: $ => seq(
+      'uses',
+      ':',
+      choice(
+        $.inline_import_list,
+        $.dash_import_list,
+      ),
+    ),
+
+    inline_import_list: $ => seq(
+      $.import_path,
+      repeat(seq(',', $.import_path)),
+    ),
+
+    dash_import_list: $ => repeat1($.dash_import_item),
+
+    dash_import_item: $ => seq('-', $.import_path),
+
+    import_path: $ => seq(
+      $.identifier,
+      repeat(seq('.', $.identifier)),
     ),
 
     // Comments

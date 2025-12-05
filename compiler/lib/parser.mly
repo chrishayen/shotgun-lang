@@ -70,12 +70,13 @@ let parse_interp_string s =
 %token GO CHAN WAIT
 %token AND OR NOT
 %token SELF NONE TRUE FALSE CONST
+%token USES
 
 (* Type keywords *)
 %token STR INT BOOL F32 F64 U32 U64
 
 (* Symbols *)
-%token COLONCOLON ARROW QUESTION
+%token COLONCOLON ARROW QUESTION DASH
 %token LBRACE RBRACE LPAREN RPAREN LBRACKET RBRACKET
 %token COMMA COLON DOT
 %token EQ PLUSEQ MINUSEQ STAREQ SLASHEQ
@@ -109,6 +110,34 @@ item:
   | newlines method_def = method_definition newlines { method_def }
   | newlines func_def = function_definition newlines { func_def }
   | newlines err_def = error_definition newlines { err_def }
+  | newlines uses_block = uses_block_def newlines { uses_block }
+  ;
+
+(* uses: std.io, myapp.utils  OR  uses:\n - std.io\n - std.json *)
+uses_block_def:
+  | USES COLON paths = inline_import_list { IUses paths }
+  | USES COLON NEWLINE paths = dash_import_list { IUses paths }
+  ;
+
+(* Single line: uses: std.io, std.json *)
+inline_import_list:
+  | p = import_path { [p] }
+  | p = import_path COMMA rest = inline_import_list { p :: rest }
+  ;
+
+(* Multi-line with dashes: - std.io\n - std.json *)
+dash_import_list:
+  | (* empty *) { [] }
+  | DASH p = import_path newlines rest = dash_import_list { p :: rest }
+  ;
+
+import_path:
+  | first = IDENT rest = import_path_rest { first :: rest }
+  ;
+
+import_path_rest:
+  | (* empty *) { [] }
+  | DOT name = IDENT rest = import_path_rest { name :: rest }
   ;
 
 newlines:

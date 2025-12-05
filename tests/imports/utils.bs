@@ -1,0 +1,13 @@
+// Utility functions and types
+
+Helper :: struct {
+    value int
+}
+
+Helper :: get_value(self) int {
+    return self.value
+}
+
+fn add(int a, int b) int {
+    return a + b
+}

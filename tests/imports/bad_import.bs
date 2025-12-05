@@ -1,0 +1,5 @@
+uses: testpkg.nonexistent
+
+fn main {
+    print("should fail")
+}

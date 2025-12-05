@@ -717,6 +717,7 @@ let generate env program =
       emit " ";
       emit name;
       emitln ";"
+    | IUses _ -> ()  (* Imports handled elsewhere *)
     | _ -> ()
   ) program;
 
@@ -724,6 +725,7 @@ let generate env program =
   let user_array_types = ref [] in
   let collect_array_types = function
     | IStruct (name, _) -> user_array_types := name :: !user_array_types
+    | IUses _ -> ()  (* Skip imports *)
     | _ -> ()
   in
   List.iter collect_array_types program;
@@ -756,6 +758,7 @@ let generate env program =
       List.iter (fun m ->
         gen_method_decl type_name m.im_name m.im_params m.im_return
       ) methods
+    | IUses _ -> ()  (* Skip imports *)
     | _ -> ()
   ) program;
 
@@ -768,6 +771,7 @@ let generate env program =
       gen_method ctx type_name method_name params ret body
     | IFunction (name, params, ret, body) ->
       gen_function ctx name params ret body
+    | IUses _ -> ()  (* Imports handled in multi-file compilation *)
   ) program;
 
   Buffer.contents buf

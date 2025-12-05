@@ -349,6 +349,58 @@ x -= <span class="nu">1</span>   <span class="cm">// subtract and assign</span>
 x *= <span class="nu">2</span>   <span class="cm">// multiply and assign</span>
 x /= <span class="nu">2</span>   <span class="cm">// divide and assign</span></code></pre>
 
+        <h2>Imports</h2>
+
+        <h3>Project Configuration</h3>
+
+        <p>Create a <code>shotgun.toml</code> file in your project root:</p>
+
+        <pre><code>name = "myapp"</code></pre>
+
+        <p>Initialize a new project with:</p>
+
+        <pre><code>shotgun init myapp</code></pre>
+
+        <h3>The uses Statement</h3>
+
+        <p>Import modules with <code>uses:</code> - short form for a few imports:</p>
+
+        <pre><code><span class="kw">uses:</span> std.io, std.json</code></pre>
+
+        <p>Or long form with dashes for many imports:</p>
+
+        <pre><code><span class="kw">uses:</span>
+  - std.io
+  - std.json
+  - myapp.utils</code></pre>
+
+        <p>The last segment becomes the namespace:</p>
+
+        <pre><code><span class="kw">uses:</span> myapp.helpers.string_utils
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">str</span> result = string_utils.<span class="fn">uppercase</span>(<span class="st">"hello"</span>)
+}</code></pre>
+
+        <h3>File Resolution</h3>
+
+        <p>Import paths map to files:</p>
+
+        <ul>
+            <li><code>myapp.utils</code> resolves to <code>./utils.bs</code></li>
+            <li><code>myapp.db.conn</code> resolves to <code>./db/conn.bs</code></li>
+            <li>Alternatively: <code>./db/conn/mod.bs</code></li>
+        </ul>
+
+        <h3>Example Project Structure</h3>
+
+        <pre><code>myapp/
+  shotgun.toml       <span class="cm"># name = "myapp"</span>
+  main.bs
+  utils.bs           <span class="cm"># import as myapp.utils</span>
+  db/
+    conn.bs          <span class="cm"># import as myapp.db.conn</span></code></pre>
+
         <h2>Memory Management</h2>
 
         <p>shotgun uses scope-based arenas. The compiler figures out where to allocate:</p>

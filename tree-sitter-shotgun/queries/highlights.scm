@@ -13,6 +13,7 @@
   "match"
   "go"
   "chan"
+  "uses"
 ] @keyword
 
 [
@@ -112,3 +113,7 @@
 
 ; Comments
 (comment) @comment
+
+; Imports
+(import_path (identifier) @namespace)
+(dash_import_item "-" @punctuation.special)

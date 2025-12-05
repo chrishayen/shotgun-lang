@@ -104,8 +104,37 @@ for f in "$SCRIPT_DIR"/errors/*.bs; do
 done
 
 echo ""
+echo "--- Import Tests ---"
+# Test multi-file import project
+if [ -d "$SCRIPT_DIR/imports" ]; then
+    # Valid multi-file import
+    TOTAL=$((TOTAL + 1))
+    if (cd "$SCRIPT_DIR/imports" && "$SHOTGUN" check main.bs > /dev/null 2>&1); then
+        echo -e "${GREEN}[PASS]${NC} imports/multi-file"
+        PASSED=$((PASSED + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} imports/multi-file - expected to compile"
+        FAILED=$((FAILED + 1))
+    fi
+
+    # Unresolved import should fail
+    TOTAL=$((TOTAL + 1))
+    if (cd "$SCRIPT_DIR/imports" && "$SHOTGUN" check bad_import.bs > /dev/null 2>&1); then
+        echo -e "${RED}[FAIL]${NC} imports/bad_import - expected to fail but compiled"
+        FAILED=$((FAILED + 1))
+    else
+        echo -e "${GREEN}[PASS]${NC} imports/bad_import - correctly rejected"
+        PASSED=$((PASSED + 1))
+    fi
+fi
+
+echo ""
 echo "========================================"
-echo -e "Results: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}, $TOTAL total"
+if [ $FAILED -eq 0 ]; then
+    echo -e "Results: ${GREEN}$PASSED passed${NC}, $FAILED failed, $TOTAL total"
+else
+    echo -e "Results: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}, $TOTAL total"
+fi
 echo "========================================"
 
 if [ $FAILED -gt 0 ]; then

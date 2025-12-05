@@ -33,6 +33,7 @@ let keywords = [
   "u32", U32;
   "u64", U64;
   "const", CONST;
+  "uses", USES;
 ]
 
 let keyword_table = Hashtbl.create 50
@@ -148,7 +149,7 @@ rule token = parse
   | ">" { GT }
   | "=" { EQ }
   | "+" { PLUS }
-  | "-" { MINUS }
+  | "-" { if in_nested () then MINUS else DASH }
   | "*" { STAR }
   | "/" { SLASH }
   | "%" { PERCENT }

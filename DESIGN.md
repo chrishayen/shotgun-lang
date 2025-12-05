@@ -79,8 +79,6 @@ Code should read like a well-formatted article with meaningful whitespace.
 ### Current Direction
 
 ```
-import std.io
-
 Person :: struct {
     name  str
     age   int
@@ -102,10 +100,37 @@ fn main {
     ]
 
     for p in people {
-        io.print(p.greet())
+        print(p.greet())
     }
 }
+
+uses: std.io
 ```
+
+### Import System
+
+Short form for few imports:
+```
+uses: std.io, std.json
+```
+
+Long form for many imports:
+```
+uses:
+  - std.io
+  - std.json
+  - myapp.utils
+```
+
+Project configuration in `shotgun.toml`:
+```toml
+name = "myapp"
+```
+
+Resolution:
+- `myapp.utils` -> `./utils.bs` (project-relative)
+- `std.io` -> standard library (TODO)
+- Last segment becomes namespace: `utils.helper()`
 
 ### Concurrency Example
 

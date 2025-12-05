@@ -121,6 +121,10 @@ type param =
   | PNamed of typ * string
 [@@deriving show, eq]
 
+(* Import path: std.io becomes ["std"; "io"] *)
+type import_path = string list
+[@@deriving show, eq]
+
 (* Top-level items *)
 type item =
   | IStruct of string * field list
@@ -129,6 +133,7 @@ type item =
   | IMethod of string * string * param list * typ option * stmt list  (* type, method name, params, return type, body *)
   | IFunction of string * param list * typ option * stmt list  (* name, params, return type, body *)
   | IError of string * field list
+  | IUses of import_path list  (* uses { std.io, myapp.utils } *)
 [@@deriving show, eq]
 
 and impl_method = {

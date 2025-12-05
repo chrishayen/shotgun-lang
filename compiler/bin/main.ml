@@ -11,6 +11,7 @@ Usage:
   shotgun emit-c <file.bs>          Output C code only
   shotgun check <file.bs>           Type check only
   shotgun parse <file.bs>           Parse and print AST (debug)
+  shotgun init <name>               Initialize a new project
 
 Options:
   -o <name>   Output file name
@@ -38,6 +39,10 @@ let parse_file filename =
     let pos = lexbuf.Lexing.lex_curr_p in
     Error (Printf.sprintf "Parse error at %s:%d:%d"
              pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol))
+
+(* Try to load project config, return None if not found *)
+let try_load_config filename =
+  Config.load_config filename
 
 (* Run semantic analysis *)
 let check_program ast =
@@ -82,13 +87,36 @@ let cmd_check filename =
     prerr_endline e;
     exit 1
   | Ok ast ->
-    match check_program ast with
-    | Error e ->
-      prerr_endline e;
-      exit 1
-    | Ok _ ->
-      print_endline "OK";
-      exit 0
+    (* Check for project config for multi-file support *)
+    let config = try_load_config filename in
+    let warnings = match config with
+      | None ->
+        (* Single file mode *)
+        (match check_program ast with
+         | Error e ->
+           prerr_endline e;
+           exit 1
+         | Ok _ -> [])
+      | Some cfg ->
+        (* Multi-file mode with imports *)
+        let cache = Resolver.create_cache () in
+        let abs_filename = if Filename.is_relative filename then
+          Filename.concat (Sys.getcwd ()) filename
+        else filename in
+        Hashtbl.replace cache.parsed abs_filename ast;
+        let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
+        List.iter (fun e -> prerr_endline e) resolve_errors;
+        if resolve_errors <> [] then exit 1;
+        let (_env, warnings) = Resolver.analyze_with_imports cfg cache ast in
+        if List.exists (fun w -> not (String.starts_with ~prefix:"Warning" w)) warnings then begin
+          List.iter prerr_endline warnings;
+          exit 1
+        end;
+        warnings
+    in
+    List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
+    print_endline "OK";
+    exit 0
 
 let cmd_emit_c filename =
   match parse_file filename with
@@ -96,9 +124,29 @@ let cmd_emit_c filename =
     prerr_endline e;
     exit 1
   | Ok ast ->
-    let (env, warnings) = Semantic.analyze_with_warnings ast in
+    (* Check for project config for multi-file support *)
+    let config = try_load_config filename in
+    let (env, warnings, all_items) = match config with
+      | None ->
+        (* Single file mode *)
+        let (env, warnings) = Semantic.analyze_with_warnings ast in
+        (env, warnings, ast)
+      | Some cfg ->
+        (* Multi-file mode with imports *)
+        let cache = Resolver.create_cache () in
+        let abs_filename = if Filename.is_relative filename then
+          Filename.concat (Sys.getcwd ()) filename
+        else filename in
+        Hashtbl.replace cache.parsed abs_filename ast;
+        let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
+        List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
+        if resolve_errors <> [] then exit 1;
+        let (env, warnings) = Resolver.analyze_with_imports cfg cache ast in
+        let all_items = Resolver.collect_all_items cache cfg ast in
+        (env, warnings, all_items)
+    in
     List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
-    let c_code = emit_c env ast in
+    let c_code = emit_c env all_items in
     print_string c_code;
     exit 0
 
@@ -108,9 +156,29 @@ let cmd_build filename output_opt =
     prerr_endline e;
     exit 1
   | Ok ast ->
-    let (env, warnings) = Semantic.analyze_with_warnings ast in
+    (* Check for project config for multi-file support *)
+    let config = try_load_config filename in
+    let (env, warnings, all_items) = match config with
+      | None ->
+        (* Single file mode *)
+        let (env, warnings) = Semantic.analyze_with_warnings ast in
+        (env, warnings, ast)
+      | Some cfg ->
+        (* Multi-file mode with imports *)
+        let cache = Resolver.create_cache () in
+        let abs_filename = if Filename.is_relative filename then
+          Filename.concat (Sys.getcwd ()) filename
+        else filename in
+        Hashtbl.replace cache.parsed abs_filename ast;
+        let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
+        List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
+        if resolve_errors <> [] then exit 1;
+        let (env, warnings) = Resolver.analyze_with_imports cfg cache ast in
+        let all_items = Resolver.collect_all_items cache cfg ast in
+        (env, warnings, all_items)
+    in
     List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
-    let c_code = emit_c env ast in
+    let c_code = emit_c env all_items in
     let base = basename_no_ext filename in
     let c_file = base ^ ".c" in
     let output = match output_opt with
@@ -131,6 +199,21 @@ let cmd_build filename output_opt =
       Printf.printf "Built %s\n" output;
       exit 0
 
+let cmd_init name =
+  (* Create shotgun.toml *)
+  let oc = open_out "shotgun.toml" in
+  Printf.fprintf oc "name = \"%s\"\n" name;
+  close_out oc;
+  Printf.printf "Created shotgun.toml for project '%s'\n" name;
+  (* Create main.bs if it doesn't exist *)
+  if not (Sys.file_exists "main.bs") then begin
+    let oc = open_out "main.bs" in
+    output_string oc "fn main {\n    print(\"Hello, world!\")\n}\n";
+    close_out oc;
+    print_endline "Created main.bs"
+  end;
+  exit 0
+
 (* Parse command line *)
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
@@ -148,6 +231,8 @@ let () =
     cmd_build filename None
   | ["build"; filename; "-o"; output] ->
     cmd_build filename (Some output)
+  | ["init"; name] ->
+    cmd_init name
   | _ ->
     prerr_string usage;
     exit 1

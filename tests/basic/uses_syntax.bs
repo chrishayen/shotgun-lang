@@ -1,0 +1,5 @@
+uses: std.io
+
+fn main {
+    print("uses block test")
+}
