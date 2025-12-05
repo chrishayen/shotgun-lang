@@ -41,7 +41,6 @@ tree-sitter-shotgun/Package.swift
 tree-sitter-shotgun/package-lock.json
 tree-sitter-shotgun/pyproject.toml
 tree-sitter-shotgun/setup.py
-tree-sitter-shotgun/src/node-types.json
 
 # Editor
 *~
