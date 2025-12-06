@@ -6,16 +6,17 @@ let usage = {|
 Shotgun Compiler
 
 Usage:
-  shotgun build <file.bs>           Compile to C, then to binary
-  shotgun build <file.bs> -o <out>  Compile with custom output name
+  shotgun <file.bs>                 Compile to binary
+  shotgun <file.bs> -o <out>        Compile with custom output name
   shotgun emit-c <file.bs>          Output C code only
   shotgun check <file.bs>           Type check only
   shotgun parse <file.bs>           Parse and print AST (debug)
   shotgun init <name>               Initialize a new project
 
 Options:
-  -o <name>   Output file name
-  -h, --help  Show this help
+  -o <name>      Output file name
+  -h, --help     Show this help
+  -v, --version  Show version
 |}
 
 (* Parse a file and return the AST *)
@@ -221,15 +222,18 @@ let () =
   | [] | ["-h"] | ["--help"] ->
     print_string usage;
     exit 0
+  | ["-v"] | ["--version"] | ["version"] ->
+    print_endline ("shotgun " ^ Version.version);
+    exit 0
   | ["parse"; filename] ->
     cmd_parse filename
   | ["check"; filename] ->
     cmd_check filename
   | ["emit-c"; filename] ->
     cmd_emit_c filename
-  | ["build"; filename] ->
+  | [filename] when String.ends_with ~suffix:".bs" filename ->
     cmd_build filename None
-  | ["build"; filename; "-o"; output] ->
+  | [filename; "-o"; output] when String.ends_with ~suffix:".bs" filename ->
     cmd_build filename (Some output)
   | ["init"; name] ->
     cmd_init name

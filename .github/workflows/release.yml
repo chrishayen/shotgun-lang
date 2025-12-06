@@ -29,6 +29,8 @@ jobs:
       - name: Build compiler
         run: opam exec -- dune build
         working-directory: compiler
+        env:
+          SHOTGUN_VERSION: ${{ github.ref_name }}
 
       - name: Run unit tests
         run: opam exec -- dune test
