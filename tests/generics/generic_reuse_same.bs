@@ -1,0 +1,15 @@
+// Test: Multiple variables of same generic instantiation
+
+Box<T> :: struct {
+    value T
+}
+
+fn main {
+    Box<int> a = Box<int> { value: 1 }
+    Box<int> b = Box<int> { value: 2 }
+    Box<int> c = Box<int> { value: 3 }
+
+    int sum = a.value + b.value + c.value
+
+    print("generic reuse same test passed")
+}

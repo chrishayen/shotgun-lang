@@ -1,0 +1,21 @@
+// Test: Generic struct with multiple fields using type param
+
+Container<T> :: struct {
+    first T
+    second T
+    count int
+}
+
+fn main {
+    Container<int> c = Container<int> {
+        first: 10,
+        second: 20,
+        count: 2
+    }
+
+    int a = c.first
+    int b = c.second
+    int n = c.count
+
+    print("generic multi field test passed")
+}

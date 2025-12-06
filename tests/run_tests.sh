@@ -104,6 +104,12 @@ for f in "$SCRIPT_DIR"/control_flow/*.bs; do
 done
 
 echo ""
+echo "--- Generics Tests ---"
+for f in "$SCRIPT_DIR"/generics/*.bs; do
+    [ -f "$f" ] && test_valid "$f"
+done
+
+echo ""
 echo "--- Error Tests (should fail) ---"
 for f in "$SCRIPT_DIR"/errors/*.bs; do
     [ -f "$f" ] && test_error "$f"

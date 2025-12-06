@@ -61,19 +61,19 @@ let check_param_order env params =
 
 (* Register all top-level declarations first *)
 let register_item env = function
-  | IStruct (name, fields) ->
+  | IStruct (name, _type_params, fields) ->
     Hashtbl.replace env.structs name fields
-  | IEnum (name, variants) ->
+  | IEnum (name, _type_params, variants) ->
     Hashtbl.replace env.enums name variants
   | ITrait (name, methods) ->
     Hashtbl.replace env.traits name methods
   | IError (name, fields) ->
     Hashtbl.replace env.errors name fields
-  | IMethod (type_name, method_name, params, ret, _body) ->
+  | IMethod (type_name, method_name, _type_params, params, ret, _body) ->
     Hashtbl.replace env.methods (type_name, method_name) (params, ret)
   | IImpl (type_name, trait_name, methods) ->
     Hashtbl.replace env.impls (type_name, trait_name) methods
-  | IFunction (name, params, ret, _body) ->
+  | IFunction (name, _type_params, params, ret, _body) ->
     Hashtbl.replace env.symbols name (SFunc (params, ret))
   | IUses _paths ->
     (* TODO: resolve imports and merge symbols *)
@@ -106,6 +106,10 @@ let rec type_exists env typ =
   | TChan t -> type_exists env t
   | TUser name -> Hashtbl.mem env.structs name || Hashtbl.mem env.enums name || Hashtbl.mem env.errors name
   | TResult (t, e) -> type_exists env t && (e = "Error" || Hashtbl.mem env.errors e)
+  | TParam _ -> true  (* Type parameters are always valid within their scope *)
+  | TApply (name, args) ->
+    (Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
+    List.for_all (type_exists env) args
 
 (* Get type of expression - simplified version *)
 let rec infer_expr_type env expr =
@@ -124,7 +128,7 @@ let rec infer_expr_type env expr =
      | Add | Sub | Mul | Div | Mod -> Some TInt
      | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> Some TBool)
   | EUnary (Not, _) -> Some TBool
-  | ECall (callee, _args) ->
+  | ECall (callee, _type_args, _args) ->
     (match callee with
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
@@ -154,8 +158,12 @@ let rec infer_expr_type env expr =
      | Some (TArray t) -> Some t
      | _ -> None)
   | EOr (e, _clause) -> infer_expr_type env e
-  | EStructLit (name, _fields) -> Some (TUser name)
-  | EEnumVariant (enum_name, _variant_name, _fields) -> Some (TUser enum_name)
+  | EStructLit (name, type_args, _fields) ->
+    if type_args = [] then Some (TUser name)
+    else Some (TApply (name, type_args))
+  | EEnumVariant (enum_name, type_args, _variant_name, _fields) ->
+    if type_args = [] then Some (TUser enum_name)
+    else Some (TApply (enum_name, type_args))
   | EArrayLit [] -> None
   | EArrayLit (e :: _) ->
     infer_expr_type env e |> Option.map (fun t -> TArray t)
@@ -168,6 +176,12 @@ let rec infer_expr_type env expr =
      | [] -> None
      | (_, first_result) :: _ -> infer_expr_type env first_result)
 
+(* Extract the base enum name from a type (handles TUser and TApply) *)
+and get_enum_name_from_type = function
+  | TUser name -> Some name
+  | TApply (name, _) -> Some name
+  | _ -> None
+
 (* Bind pattern variables to the environment *)
 and bind_pattern_vars env pat expr_types using_type =
   let get_matched_type idx =
@@ -179,11 +193,12 @@ and bind_pattern_vars env pat expr_types using_type =
     (* Bind identifier to type of matched expression *)
     let typ = match get_matched_type 0 with Some t -> t | None -> TInt in
     Hashtbl.replace env.symbols name (SVar (typ, false))
-  | PVariant (enum_opt, variant_name, bindings) ->
-    let enum_name = match enum_opt with
-      | Some e -> e
-      | None -> (match using_type with Some t -> t | None -> "")
+  | PVariant (enum_type_opt, variant_name, bindings) ->
+    let enum_name = match enum_type_opt with
+      | Some t -> get_enum_name_from_type t
+      | None -> Option.bind using_type get_enum_name_from_type
     in
+    let enum_name = match enum_name with Some n -> n | None -> "" in
     (* Validate enum exists *)
     (match Hashtbl.find_opt env.enums enum_name with
      | None ->
@@ -221,7 +236,7 @@ let rec check_expr env expr =
     check_expr env r
   | EUnary (_, e) ->
     check_expr env e
-  | ECall (callee, args) ->
+  | ECall (callee, _type_args, args) ->
     check_expr env callee;
     List.iter (check_expr env) args
   | EMember (obj, _) ->
@@ -237,11 +252,11 @@ let rec check_expr env expr =
      | OrReturn None -> ()
      | OrError (_, fields) -> List.iter (fun (_, e2) -> check_expr env e2) fields
      | OrWait e2 -> check_expr env e2)
-  | EStructLit (name, fields) ->
+  | EStructLit (name, _type_args, fields) ->
     if not (Hashtbl.mem env.structs name) then
       add_error env (Printf.sprintf "Unknown struct type: %s" name);
     List.iter (fun (_, e) -> check_expr env e) fields
-  | EEnumVariant (enum_name, variant_name, fields) ->
+  | EEnumVariant (enum_name, _type_args, variant_name, fields) ->
     (match Hashtbl.find_opt env.enums enum_name with
      | None ->
        add_error env (Printf.sprintf "Unknown enum type: %s" enum_name)
@@ -349,17 +364,31 @@ let check_method env type_name params body =
   ) params;
   List.iter (check_stmt method_env) body
 
+(* Check if a type is valid given a list of type parameters in scope *)
+let rec type_exists_with_params env type_params typ =
+  match typ with
+  | TUser name ->
+    List.mem name type_params || type_exists env typ
+  | TArray t -> type_exists_with_params env type_params t
+  | TOptional t -> type_exists_with_params env type_params t
+  | TChan t -> type_exists_with_params env type_params t
+  | TResult (t, e) -> type_exists_with_params env type_params t && (e = "Error" || Hashtbl.mem env.errors e)
+  | TApply (name, args) ->
+    (Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
+    List.for_all (type_exists_with_params env type_params) args
+  | _ -> type_exists env typ
+
 (* Check an item *)
 let check_item env = function
-  | IStruct (name, fields) ->
+  | IStruct (name, type_params, fields) ->
     List.iter (fun f ->
-      if not (type_exists env f.field_type) then
+      if not (type_exists_with_params env type_params f.field_type) then
         add_error env (Printf.sprintf "Unknown type for field %s in struct %s" f.field_name name)
     ) fields
-  | IEnum (name, variants) ->
+  | IEnum (name, type_params, variants) ->
     List.iter (fun v ->
       List.iter (fun f ->
-        if not (type_exists env f.field_type) then
+        if not (type_exists_with_params env type_params f.field_type) then
           add_error env (Printf.sprintf "Unknown type for field %s in variant %s of enum %s" f.field_name v.variant_name name)
       ) v.variant_fields
     ) variants
@@ -371,11 +400,11 @@ let check_item env = function
     List.iter (fun m ->
       check_method env _type_name m.im_params m.im_body
     ) methods
-  | IMethod (type_name, _method_name, params, _ret, body) ->
+  | IMethod (type_name, _method_name, _type_params, params, _ret, body) ->
     if not (Hashtbl.mem env.structs type_name) then
       add_error env (Printf.sprintf "Method defined for unknown type: %s" type_name);
     check_method env type_name params body
-  | IFunction (_name, params, _ret, body) ->
+  | IFunction (_name, _type_params, params, _ret, body) ->
     check_function env params body
   | IError (_name, _fields) ->
     ()  (* Just a type definition *)
@@ -425,7 +454,7 @@ let rec get_expr_type env locals expr =
      | Add | Sub | Mul | Div | Mod -> Some TInt
      | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> Some TBool)
   | EUnary (Not, _) -> Some TBool
-  | ECall (callee, _) ->
+  | ECall (callee, _type_args, _) ->
     (match callee with
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
@@ -454,8 +483,12 @@ let rec get_expr_type env locals expr =
      | Some (TArray t) -> Some t
      | _ -> None)
   | EOr (e, _) -> get_expr_type env locals e
-  | EStructLit (name, _) -> Some (TUser name)
-  | EEnumVariant (enum_name, _, _) -> Some (TUser enum_name)
+  | EStructLit (name, type_args, _) ->
+    if type_args = [] then Some (TUser name)
+    else Some (TApply (name, type_args))
+  | EEnumVariant (enum_name, type_args, _, _) ->
+    if type_args = [] then Some (TUser enum_name)
+    else Some (TApply (enum_name, type_args))
   | EArrayLit [] -> None
   | EArrayLit (e :: _) ->
     get_expr_type env locals e |> Option.map (fun t -> TArray t)

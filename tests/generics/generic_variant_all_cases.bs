@@ -1,0 +1,23 @@
+// Test: Match on all variant cases with bindings
+
+Result<T, E> :: variant {
+    Ok { value T }
+    Err { err E }
+}
+
+fn main {
+    Result<int, str> ok = Result<int, str>.Ok { value: 42 }
+    Result<int, str> fail = Result<int, str>.Err { err: "something went wrong" }
+
+    int x = match ok using Result<int, str> {
+        Ok { value: v } -> v,
+        Err { err: e } -> 0
+    }
+
+    int y = match fail using Result<int, str> {
+        Ok { value: w } -> w,
+        Err { err: msg } -> 0
+    }
+
+    print("generic variant all cases test passed")
+}

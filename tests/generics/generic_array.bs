@@ -1,0 +1,19 @@
+// Test: Arrays of generic types
+
+Box<T> :: struct {
+    value T
+}
+
+fn main {
+    Box<int>[] boxes = [
+        Box<int> { value: 1 },
+        Box<int> { value: 2 },
+        Box<int> { value: 3 }
+    ]
+
+    for b in boxes {
+        int v = b.value
+    }
+
+    print("generic array test passed")
+}

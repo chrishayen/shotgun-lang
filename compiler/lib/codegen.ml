@@ -43,6 +43,12 @@ let rec c_type = function
   | TUser name -> name  (* Stack allocated structs *)
   | TResult (t, _) -> c_type t  (* Simplified: just return the value type *)
   | TVoid -> "void"
+  | TParam name -> name  (* Type parameter - should be substituted before codegen *)
+  | TApply (name, args) -> mangle_generic_name name args
+
+(* Mangle a generic type name: List<int> -> List_int *)
+and mangle_generic_name name args =
+  name ^ "_" ^ String.concat "_" (List.map c_type_name args)
 
 (* Get a safe C identifier name for a type *)
 and c_type_name = function
@@ -59,6 +65,8 @@ and c_type_name = function
   | TUser name -> name
   | TResult (t, _) -> c_type_name t
   | TVoid -> "void"
+  | TParam name -> name
+  | TApply (name, args) -> mangle_generic_name name args
 
 (* Convert binary operator *)
 let c_binop = function
@@ -103,6 +111,115 @@ type ctx = {
   current_type: string option;
   mutable match_counter: int;
 }
+
+(* Track generic instantiations for monomorphization *)
+module StringSet = Set.Make(String)
+let generic_instantiations = ref StringSet.empty
+
+(* Substitute type parameters in a type *)
+let rec substitute_type subst = function
+  | TUser name ->
+    (match List.assoc_opt name subst with
+     | Some t -> t
+     | None -> TUser name)
+  | TArray t -> TArray (substitute_type subst t)
+  | TOptional t -> TOptional (substitute_type subst t)
+  | TChan t -> TChan (substitute_type subst t)
+  | TResult (t, e) -> TResult (substitute_type subst t, e)
+  | TApply (name, args) -> TApply (name, List.map (substitute_type subst) args)
+  | t -> t
+
+(* Collect generic instantiation from a type *)
+let rec collect_type_instantiation = function
+  | TApply (name, args) ->
+    let mangled = mangle_generic_name name args in
+    generic_instantiations := StringSet.add mangled !generic_instantiations;
+    List.iter collect_type_instantiation args
+  | TArray t -> collect_type_instantiation t
+  | TOptional t -> collect_type_instantiation t
+  | TChan t -> collect_type_instantiation t
+  | TResult (t, _) -> collect_type_instantiation t
+  | _ -> ()
+
+(* Collect instantiations from an expression *)
+let rec collect_expr_instantiations = function
+  | EStructLit (_, type_args, fields) ->
+    List.iter collect_type_instantiation type_args;
+    List.iter (fun (_, e) -> collect_expr_instantiations e) fields
+  | EEnumVariant (_, type_args, _, fields) ->
+    List.iter collect_type_instantiation type_args;
+    List.iter (fun (_, e) -> collect_expr_instantiations e) fields
+  | ECall (callee, type_args, args) ->
+    collect_expr_instantiations callee;
+    List.iter collect_type_instantiation type_args;
+    List.iter collect_expr_instantiations args
+  | EBinary (_, l, r) ->
+    collect_expr_instantiations l;
+    collect_expr_instantiations r
+  | EUnary (_, e) -> collect_expr_instantiations e
+  | EMember (e, _) -> collect_expr_instantiations e
+  | EIndex (e, idx) ->
+    collect_expr_instantiations e;
+    collect_expr_instantiations idx
+  | EOr (e, clause) ->
+    collect_expr_instantiations e;
+    (match clause with
+     | OrExpr e2 -> collect_expr_instantiations e2
+     | OrReturn (Some e2) -> collect_expr_instantiations e2
+     | OrReturn None -> ()
+     | OrError (_, fields) -> List.iter (fun (_, e2) -> collect_expr_instantiations e2) fields
+     | OrWait e2 -> collect_expr_instantiations e2)
+  | EArrayLit elems -> List.iter collect_expr_instantiations elems
+  | EParen e -> collect_expr_instantiations e
+  | EAssign (_, l, r) ->
+    collect_expr_instantiations l;
+    collect_expr_instantiations r
+  | EString parts ->
+    List.iter (function SLiteral _ -> () | SInterp e -> collect_expr_instantiations e) parts
+  | EMatch (exprs, using_type, arms) ->
+    List.iter collect_expr_instantiations exprs;
+    (match using_type with Some t -> collect_type_instantiation t | None -> ());
+    List.iter (fun (_, e) -> collect_expr_instantiations e) arms
+  | _ -> ()
+
+(* Collect instantiations from a statement *)
+let rec collect_stmt_instantiations = function
+  | SVarDecl (t, _, e) ->
+    collect_type_instantiation t;
+    collect_expr_instantiations e
+  | SConstDecl (_, e) -> collect_expr_instantiations e
+  | SReturn (Some e) -> collect_expr_instantiations e
+  | SReturn None -> ()
+  | SExpr e -> collect_expr_instantiations e
+  | SIf (cond, then_stmts, else_stmts) ->
+    collect_expr_instantiations cond;
+    List.iter collect_stmt_instantiations then_stmts;
+    (match else_stmts with Some stmts -> List.iter collect_stmt_instantiations stmts | None -> ())
+  | SFor (_, iter, body) ->
+    collect_expr_instantiations iter;
+    List.iter collect_stmt_instantiations body
+  | SGo e -> collect_expr_instantiations e
+
+(* Collect all instantiations from the program *)
+let collect_all_instantiations program =
+  generic_instantiations := StringSet.empty;
+  List.iter (function
+    | IFunction (_, _type_params, params, ret, body) ->
+      List.iter (function PSelf -> () | PNamed (t, _) -> collect_type_instantiation t) params;
+      (match ret with Some t -> collect_type_instantiation t | None -> ());
+      List.iter collect_stmt_instantiations body
+    | IMethod (_, _, _type_params, params, ret, body) ->
+      List.iter (function PSelf -> () | PNamed (t, _) -> collect_type_instantiation t) params;
+      (match ret with Some t -> collect_type_instantiation t | None -> ());
+      List.iter collect_stmt_instantiations body
+    | IImpl (_, _, methods) ->
+      List.iter (fun m ->
+        List.iter (function PSelf -> () | PNamed (t, _) -> collect_type_instantiation t) m.im_params;
+        (match m.im_return with Some t -> collect_type_instantiation t | None -> ());
+        List.iter collect_stmt_instantiations m.im_body
+      ) methods
+    | _ -> ()
+  ) program
 
 let create_ctx env = {
   env;
@@ -155,7 +272,7 @@ let rec gen_expr ctx indent expr =
     emit "(!";
     gen_expr ctx indent e;
     emit ")"
-  | ECall (callee, args) ->
+  | ECall (callee, _type_args, args) ->
     gen_call ctx indent callee args
   | EMember (obj, field) ->
     gen_expr ctx indent obj;
@@ -178,9 +295,10 @@ let rec gen_expr ctx indent expr =
     emit "]"
   | EOr (e, clause) ->
     gen_or ctx indent e clause
-  | EStructLit (name, fields) ->
+  | EStructLit (name, type_args, fields) ->
+    let mangled = if type_args = [] then name else mangle_generic_name name type_args in
     emit "(";
-    emit name;
+    emit mangled;
     emit "){ ";
     let first = ref true in
     List.iter (fun (fname, fexpr) ->
@@ -192,18 +310,19 @@ let rec gen_expr ctx indent expr =
       gen_expr ctx indent fexpr
     ) fields;
     emit " }"
-  | EEnumVariant (enum_name, variant_name, fields) ->
+  | EEnumVariant (enum_name, type_args, variant_name, fields) ->
+    let mangled = if type_args = [] then enum_name else mangle_generic_name enum_name type_args in
     emit "(";
-    emit enum_name;
+    emit mangled;
     emit "){ .tag = ";
-    emit enum_name;
+    emit mangled;
     emit "_";
     emit variant_name;
     if fields <> [] then begin
       emit ", .data.";
       emit variant_name;
       emit " = (";
-      emit enum_name;
+      emit mangled;
       emit "_";
       emit variant_name;
       emit "_data){ ";
@@ -307,6 +426,12 @@ and gen_match_expr ctx indent exprs using_type arms =
   emit_indent indent;
   emit "})"
 
+(* Get mangled enum name from pattern type or using type *)
+and get_enum_c_name = function
+  | TUser name -> name
+  | TApply (name, args) -> mangle_generic_name name args
+  | _ -> "UNKNOWN"
+
 (* Generate pattern matching condition *)
 and gen_pattern_condition ctx indent match_id _exprs using_type pat =
   match pat with
@@ -318,10 +443,10 @@ and gen_pattern_condition ctx indent match_id _exprs using_type pat =
     emit "_0 == ";
     gen_expr ctx indent lit;
     emit ")"
-  | PVariant (enum_opt, variant_name, _bindings) ->
-    let enum_name = match enum_opt with
-      | Some e -> e
-      | None -> (match using_type with Some t -> t | None -> "UNKNOWN")
+  | PVariant (enum_type_opt, variant_name, _bindings) ->
+    let enum_name = match enum_type_opt with
+      | Some t -> get_enum_c_name t
+      | None -> (match using_type with Some t -> get_enum_c_name t | None -> "UNKNOWN")
     in
     emit "if (_match";
     emit (string_of_int match_id);
@@ -346,8 +471,8 @@ and gen_pattern_condition ctx indent match_id _exprs using_type pat =
            emit (string_of_int i);
            emit " == ";
            gen_expr ctx indent lit
-         | PVariant (enum_opt, variant_name, _) ->
-           let enum_name = match enum_opt with Some e -> e | None -> (match using_type with Some t -> t | None -> "UNKNOWN") in
+         | PVariant (enum_type_opt, variant_name, _) ->
+           let enum_name = match enum_type_opt with Some t -> get_enum_c_name t | None -> (match using_type with Some t -> get_enum_c_name t | None -> "UNKNOWN") in
            emit "_match";
            emit (string_of_int match_id);
            emit "_";
@@ -376,8 +501,8 @@ and gen_pattern_bindings _ctx indent match_id _exprs using_type pat =
     emit " = _match";
     emit (string_of_int match_id);
     emitln "_0;"
-  | PVariant (enum_opt, variant_name, bindings) ->
-    let _enum_name = match enum_opt with Some e -> e | None -> (match using_type with Some t -> t | None -> "UNKNOWN") in
+  | PVariant (enum_type_opt, variant_name, bindings) ->
+    let _enum_name = match enum_type_opt with Some t -> get_enum_c_name t | None -> (match using_type with Some t -> get_enum_c_name t | None -> "UNKNOWN") in
     List.iter (fun (field_name, binding_name) ->
       emit_indent indent;
       emit "typeof(_match";
@@ -413,8 +538,8 @@ and gen_pattern_bindings _ctx indent match_id _exprs using_type pat =
         emit "_";
         emit (string_of_int i);
         emitln ";"
-      | PVariant (enum_opt, variant_name, bindings) ->
-        let _enum_name = match enum_opt with Some e -> e | None -> (match using_type with Some t -> t | None -> "UNKNOWN") in
+      | PVariant (enum_type_opt, variant_name, bindings) ->
+        let _enum_name = match enum_type_opt with Some t -> get_enum_c_name t | None -> (match using_type with Some t -> get_enum_c_name t | None -> "UNKNOWN") in
         List.iter (fun (field_name, binding_name) ->
           emit_indent indent;
           emit "typeof(_match";
@@ -745,7 +870,7 @@ let rec gen_stmt ctx indent stmt =
   | SGo e ->
     (* Spawn a goroutine using pthreads *)
     (match e with
-     | ECall (EIdent _, args) ->
+     | ECall (EIdent _, _type_args, args) ->
        (* Use the pre-scanned go_id (must match scan order) *)
        let go_id = next_go_id () in
 
@@ -876,6 +1001,204 @@ let gen_enum name variants =
   emit "} ";
   emit name;
   emitln ";"
+
+(* Generate monomorphized struct: Box<int> -> Box_int64 with T->int64_t *)
+let gen_monomorphized_struct base_name type_params type_args fields =
+  let mangled = mangle_generic_name base_name type_args in
+  let subst = List.combine type_params type_args in
+  emitln "";
+  emit "typedef struct ";
+  emit mangled;
+  emitln " {";
+  List.iter (fun f ->
+    emit_indent 1;
+    let substituted_type = substitute_type subst f.field_type in
+    emit (c_type substituted_type);
+    emit " ";
+    emit f.field_name;
+    emitln ";"
+  ) fields;
+  emit "} ";
+  emit mangled;
+  emitln ";"
+
+(* Generate monomorphized enum: Option<int> -> Option_int64 with T->int64_t *)
+let gen_monomorphized_enum base_name type_params type_args variants =
+  let mangled = mangle_generic_name base_name type_args in
+  let subst = List.combine type_params type_args in
+  emitln "";
+  (* Generate tag enum *)
+  emit "typedef enum { ";
+  let first = ref true in
+  List.iter (fun v ->
+    if not !first then emit ", ";
+    first := false;
+    emit mangled;
+    emit "_";
+    emit v.variant_name
+  ) variants;
+  emit " } ";
+  emit mangled;
+  emitln "_tag;";
+  emitln "";
+
+  (* Generate data struct for each variant with fields *)
+  List.iter (fun v ->
+    if v.variant_fields <> [] then begin
+      emit "typedef struct { ";
+      List.iter (fun f ->
+        let substituted_type = substitute_type subst f.field_type in
+        emit (c_type substituted_type);
+        emit " ";
+        emit f.field_name;
+        emit "; "
+      ) v.variant_fields;
+      emit "} ";
+      emit mangled;
+      emit "_";
+      emit v.variant_name;
+      emitln "_data;"
+    end
+  ) variants;
+
+  (* Generate the main enum struct with union *)
+  emit "typedef struct ";
+  emit mangled;
+  emitln " {";
+  emit_indent 1;
+  emit mangled;
+  emitln "_tag tag;";
+
+  (* Only generate union if there are variants with data *)
+  let has_data = List.exists (fun v -> v.variant_fields <> []) variants in
+  if has_data then begin
+    emit_indent 1;
+    emitln "union {";
+    List.iter (fun v ->
+      if v.variant_fields <> [] then begin
+        emit_indent 2;
+        emit mangled;
+        emit "_";
+        emit v.variant_name;
+        emit "_data ";
+        emit v.variant_name;
+        emitln ";"
+      end
+    ) variants;
+    emit_indent 1;
+    emitln "} data;"
+  end;
+
+  emit "} ";
+  emit mangled;
+  emitln ";"
+
+(* Generate all monomorphized types based on collected instantiations *)
+let gen_monomorphized_types program =
+  (* Build a map of generic definitions *)
+  let generic_structs = Hashtbl.create 16 in
+  let generic_enums = Hashtbl.create 16 in
+  List.iter (function
+    | IStruct (name, type_params, fields) when type_params <> [] ->
+      Hashtbl.add generic_structs name (type_params, fields)
+    | IEnum (name, type_params, variants) when type_params <> [] ->
+      Hashtbl.add generic_enums name (type_params, variants)
+    | _ -> ()
+  ) program;
+
+  (* Iterate over program and find TApply usages to generate monomorphized types *)
+  let generated = Hashtbl.create 16 in
+  let rec gen_for_type = function
+    | TApply (name, type_args) ->
+      let mangled = mangle_generic_name name type_args in
+      if not (Hashtbl.mem generated mangled) then begin
+        Hashtbl.add generated mangled ();
+        (* Recursively generate for nested type args *)
+        List.iter gen_for_type type_args;
+        (* Generate the monomorphized type *)
+        (match Hashtbl.find_opt generic_structs name with
+         | Some (type_params, fields) ->
+           (* Forward declaration *)
+           emit "typedef struct "; emit mangled; emit " "; emit mangled; emitln ";";
+           gen_monomorphized_struct name type_params type_args fields
+         | None ->
+           match Hashtbl.find_opt generic_enums name with
+           | Some (type_params, variants) ->
+             emit "typedef struct "; emit mangled; emit " "; emit mangled; emitln ";";
+             gen_monomorphized_enum name type_params type_args variants
+           | None -> ())
+      end
+    | TArray t -> gen_for_type t
+    | TOptional t -> gen_for_type t
+    | TChan t -> gen_for_type t
+    | TResult (t, _) -> gen_for_type t
+    | _ -> ()
+  in
+  let scan_type t = gen_for_type t in
+  let rec scan_expr = function
+    | EStructLit (_, type_args, fields) ->
+      List.iter gen_for_type type_args;
+      List.iter (fun (_, e) -> scan_expr e) fields
+    | EEnumVariant (_, type_args, _, fields) ->
+      List.iter gen_for_type type_args;
+      List.iter (fun (_, e) -> scan_expr e) fields
+    | ECall (callee, type_args, args) ->
+      scan_expr callee;
+      List.iter gen_for_type type_args;
+      List.iter scan_expr args
+    | EBinary (_, l, r) -> scan_expr l; scan_expr r
+    | EUnary (_, e) -> scan_expr e
+    | EMember (e, _) -> scan_expr e
+    | EIndex (e, idx) -> scan_expr e; scan_expr idx
+    | EOr (e, clause) ->
+      scan_expr e;
+      (match clause with
+       | OrExpr e2 -> scan_expr e2
+       | OrReturn (Some e2) -> scan_expr e2
+       | OrReturn None -> ()
+       | OrError (_, fields) -> List.iter (fun (_, e2) -> scan_expr e2) fields
+       | OrWait e2 -> scan_expr e2)
+    | EArrayLit elems -> List.iter scan_expr elems
+    | EParen e -> scan_expr e
+    | EAssign (_, l, r) -> scan_expr l; scan_expr r
+    | EString parts ->
+      List.iter (function SLiteral _ -> () | SInterp e -> scan_expr e) parts
+    | EMatch (exprs, using_type, arms) ->
+      List.iter scan_expr exprs;
+      (match using_type with Some t -> scan_type t | None -> ());
+      List.iter (fun (_, e) -> scan_expr e) arms
+    | _ -> ()
+  in
+  let rec scan_stmt = function
+    | SVarDecl (t, _, e) -> scan_type t; scan_expr e
+    | SConstDecl (_, e) -> scan_expr e
+    | SReturn (Some e) -> scan_expr e
+    | SReturn None -> ()
+    | SExpr e -> scan_expr e
+    | SIf (cond, then_stmts, else_stmts) ->
+      scan_expr cond;
+      List.iter scan_stmt then_stmts;
+      (match else_stmts with Some stmts -> List.iter scan_stmt stmts | None -> ())
+    | SFor (_, iter, body) -> scan_expr iter; List.iter scan_stmt body
+    | SGo e -> scan_expr e
+  in
+  List.iter (function
+    | IFunction (_, _type_params, params, ret, body) ->
+      List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) params;
+      (match ret with Some t -> scan_type t | None -> ());
+      List.iter scan_stmt body
+    | IMethod (_, _, _type_params, params, ret, body) ->
+      List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) params;
+      (match ret with Some t -> scan_type t | None -> ());
+      List.iter scan_stmt body
+    | IImpl (_, _, methods) ->
+      List.iter (fun m ->
+        List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) m.im_params;
+        (match m.im_return with Some t -> scan_type t | None -> ());
+        List.iter scan_stmt m.im_body
+      ) methods
+    | _ -> ()
+  ) program
 
 (* Generate trait - just a comment since C doesn't have traits *)
 let gen_trait name methods =
@@ -1122,7 +1445,7 @@ let rec scan_stmt_for_go ctx stmt =
      | None -> ())
   | SGo e ->
     (match e with
-     | ECall (EIdent func_name, args) ->
+     | ECall (EIdent func_name, _type_args, args) ->
        let go_id = next_go_id () in
        let arg_types = List.filter_map (fun arg -> get_type ctx arg) args in
        go_wrappers := { go_id; go_func = func_name; go_arg_types = arg_types } :: !go_wrappers
@@ -1148,9 +1471,9 @@ let scan_function_for_go ctx params body =
 
 let scan_program_for_go ctx program =
   List.iter (function
-    | IFunction (_, params, _, body) ->
+    | IFunction (_, _type_params, params, _, body) ->
       scan_function_for_go ctx params body
-    | IMethod (_, _, params, _, body) ->
+    | IMethod (_, _, _type_params, params, _, body) ->
       scan_function_for_go ctx params body
     | IImpl (_, _, methods) ->
       List.iter (fun m -> scan_function_for_go ctx m.im_params m.im_body) methods
@@ -1210,15 +1533,15 @@ let generate env program =
   let ctx = create_ctx env in
   gen_prelude ();
 
-  (* Forward declarations for structs and enums *)
+  (* Forward declarations for structs and enums - only non-generic ones *)
   List.iter (function
-    | IStruct (name, _) ->
+    | IStruct (name, type_params, _) when type_params = [] ->
       emit "typedef struct ";
       emit name;
       emit " ";
       emit name;
       emitln ";"
-    | IEnum (name, _) ->
+    | IEnum (name, type_params, _) when type_params = [] ->
       emit "typedef struct ";
       emit name;
       emit " ";
@@ -1237,7 +1560,7 @@ let generate env program =
   (* Collect struct types used in arrays for DECLARE_ARRAY *)
   let user_array_types = ref [] in
   let collect_array_types = function
-    | IStruct (name, _) -> user_array_types := name :: !user_array_types
+    | IStruct (name, type_params, _) when type_params = [] -> user_array_types := name :: !user_array_types
     | IUses _ -> ()  (* Skip imports *)
     | _ -> ()
   in
@@ -1252,21 +1575,24 @@ let generate env program =
     emitln ";"
   ) !user_array_types;
 
-  (* Generate struct and enum definitions first *)
+  (* Generate struct and enum definitions first - only non-generic ones *)
   List.iter (function
-    | IStruct (name, fields) -> gen_struct name fields
-    | IEnum (name, variants) -> gen_enum name variants
+    | IStruct (name, type_params, fields) when type_params = [] -> gen_struct name fields
+    | IEnum (name, type_params, variants) when type_params = [] -> gen_enum name variants
     | IError (name, fields) -> gen_error name fields
     | _ -> ()
   ) program;
 
-  (* Forward declarations for all functions and methods *)
+  (* Generate monomorphized types for generic instantiations *)
+  gen_monomorphized_types program;
+
+  (* Forward declarations for all functions and methods - only non-generic ones *)
   emitln "";
   emitln "/* Forward declarations */";
   List.iter (function
-    | IFunction (name, params, ret, _) ->
+    | IFunction (name, type_params, params, ret, _) when type_params = [] ->
       gen_function_decl name params ret
-    | IMethod (type_name, method_name, params, ret, _) ->
+    | IMethod (type_name, method_name, type_params, params, ret, _) when type_params = [] ->
       gen_method_decl type_name method_name params ret
     | IImpl (type_name, _, methods) ->
       List.iter (fun m ->
@@ -1283,16 +1609,17 @@ let generate env program =
   (* Reset go counter for actual codegen (must match scan order) *)
   go_counter := 0;
 
-  (* Generate remaining items *)
+  (* Generate remaining items - only non-generic ones *)
   List.iter (function
     | IStruct _ | IEnum _ | IError _ -> ()  (* Already generated *)
     | ITrait (name, methods) -> gen_trait name methods
     | IImpl (type_name, trait_name, methods) -> gen_impl ctx type_name trait_name methods
-    | IMethod (type_name, method_name, params, ret, body) ->
+    | IMethod (type_name, method_name, type_params, params, ret, body) when type_params = [] ->
       gen_method ctx type_name method_name params ret body
-    | IFunction (name, params, ret, body) ->
+    | IFunction (name, type_params, params, ret, body) when type_params = [] ->
       gen_function ctx name params ret body
     | IUses _ -> ()  (* Imports handled in multi-file compilation *)
+    | _ -> ()  (* Skip generic definitions - they get monomorphized *)
   ) program;
 
   Buffer.contents buf

@@ -1,0 +1,17 @@
+// Test: Nested generic types (Option<Box<int>>)
+
+Box<T> :: struct {
+    value T
+}
+
+Option<T> :: variant {
+    Some { value T }
+    None
+}
+
+fn main {
+    Option<Box<int>> nested = Option<Box<int>>.Some {
+        value: Box<int> { value: 42 }
+    }
+    print("nested generics test passed")
+}

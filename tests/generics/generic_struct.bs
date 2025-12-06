@@ -1,0 +1,11 @@
+// Test: Generic struct definition and usage
+
+Box<T> :: struct {
+    value T
+}
+
+fn main {
+    Box<int> int_box = Box<int> { value: 42 }
+    Box<str> str_box = Box<str> { value: "hello" }
+    print("generic struct test passed")
+}

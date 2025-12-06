@@ -1,0 +1,18 @@
+// Test: Multiple type parameters
+
+Pair<A, B> :: struct {
+    first A
+    second B
+}
+
+Result<T, E> :: variant {
+    Ok { value T }
+    Err { err E }
+}
+
+fn main {
+    Pair<int, str> p = Pair<int, str> { first: 42, second: "hello" }
+    Result<int, str> ok = Result<int, str>.Ok { value: 100 }
+    Result<int, str> e = Result<int, str>.Err { err: "oops" }
+    print("multi param test passed")
+}

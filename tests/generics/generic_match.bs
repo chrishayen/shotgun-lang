@@ -1,0 +1,17 @@
+// Test: Pattern matching on generic variants
+
+Option<T> :: variant {
+    Some { value T }
+    None
+}
+
+fn main {
+    Option<int> maybe = Option<int>.Some { value: 42 }
+
+    int result = match maybe using Option<int> {
+        Some { value: v } -> v,
+        None -> 0
+    }
+
+    print("generic match test passed")
+}

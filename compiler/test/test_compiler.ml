@@ -93,7 +93,7 @@ let test_parser () =
   test "parser: struct definition" (fun () ->
     let ast = parse "Person :: struct { name str\n age int }" in
     match ast with
-    | [Ast.IStruct ("Person", [f1; f2])] ->
+    | [Ast.IStruct ("Person", [], [f1; f2])] ->
       assert (f1.field_name = "name");
       assert (f2.field_name = "age")
     | _ -> failwith "unexpected AST"
@@ -102,14 +102,14 @@ let test_parser () =
   test "parser: function definition" (fun () ->
     let ast = parse "fn main { return }" in
     match ast with
-    | [Ast.IFunction ("main", [], None, [Ast.SReturn None])] -> ()
+    | [Ast.IFunction ("main", [], [], None, [Ast.SReturn None])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: function with params" (fun () ->
     let ast = parse "fn add(int a, int b) int { return a }" in
     match ast with
-    | [Ast.IFunction ("add", params, Some Ast.TInt, _)] ->
+    | [Ast.IFunction ("add", [], params, Some Ast.TInt, _)] ->
       assert (List.length params = 2)
     | _ -> failwith "unexpected AST"
   );
@@ -117,7 +117,7 @@ let test_parser () =
   test "parser: method definition" (fun () ->
     let ast = parse "Person :: greet(self) str { return \"hi\" }" in
     match ast with
-    | [Ast.IMethod ("Person", "greet", [Ast.PSelf], Some Ast.TStr, _)] -> ()
+    | [Ast.IMethod ("Person", "greet", [], [Ast.PSelf], Some Ast.TStr, _)] -> ()
     | _ -> failwith "unexpected AST"
   );
 
@@ -133,28 +133,28 @@ let test_parser () =
   test "parser: binary expressions" (fun () ->
     let ast = parse "fn test { int x = 1 + 2 * 3 }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SVarDecl (_, "x", _)])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (_, "x", _)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: if statement" (fun () ->
     let ast = parse "fn test { if true { return } }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SIf (_, _, None)])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SIf (_, _, None)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: for statement" (fun () ->
     let ast = parse "fn test { for x in items { print(x) } }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SFor ("x", _, _)])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SFor ("x", _, _)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: struct literal" (fun () ->
     let ast = parse "fn test { Person p = Person { name: \"Alice\", age: 30 } }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SVarDecl (_, "p", Ast.EStructLit ("Person", fields))])] ->
+    | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (_, "p", Ast.EStructLit ("Person", [], fields))])] ->
       assert (List.length fields = 2)
     | _ -> failwith "unexpected AST"
   );
@@ -162,7 +162,7 @@ let test_parser () =
   test "parser: array literal" (fun () ->
     let ast = parse "fn test { int[] nums = [1, 2, 3] }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SVarDecl (Ast.TArray Ast.TInt, "nums", Ast.EArrayLit elems)])] ->
+    | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (Ast.TArray Ast.TInt, "nums", Ast.EArrayLit elems)])] ->
       assert (List.length elems = 3)
     | _ -> failwith "unexpected AST"
   );
@@ -170,28 +170,28 @@ let test_parser () =
   test "parser: method call" (fun () ->
     let ast = parse "fn test { p.greet() }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SExpr (Ast.ECall (Ast.EMember (Ast.EIdent "p", "greet"), []))])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SExpr (Ast.ECall (Ast.EMember (Ast.EIdent "p", "greet"), [], []))])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: or expression" (fun () ->
     let ast = parse "fn test { int x = y or 0 }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SVarDecl (_, _, Ast.EOr (_, Ast.OrExpr _))])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (_, _, Ast.EOr (_, Ast.OrExpr _))])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: go statement" (fun () ->
     let ast = parse "fn test { go fetch() }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SGo _])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SGo _])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: channel creation" (fun () ->
     let ast = parse "fn test { chan int c = chan() }" in
     match ast with
-    | [Ast.IFunction (_, _, _, [Ast.SVarDecl (Ast.TChan Ast.TInt, "c", Ast.EChan)])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (Ast.TChan Ast.TInt, "c", Ast.EChan)])] -> ()
     | _ -> failwith "unexpected AST"
   )
 

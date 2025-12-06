@@ -1,0 +1,25 @@
+// Test: Generic type as field in non-generic struct
+
+Option<T> :: variant {
+    Some { value T }
+    None
+}
+
+Person :: struct {
+    name str
+    age Option<int>
+}
+
+fn main {
+    Person p1 = Person {
+        name: "Alice",
+        age: Option<int>.Some { value: 30 }
+    }
+
+    Person p2 = Person {
+        name: "Unknown",
+        age: Option<int>.None
+    }
+
+    print("generic in struct test passed")
+}

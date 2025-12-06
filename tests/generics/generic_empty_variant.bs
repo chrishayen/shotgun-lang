@@ -1,0 +1,18 @@
+// Test: Generic variant with empty case (no fields)
+
+Option<T> :: variant {
+    Some { value T }
+    None
+}
+
+fn main {
+    Option<int> empty = Option<int>.None
+    Option<str> also_empty = Option<str>.None
+
+    int result = match empty using Option<int> {
+        Some { value: v } -> v,
+        None -> 0
+    }
+
+    print("generic empty variant test passed")
+}

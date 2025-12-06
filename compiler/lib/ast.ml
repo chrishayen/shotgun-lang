@@ -23,6 +23,8 @@ type typ =
   | TUser of string
   | TResult of typ * string  (* value type, error type name *)
   | TVoid
+  | TParam of string              (* T - type parameter reference *)
+  | TApply of string * typ list   (* List<int>, Option<str> - generic instantiation *)
 [@@deriving show, eq]
 
 (* Binary operators *)
@@ -64,7 +66,7 @@ and or_clause =
 and pattern =
   | PIdent of string  (* simple identifier binding *)
   | PLiteral of expr  (* literal value: 200, "hello", true *)
-  | PVariant of string option * string * (string * string) list  (* enum name (None if using), variant name, [(field, binding)] *)
+  | PVariant of typ option * string * (string * string) list  (* enum type (None if using), variant name, [(field, binding)] *)
   | PWildcard  (* _ catch-all *)
   | PTuple of pattern list  (* (p1, p2, ...) *)
 [@@deriving show, eq]
@@ -79,17 +81,17 @@ and expr =
   | EIdent of string
   | EBinary of binop * expr * expr
   | EUnary of unop * expr
-  | ECall of expr * expr list
+  | ECall of expr * typ list * expr list  (* callee, type args, args *)
   | EMember of expr * string
   | EIndex of expr * expr
   | EOr of expr * or_clause
-  | EStructLit of string * (string * expr) list
-  | EEnumVariant of string * string * (string * expr) list  (* enum name, variant name, field inits *)
+  | EStructLit of string * typ list * (string * expr) list  (* name, type args, field inits *)
+  | EEnumVariant of string * typ list * string * (string * expr) list  (* enum name, type args, variant name, field inits *)
   | EArrayLit of expr list
   | EChan  (* chan() constructor *)
   | EParen of expr
   | EAssign of assignop * expr * expr
-  | EMatch of expr list * string option * (pattern * expr) list  (* match exprs, optional using type, [(pattern, result)] *)
+  | EMatch of expr list * typ option * (pattern * expr) list  (* match exprs, optional using type, [(pattern, result)] *)
 [@@deriving show, eq]
 
 (* Statements *)
@@ -138,12 +140,12 @@ type import_path = string list
 
 (* Top-level items *)
 type item =
-  | IStruct of string * field list
-  | IEnum of string * enum_variant list
+  | IStruct of string * string list * field list  (* name, type_params, fields *)
+  | IEnum of string * string list * enum_variant list  (* name, type_params, variants *)
   | ITrait of string * trait_method list
   | IImpl of string * string * impl_method list  (* type, trait, methods *)
-  | IMethod of string * string * param list * typ option * stmt list  (* type, method name, params, return type, body *)
-  | IFunction of string * param list * typ option * stmt list  (* name, params, return type, body *)
+  | IMethod of string * string * string list * param list * typ option * stmt list  (* type, method name, type_params, params, return type, body *)
+  | IFunction of string * string list * param list * typ option * stmt list  (* name, type_params, params, return type, body *)
   | IError of string * field list
   | IUses of import_path list  (* uses { std.io, myapp.utils } *)
 [@@deriving show, eq]

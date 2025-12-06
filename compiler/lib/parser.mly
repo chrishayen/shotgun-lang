@@ -82,7 +82,7 @@ let parse_interp_string s =
 %token COMMA COLON DOT
 %token EQ PLUSEQ MINUSEQ STAREQ SLASHEQ
 %token PLUS MINUS STAR SLASH PERCENT
-%token EQEQ NEQ LT GT LTE GTE
+%token EQEQ NEQ LT GT LTE GTE  (* LT/GT also used for generic type params *)
 
 %token NEWLINE EOF
 
@@ -147,20 +147,29 @@ newlines:
   | NEWLINE newlines { () }
   ;
 
-(* Person :: struct { ... } *)
+(* Type parameters: <T>, <T, U>, etc. - must be uppercase like type names *)
+type_params:
+  | LT params = separated_nonempty_list(COMMA, TYPE_IDENT) GT { params }
+  ;
+
+(* Person :: struct { ... } or List<T> :: struct { ... } *)
 struct_definition:
   | name = TYPE_IDENT COLONCOLON STRUCT LBRACE fields = list(field_def) RBRACE
-    { IStruct (name, fields) }
+    { IStruct (name, [], fields) }
+  | name = TYPE_IDENT tparams = type_params COLONCOLON STRUCT LBRACE fields = list(field_def) RBRACE
+    { IStruct (name, tparams, fields) }
   ;
 
 field_def:
   | newlines name = IDENT typ = typ newlines { { field_name = name; field_type = typ } }
   ;
 
-(* Option :: variant { Some { value int }, None } *)
+(* Option :: variant { ... } or Option<T> :: variant { ... } *)
 variant_definition:
   | name = TYPE_IDENT COLONCOLON VARIANT LBRACE variants = list(variant_case_def) RBRACE
-    { IEnum (name, variants) }
+    { IEnum (name, [], variants) }
+  | name = TYPE_IDENT tparams = type_params COLONCOLON VARIANT LBRACE variants = list(variant_case_def) RBRACE
+    { IEnum (name, tparams, variants) }
   ;
 
 variant_case_def:
@@ -200,19 +209,24 @@ impl_method_def:
     { { im_name = name; im_params = params; im_return = ret; im_body = body } }
   ;
 
-(* Person :: greet(self) str { ... } *)
+(* Person :: greet(self) str { ... } or List<T> :: len<U>(self) int { ... } *)
 method_definition:
   | type_name = TYPE_IDENT COLONCOLON method_name = IDENT
     LPAREN params = param_list RPAREN ret = option(return_type) body = block
-    { IMethod (type_name, method_name, params, ret, body) }
+    { IMethod (type_name, method_name, [], params, ret, body) }
+  | type_name = TYPE_IDENT COLONCOLON method_name = IDENT tparams = type_params
+    LPAREN params = param_list RPAREN ret = option(return_type) body = block
+    { IMethod (type_name, method_name, tparams, params, ret, body) }
   ;
 
-(* fn main { ... } or fn name(params) ret { ... } *)
+(* fn main { ... } or fn name<T>(params) ret { ... } *)
 function_definition:
   | FN name = IDENT body = block
-    { IFunction (name, [], None, body) }
+    { IFunction (name, [], [], None, body) }
   | FN name = IDENT LPAREN params = param_list RPAREN ret = option(return_type) body = block
-    { IFunction (name, params, ret, body) }
+    { IFunction (name, [], params, ret, body) }
+  | FN name = IDENT tparams = type_params LPAREN params = param_list RPAREN ret = option(return_type) body = block
+    { IFunction (name, tparams, params, ret, body) }
   ;
 
 (* FileNotFound :: error { ... } *)
@@ -248,6 +262,9 @@ typ:
   | CHAN t = typ { TChan t }
   | t = primitive_or_user LBRACKET RBRACKET { TArray t }
   | name = TYPE_IDENT { TUser name }
+  | name = TYPE_IDENT LT args = separated_nonempty_list(COMMA, typ) GT { TApply (name, args) }
+  | name = TYPE_IDENT LT args = separated_nonempty_list(COMMA, typ) GT LBRACKET RBRACKET { TArray (TApply (name, args)) }
+  | name = TYPE_IDENT LT args = separated_nonempty_list(COMMA, typ) GT QUESTION { TOptional (TApply (name, args)) }
   | t = primitive_or_user QUESTION { TOptional t }
   ;
 
@@ -297,11 +314,15 @@ pattern:
   | TRUE { PLiteral (EBool true) }
   | FALSE { PLiteral (EBool false) }
   | s = INTERP_STRING { PLiteral (EString (parse_interp_string s)) }
-  (* Qualified variant: Expr.Int or Expr.Int { value: v } *)
+  (* Qualified variant: Expr.Int or Option<int>.Some { value: v } *)
   | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT
-    { PVariant (Some enum_name, variant_name, []) }
+    { PVariant (Some (TUser enum_name), variant_name, []) }
   | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
-    { PVariant (Some enum_name, variant_name, bindings) }
+    { PVariant (Some (TUser enum_name), variant_name, bindings) }
+  | enum_name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT DOT variant_name = TYPE_IDENT
+    { PVariant (Some (TApply (enum_name, targs)), variant_name, []) }
+  | enum_name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT DOT variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
+    { PVariant (Some (TApply (enum_name, targs)), variant_name, bindings) }
   (* Unqualified variant (with using): Int or Int { value: v } *)
   | variant_name = TYPE_IDENT
     { PVariant (None, variant_name, []) }
@@ -381,13 +402,21 @@ unary_expr:
 postfix_expr:
   | e = primary_expr { e }
   | e = postfix_expr DOT member = IDENT { EMember (e, member) }
-  | e = postfix_expr LPAREN args = arg_list RPAREN { ECall (e, args) }
+  | e = postfix_expr LPAREN args = arg_list RPAREN { ECall (e, [], args) }
+  (* Generic function calls require explicit syntax: first::<int>(arr) *)
+  | e = postfix_expr COLONCOLON LT targs = separated_nonempty_list(COMMA, typ) GT LPAREN args = arg_list RPAREN { ECall (e, targs, args) }
   | e = postfix_expr LBRACKET idx = expr RBRACKET { EIndex (e, idx) }
   | e = postfix_expr EQ rhs = expr { EAssign (Assign, e, rhs) }
   | e = postfix_expr PLUSEQ rhs = expr { EAssign (AddAssign, e, rhs) }
   | e = postfix_expr MINUSEQ rhs = expr { EAssign (SubAssign, e, rhs) }
   | e = postfix_expr STAREQ rhs = expr { EAssign (MulAssign, e, rhs) }
   | e = postfix_expr SLASHEQ rhs = expr { EAssign (DivAssign, e, rhs) }
+  ;
+
+(* Type arguments in expressions: <int>, <str, int>, etc. *)
+type_args:
+  | (* empty *) { [] }
+  | LT args = separated_nonempty_list(COMMA, typ) GT { args }
   ;
 
 primary_expr:
@@ -400,17 +429,22 @@ primary_expr:
   | SELF { EIdent "self" }
   | name = IDENT { EIdent name }
   | CHAN LPAREN RPAREN { EChan }
-  | name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EStructLit (name, fields) }
-  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT { EEnumVariant (enum_name, variant_name, []) }
-  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EEnumVariant (enum_name, variant_name, fields) }
+  (* Struct literal: Person { ... } or List<int> { ... } *)
+  | name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EStructLit (name, [], fields) }
+  | name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT LBRACE fields = field_init_list RBRACE { EStructLit (name, targs, fields) }
+  (* Enum variant: Option.None or Option<int>.Some { value: 42 } *)
+  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT { EEnumVariant (enum_name, [], variant_name, []) }
+  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EEnumVariant (enum_name, [], variant_name, fields) }
+  | enum_name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT DOT variant_name = TYPE_IDENT { EEnumVariant (enum_name, targs, variant_name, []) }
+  | enum_name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT DOT variant_name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EEnumVariant (enum_name, targs, variant_name, fields) }
   | LBRACKET elems = array_elems RBRACKET { EArrayLit elems }
   | LPAREN e = expr RPAREN { EParen e }
   (* Match expression - single value *)
   | MATCH e = expr LBRACE arms = match_arm_list RBRACE { EMatch ([e], None, arms) }
-  | MATCH e = expr USING t = TYPE_IDENT LBRACE arms = match_arm_list RBRACE { EMatch ([e], Some t, arms) }
+  | MATCH e = expr USING t = typ LBRACE arms = match_arm_list RBRACE { EMatch ([e], Some t, arms) }
   (* Match expression - tuple *)
   | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], None, arms) }
-  | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN USING t = TYPE_IDENT LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], Some t, arms) }
+  | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN USING t = typ LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], Some t, arms) }
   ;
 
 (* Match arm list - comma separated *)

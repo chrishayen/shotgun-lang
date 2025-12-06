@@ -1,0 +1,13 @@
+// Test: Generic variant (Option<T>)
+
+Option<T> :: variant {
+    Some { value T }
+    None
+}
+
+fn main {
+    Option<int> x = Option<int>.None
+    Option<int> y = Option<int>.Some { value: 42 }
+    Option<str> z = Option<str>.Some { value: "hello" }
+    print("generic variant test passed")
+}

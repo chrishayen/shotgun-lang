@@ -1,0 +1,19 @@
+// Test: Same generic type instantiated with different type args
+
+Box<T> :: struct {
+    value T
+}
+
+fn main {
+    Box<int> int_box = Box<int> { value: 42 }
+    Box<str> str_box = Box<str> { value: "hello" }
+    Box<bool> bool_box = Box<bool> { value: true }
+    Box<f64> float_box = Box<f64> { value: 3.14 }
+
+    int i = int_box.value
+    str s = str_box.value
+    bool b = bool_box.value
+    f64 f = float_box.value
+
+    print("multiple instantiations test passed")
+}

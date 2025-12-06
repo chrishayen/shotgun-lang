@@ -1,0 +1,26 @@
+// Test: Generic type instantiated with user-defined type
+
+Point :: struct {
+    x int
+    y int
+}
+
+Box<T> :: struct {
+    value T
+}
+
+Option<T> :: variant {
+    Some { value T }
+    None
+}
+
+fn main {
+    Point p = Point { x: 10, y: 20 }
+
+    Box<Point> boxed_point = Box<Point> { value: p }
+    Point extracted = boxed_point.value
+
+    Option<Point> maybe_point = Option<Point>.Some { value: p }
+
+    print("generic with user type test passed")
+}
