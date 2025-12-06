@@ -101,6 +101,7 @@ type ctx = {
   locals: (string, typ) Hashtbl.t;
   in_method: bool;
   current_type: string option;
+  mutable match_counter: int;
 }
 
 let create_ctx env = {
@@ -108,6 +109,7 @@ let create_ctx env = {
   locals = Hashtbl.create 32;
   in_method = false;
   current_type = None;
+  match_counter = 0;
 }
 
 let with_method_ctx ctx type_name = {
@@ -231,6 +233,212 @@ let rec gen_expr ctx indent expr =
     emit (c_assignop op);
     emit " ";
     gen_expr ctx indent rhs
+  | EMatch (exprs, using_type, arms) ->
+    gen_match_expr ctx indent exprs using_type arms
+
+(* Generate match expression *)
+and gen_match_expr ctx indent exprs using_type arms =
+  (* For now, generate a simple if-else chain for patterns *)
+  (* TODO: Optimize to switch for single enum match *)
+  let match_id = ctx.match_counter in
+  ctx.match_counter <- ctx.match_counter + 1;
+
+  (* Generate GCC statement expression: ({ ... result; }) *)
+  emit "({";
+  emitln "";
+
+  (* Store matched values in temp variables *)
+  List.iteri (fun i e ->
+    emit_indent (indent + 1);
+    emit "typeof(";
+    gen_expr ctx indent e;
+    emit ") _match";
+    emit (string_of_int match_id);
+    emit "_";
+    emit (string_of_int i);
+    emit " = ";
+    gen_expr ctx indent e;
+    emitln ";"
+  ) exprs;
+
+  (* Declare result variable - we'll determine type from first arm *)
+  emit_indent (indent + 1);
+  (match arms with
+   | [] -> emit "int _match_result = 0"
+   | (_, first_result) :: _ ->
+     let result_type = get_type ctx first_result in
+     let c_t = match result_type with
+       | Some t -> c_type t
+       | None -> "int64_t"
+     in
+     emit c_t;
+     emit " _match_result";
+     emit (string_of_int match_id));
+  emitln ";";
+
+  (* Generate pattern matching logic *)
+  let rec gen_arms first_arm = function
+    | [] -> ()
+    | (pat, result) :: rest ->
+      emit_indent (indent + 1);
+      if not first_arm then emit "else ";
+      gen_pattern_condition ctx indent match_id exprs using_type pat;
+      emit " {";
+      emitln "";
+      (* Bind pattern variables *)
+      gen_pattern_bindings ctx (indent + 2) match_id exprs using_type pat;
+      emit_indent (indent + 2);
+      emit "_match_result";
+      emit (string_of_int match_id);
+      emit " = ";
+      gen_expr ctx (indent + 2) result;
+      emitln ";";
+      emit_indent (indent + 1);
+      emitln "}";
+      gen_arms false rest
+  in
+  gen_arms true arms;
+
+  (* Return the result *)
+  emit_indent (indent + 1);
+  emit "_match_result";
+  emit (string_of_int match_id);
+  emitln ";";
+  emit_indent indent;
+  emit "})"
+
+(* Generate pattern matching condition *)
+and gen_pattern_condition ctx indent match_id _exprs using_type pat =
+  match pat with
+  | PWildcard -> emit "if (1)"  (* Always matches *)
+  | PIdent _ -> emit "if (1)"  (* Identifier always matches, just binds *)
+  | PLiteral lit ->
+    emit "if (_match";
+    emit (string_of_int match_id);
+    emit "_0 == ";
+    gen_expr ctx indent lit;
+    emit ")"
+  | PVariant (enum_opt, variant_name, _bindings) ->
+    let enum_name = match enum_opt with
+      | Some e -> e
+      | None -> (match using_type with Some t -> t | None -> "UNKNOWN")
+    in
+    emit "if (_match";
+    emit (string_of_int match_id);
+    emit "_0.tag == ";
+    emit enum_name;
+    emit "_";
+    emit variant_name;
+    emit ")"
+  | PTuple patterns ->
+    emit "if (";
+    let rec gen_tuple_conds i = function
+      | [] -> ()
+      | p :: rest ->
+        if i > 0 then emit " && ";
+        (match p with
+         | PWildcard -> emit "1"
+         | PIdent _ -> emit "1"
+         | PLiteral lit ->
+           emit "_match";
+           emit (string_of_int match_id);
+           emit "_";
+           emit (string_of_int i);
+           emit " == ";
+           gen_expr ctx indent lit
+         | PVariant (enum_opt, variant_name, _) ->
+           let enum_name = match enum_opt with Some e -> e | None -> (match using_type with Some t -> t | None -> "UNKNOWN") in
+           emit "_match";
+           emit (string_of_int match_id);
+           emit "_";
+           emit (string_of_int i);
+           emit ".tag == ";
+           emit enum_name;
+           emit "_";
+           emit variant_name
+         | PTuple _ -> emit "1"  (* Nested tuples not yet supported *)
+        );
+        gen_tuple_conds (i + 1) rest
+    in
+    gen_tuple_conds 0 patterns;
+    emit ")"
+
+(* Generate pattern variable bindings *)
+and gen_pattern_bindings _ctx indent match_id _exprs using_type pat =
+  match pat with
+  | PWildcard | PLiteral _ -> ()
+  | PIdent name ->
+    emit_indent indent;
+    emit "typeof(_match";
+    emit (string_of_int match_id);
+    emit "_0) ";
+    emit name;
+    emit " = _match";
+    emit (string_of_int match_id);
+    emitln "_0;"
+  | PVariant (enum_opt, variant_name, bindings) ->
+    let _enum_name = match enum_opt with Some e -> e | None -> (match using_type with Some t -> t | None -> "UNKNOWN") in
+    List.iter (fun (field_name, binding_name) ->
+      emit_indent indent;
+      emit "typeof(_match";
+      emit (string_of_int match_id);
+      emit "_0.data.";
+      emit variant_name;
+      emit ".";
+      emit field_name;
+      emit ") ";
+      emit binding_name;
+      emit " = _match";
+      emit (string_of_int match_id);
+      emit "_0.data.";
+      emit variant_name;
+      emit ".";
+      emit field_name;
+      emitln ";"
+    ) bindings
+  | PTuple patterns ->
+    List.iteri (fun i p ->
+      match p with
+      | PWildcard | PLiteral _ -> ()
+      | PIdent name ->
+        emit_indent indent;
+        emit "typeof(_match";
+        emit (string_of_int match_id);
+        emit "_";
+        emit (string_of_int i);
+        emit ") ";
+        emit name;
+        emit " = _match";
+        emit (string_of_int match_id);
+        emit "_";
+        emit (string_of_int i);
+        emitln ";"
+      | PVariant (enum_opt, variant_name, bindings) ->
+        let _enum_name = match enum_opt with Some e -> e | None -> (match using_type with Some t -> t | None -> "UNKNOWN") in
+        List.iter (fun (field_name, binding_name) ->
+          emit_indent indent;
+          emit "typeof(_match";
+          emit (string_of_int match_id);
+          emit "_";
+          emit (string_of_int i);
+          emit ".data.";
+          emit variant_name;
+          emit ".";
+          emit field_name;
+          emit ") ";
+          emit binding_name;
+          emit " = _match";
+          emit (string_of_int match_id);
+          emit "_";
+          emit (string_of_int i);
+          emit ".data.";
+          emit variant_name;
+          emit ".";
+          emit field_name;
+          emitln ";"
+        ) bindings
+      | PTuple _ -> ()  (* Nested tuples not supported yet *)
+    ) patterns
 
 (* Generate array literal with proper type *)
 and gen_array_literal ctx indent elems =
@@ -532,31 +740,6 @@ let rec gen_stmt ctx indent stmt =
     gen_expr ctx indent iter;
     emitln "->data[_i];";
     List.iter (gen_stmt ctx (indent + 1)) body;
-    emit_indent indent;
-    emitln "}"
-  | SMatch (e, arms) ->
-    emit "/* match */ {";
-    emitln "";
-    emit_indent (indent + 1);
-    emit "typeof(";
-    gen_expr ctx indent e;
-    emit ") _match_val = ";
-    gen_expr ctx indent e;
-    emitln ";";
-    List.iter (fun (pat, stmts) ->
-      emit_indent (indent + 1);
-      (match pat with
-       | PIdent name ->
-         emit "/* pattern: ";
-         emit name;
-         emitln " */"
-       | PConstructor (name, binding) ->
-         emit "/* pattern: ";
-         emit name;
-         (match binding with Some b -> emit " "; emit b | None -> ());
-         emitln " */");
-      List.iter (gen_stmt ctx (indent + 2)) stmts
-    ) arms;
     emit_indent indent;
     emitln "}"
   | SGo e ->
@@ -953,8 +1136,6 @@ let rec scan_stmt_for_go ctx stmt =
      | Some (TArray t) -> add_local ctx var t
      | _ -> ());
     List.iter (scan_stmt_for_go ctx) body
-  | SMatch (_, arms) ->
-    List.iter (fun (_, stmts) -> List.iter (scan_stmt_for_go ctx) stmts) arms
   | _ -> ()
 
 let scan_function_for_go ctx params body =

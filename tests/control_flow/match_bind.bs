@@ -1,0 +1,20 @@
+// Test: Simple identifier binding pattern
+fn identity(int x) int {
+    return match x {
+        n -> n
+    }
+}
+
+fn double(int x) int {
+    return match x {
+        n -> n * 2
+    }
+}
+
+fn main {
+    int a = identity(42)
+    int b = double(21)
+
+    print("identity(42) = {a}")
+    print("double(21) = {b}")
+}

@@ -66,11 +66,12 @@ let parse_interp_string s =
 
 (* Keywords *)
 %token FN STRUCT VARIANT TRAIT IMPL ERROR
-%token RETURN IF ELSE FOR IN MATCH
+%token RETURN IF ELSE FOR IN MATCH USING
 %token GO CHAN WAIT
 %token AND OR NOT
 %token SELF NONE TRUE FALSE CONST
 %token USES
+%token UNDERSCORE
 
 (* Type keywords *)
 %token STR INT BOOL F32 F64 U32 U64
@@ -278,7 +279,6 @@ stmt_inner:
   | IF cond = expr then_block = block ELSE else_block = block { SIf (cond, then_block, Some else_block) }
   | IF cond = expr then_block = block ELSE else_if = if_stmt { SIf (cond, then_block, Some [else_if]) }
   | FOR var = IDENT IN iter = expr body = block { SFor (var, iter, body) }
-  | MATCH e = expr LBRACE arms = list(match_arm) RBRACE { SMatch (e, arms) }
   | GO e = expr { SGo e }
   | e = expr { SExpr e }
   ;
@@ -289,15 +289,42 @@ if_stmt:
   | IF cond = expr then_block = block ELSE else_if = if_stmt { SIf (cond, then_block, Some [else_if]) }
   ;
 
-match_arm:
-  | newlines p = pattern ARROW e = expr newlines { (p, [SExpr e]) }
-  | newlines p = pattern ARROW b = block newlines { (p, b) }
-  ;
 
 pattern:
+  | UNDERSCORE { PWildcard }
   | name = IDENT { PIdent name }
-  | name = TYPE_IDENT { PConstructor (name, None) }
-  | name = TYPE_IDENT binding = IDENT { PConstructor (name, Some binding) }
+  | i = INTEGER { PLiteral (EInt i) }
+  | TRUE { PLiteral (EBool true) }
+  | FALSE { PLiteral (EBool false) }
+  | s = INTERP_STRING { PLiteral (EString (parse_interp_string s)) }
+  (* Qualified variant: Expr.Int or Expr.Int { value: v } *)
+  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT
+    { PVariant (Some enum_name, variant_name, []) }
+  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
+    { PVariant (Some enum_name, variant_name, bindings) }
+  (* Unqualified variant (with using): Int or Int { value: v } *)
+  | variant_name = TYPE_IDENT
+    { PVariant (None, variant_name, []) }
+  | variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
+    { PVariant (None, variant_name, bindings) }
+  (* Tuple pattern: (p1, p2) *)
+  | LPAREN p1 = pattern COMMA p2 = pattern RPAREN { PTuple [p1; p2] }
+  | LPAREN p1 = pattern COMMA p2 = pattern COMMA rest = pattern_list RPAREN { PTuple (p1 :: p2 :: rest) }
+  ;
+
+pattern_list:
+  | p = pattern { [p] }
+  | p = pattern COMMA rest = pattern_list { p :: rest }
+  ;
+
+pattern_field_list:
+  | (* empty *) { [] }
+  | f = pattern_field { [f] }
+  | f = pattern_field COMMA rest = pattern_field_list { f :: rest }
+  ;
+
+pattern_field:
+  | field_name = IDENT COLON binding = IDENT { (field_name, binding) }
   ;
 
 expr:
@@ -378,6 +405,24 @@ primary_expr:
   | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EEnumVariant (enum_name, variant_name, fields) }
   | LBRACKET elems = array_elems RBRACKET { EArrayLit elems }
   | LPAREN e = expr RPAREN { EParen e }
+  (* Match expression - single value *)
+  | MATCH e = expr LBRACE arms = match_arm_list RBRACE { EMatch ([e], None, arms) }
+  | MATCH e = expr USING t = TYPE_IDENT LBRACE arms = match_arm_list RBRACE { EMatch ([e], Some t, arms) }
+  (* Match expression - tuple *)
+  | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], None, arms) }
+  | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN USING t = TYPE_IDENT LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], Some t, arms) }
+  ;
+
+(* Match arm list - comma separated *)
+match_arm_list:
+  | newlines { [] }
+  | newlines arm = match_expr_arm newlines { [arm] }
+  | newlines arm = match_expr_arm COMMA rest = match_arm_list { arm :: rest }
+  ;
+
+(* Match expression arm: pattern -> expr *)
+match_expr_arm:
+  | p = pattern ARROW e = expr { (p, e) }
   ;
 
 string_expr:

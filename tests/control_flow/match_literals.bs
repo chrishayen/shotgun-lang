@@ -1,0 +1,28 @@
+// Test: Literal pattern matching (integers and booleans)
+fn describe_status(int code) str {
+    return match code {
+        200 -> "OK",
+        404 -> "Not Found",
+        500 -> "Server Error",
+        _ -> "Unknown"
+    }
+}
+
+fn describe_bool(bool b) str {
+    return match b {
+        true -> "yes",
+        false -> "no"
+    }
+}
+
+fn main {
+    str s1 = describe_status(200)
+    str s2 = describe_status(404)
+    str s3 = describe_status(999)
+
+    str b1 = describe_bool(true)
+    str b2 = describe_bool(false)
+
+    print("{s1}, {s2}, {s3}")
+    print("{b1}, {b2}")
+}

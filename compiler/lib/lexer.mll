@@ -35,6 +35,7 @@ let keywords = [
   "u64", U64;
   "const", CONST;
   "uses", USES;
+  "using", USING;
 ]
 
 let keyword_table = Hashtbl.create 50
@@ -113,6 +114,9 @@ rule token = parse
       else NEWLINE
     }
   | "//" [^ '\n']* { token lexbuf }  (* line comment *)
+
+  (* Wildcard pattern *)
+  | "_" { UNDERSCORE }
 
   (* Keywords and identifiers *)
   | ident_start ident_char* as s { lookup_ident s }

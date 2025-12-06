@@ -1,0 +1,11 @@
+// Error test: Invalid field name in pattern
+Option :: variant {
+    Some { value int }
+    None
+}
+
+fn test(Option o) int {
+    return match o {
+        Option.Some { wrong: v } -> v
+    }
+}

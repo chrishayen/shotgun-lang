@@ -60,6 +60,15 @@ and or_clause =
   | OrWait of expr
 [@@deriving show, eq]
 
+(* Patterns for match *)
+and pattern =
+  | PIdent of string  (* simple identifier binding *)
+  | PLiteral of expr  (* literal value: 200, "hello", true *)
+  | PVariant of string option * string * (string * string) list  (* enum name (None if using), variant name, [(field, binding)] *)
+  | PWildcard  (* _ catch-all *)
+  | PTuple of pattern list  (* (p1, p2, ...) *)
+[@@deriving show, eq]
+
 (* Expressions *)
 and expr =
   | EInt of int
@@ -80,12 +89,7 @@ and expr =
   | EChan  (* chan() constructor *)
   | EParen of expr
   | EAssign of assignop * expr * expr
-[@@deriving show, eq]
-
-(* Patterns for match *)
-type pattern =
-  | PIdent of string
-  | PConstructor of string * string option  (* Constructor name, optional binding *)
+  | EMatch of expr list * string option * (pattern * expr) list  (* match exprs, optional using type, [(pattern, result)] *)
 [@@deriving show, eq]
 
 (* Statements *)
@@ -95,7 +99,6 @@ type stmt =
   | SReturn of expr option
   | SIf of expr * stmt list * stmt list option
   | SFor of string * expr * stmt list
-  | SMatch of expr * (pattern * stmt list) list
   | SGo of expr
   | SExpr of expr
 [@@deriving show, eq]

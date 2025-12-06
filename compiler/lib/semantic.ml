@@ -162,6 +162,52 @@ let rec infer_expr_type env expr =
   | EChan -> None  (* Type inferred from context *)
   | EParen e -> infer_expr_type env e
   | EAssign (_, e, _) -> infer_expr_type env e
+  | EMatch (_, _, arms) ->
+    (* Type of match is the type of the first arm's result - assume all arms have same type *)
+    (match arms with
+     | [] -> None
+     | (_, first_result) :: _ -> infer_expr_type env first_result)
+
+(* Bind pattern variables to the environment *)
+and bind_pattern_vars env pat expr_types using_type =
+  let get_matched_type idx =
+    if idx < List.length expr_types then List.nth expr_types idx else None
+  in
+  match pat with
+  | PWildcard | PLiteral _ -> ()
+  | PIdent name ->
+    (* Bind identifier to type of matched expression *)
+    let typ = match get_matched_type 0 with Some t -> t | None -> TInt in
+    Hashtbl.replace env.symbols name (SVar (typ, false))
+  | PVariant (enum_opt, variant_name, bindings) ->
+    let enum_name = match enum_opt with
+      | Some e -> e
+      | None -> (match using_type with Some t -> t | None -> "")
+    in
+    (* Validate enum exists *)
+    (match Hashtbl.find_opt env.enums enum_name with
+     | None ->
+       if enum_name <> "" then
+         add_error env (Printf.sprintf "Unknown enum type: %s" enum_name)
+     | Some variants ->
+       (* Validate variant exists *)
+       (match List.find_opt (fun v -> v.variant_name = variant_name) variants with
+        | None ->
+          add_error env (Printf.sprintf "Unknown variant %s in enum %s" variant_name enum_name)
+        | Some variant ->
+          (* Validate field names and bind variables *)
+          List.iter (fun (field_name, binding_name) ->
+            match List.find_opt (fun f -> f.field_name = field_name) variant.variant_fields with
+            | None ->
+              add_error env (Printf.sprintf "Unknown field %s in variant %s.%s" field_name enum_name variant_name)
+            | Some field ->
+              Hashtbl.replace env.symbols binding_name (SVar (field.field_type, false))
+          ) bindings))
+  | PTuple patterns ->
+    List.iteri (fun i p ->
+      let sub_expr_types = [get_matched_type i] in
+      bind_pattern_vars env p sub_expr_types using_type
+    ) patterns
 
 (* Check expression - add variable to scope, check types *)
 let rec check_expr env expr =
@@ -223,6 +269,17 @@ let rec check_expr env expr =
       | SLiteral _ -> ()
       | SInterp e -> check_expr env e
     ) parts
+  | EMatch (exprs, using_type, arms) ->
+    (* Check matched expressions *)
+    List.iter (check_expr env) exprs;
+    (* Infer types of matched expressions for binding *)
+    let expr_types = List.map (infer_expr_type env) exprs in
+    (* Check each arm *)
+    List.iter (fun (pat, result_expr) ->
+      let arm_env = push_scope env in
+      bind_pattern_vars arm_env pat expr_types using_type;
+      check_expr arm_env result_expr
+    ) arms
   | _ -> ()
 
 (* Check statement *)
@@ -263,12 +320,6 @@ let rec check_stmt env stmt =
     in
     Hashtbl.replace body_env.symbols var (SVar (var_type, false));
     List.iter (check_stmt body_env) body
-  | SMatch (e, arms) ->
-    check_expr env e;
-    List.iter (fun (_pat, stmts) ->
-      let arm_env = push_scope env in
-      List.iter (check_stmt arm_env) stmts
-    ) arms
   | SGo e ->
     check_expr env e
   | SExpr e ->
@@ -411,3 +462,7 @@ let rec get_expr_type env locals expr =
   | EChan -> None
   | EParen e -> get_expr_type env locals e
   | EAssign (_, lhs, _) -> get_expr_type env locals lhs
+  | EMatch (_, _, arms) ->
+    (match arms with
+     | [] -> None
+     | (_, first_result) :: _ -> get_expr_type env locals first_result)

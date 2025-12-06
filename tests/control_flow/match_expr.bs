@@ -1,0 +1,18 @@
+// Test: Match expression with patterns
+Option :: variant {
+    Some { value int }
+    None
+}
+
+fn describe(Option o) str {
+    return match o {
+        Option.Some { value: v } -> "got value",
+        Option.None -> "nothing"
+    }
+}
+
+fn main {
+    Option x = Option.Some { value: 42 }
+    str result = describe(x)
+    print("Result: {result}")
+}

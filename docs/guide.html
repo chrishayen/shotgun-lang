@@ -267,15 +267,49 @@
     <span class="fn">print</span>(person.<span class="fn">greet</span>())
 }</code></pre>
 
-        <h3>Match</h3>
+        <h3>Match Expressions</h3>
 
-        <p>Pattern matching:</p>
+        <p>Match is an expression that returns a value. Use it with literals:</p>
 
-        <pre><code><span class="kw">match</span> status {
-    <span class="nu">200</span> -> <span class="fn">print</span>(<span class="st">"OK"</span>)
-    <span class="nu">404</span> -> <span class="fn">print</span>(<span class="st">"Not found"</span>)
-    <span class="nu">500</span> -> <span class="fn">print</span>(<span class="st">"Server error"</span>)
-    _ -> <span class="fn">print</span>(<span class="st">"Unknown"</span>)
+        <pre><code><span class="ty">str</span> msg = <span class="kw">match</span> status {
+    <span class="nu">200</span> -> <span class="st">"OK"</span>,
+    <span class="nu">404</span> -> <span class="st">"Not found"</span>,
+    <span class="nu">500</span> -> <span class="st">"Server error"</span>,
+    _ -> <span class="st">"Unknown"</span>
+}</code></pre>
+
+        <p>Match on variants with destructuring:</p>
+
+        <pre><code><span class="ty">Option</span> <span class="kw">::</span> <span class="kw">variant</span> {
+    <span class="ty">Some</span> { value <span class="ty">int</span> }
+    <span class="ty">None</span>
+}
+
+<span class="kw">fn</span> <span class="fn">unwrap_or</span>(<span class="ty">Option</span> opt, <span class="ty">int</span> default) <span class="ty">int</span> {
+    <span class="kw">return match</span> opt {
+        <span class="ty">Option</span>.<span class="ty">Some</span> { value: v } -> v,
+        <span class="ty">Option</span>.<span class="ty">None</span> -> default
+    }
+}</code></pre>
+
+        <p>Use <code>using</code> to avoid repeating the variant name:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">unwrap_or</span>(<span class="ty">Option</span> opt, <span class="ty">int</span> default) <span class="ty">int</span> {
+    <span class="kw">return match</span> opt <span class="kw">using</span> <span class="ty">Option</span> {
+        <span class="ty">Some</span> { value: v } -> v,
+        <span class="ty">None</span> -> default
+    }
+}</code></pre>
+
+        <p>Match on tuples for comparing multiple values:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">compare</span>(<span class="ty">int</span> a, <span class="ty">int</span> b) <span class="ty">str</span> {
+    <span class="kw">return match</span> (a, b) {
+        (<span class="nu">0</span>, <span class="nu">0</span>) -> <span class="st">"both zero"</span>,
+        (<span class="nu">0</span>, _) -> <span class="st">"a is zero"</span>,
+        (_, <span class="nu">0</span>) -> <span class="st">"b is zero"</span>,
+        _ -> <span class="st">"neither zero"</span>
+    }
 }</code></pre>
 
         <h3>Logical Operators</h3>
