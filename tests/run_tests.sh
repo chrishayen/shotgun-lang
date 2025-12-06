@@ -92,6 +92,12 @@ for f in "$SCRIPT_DIR"/traits/*.bs; do
 done
 
 echo ""
+echo "--- Variant Tests ---"
+for f in "$SCRIPT_DIR"/variants/*.bs; do
+    [ -f "$f" ] && test_valid "$f"
+done
+
+echo ""
 echo "--- Control Flow Tests ---"
 for f in "$SCRIPT_DIR"/control_flow/*.bs; do
     [ -f "$f" ] && test_valid "$f"

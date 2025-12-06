@@ -15,6 +15,7 @@ type symbol =
 type env = {
   symbols: (string, symbol) Hashtbl.t;
   structs: (string, field list) Hashtbl.t;
+  enums: (string, enum_variant list) Hashtbl.t;
   traits: (string, trait_method list) Hashtbl.t;
   errors: (string, field list) Hashtbl.t;
   methods: (string * string, param list * typ option) Hashtbl.t;  (* (type, method) -> params, return *)
@@ -27,6 +28,7 @@ type env = {
 let create_env () = {
   symbols = Hashtbl.create 64;
   structs = Hashtbl.create 32;
+  enums = Hashtbl.create 32;
   traits = Hashtbl.create 16;
   errors = Hashtbl.create 16;
   methods = Hashtbl.create 64;
@@ -61,6 +63,8 @@ let check_param_order env params =
 let register_item env = function
   | IStruct (name, fields) ->
     Hashtbl.replace env.structs name fields
+  | IEnum (name, variants) ->
+    Hashtbl.replace env.enums name variants
   | ITrait (name, methods) ->
     Hashtbl.replace env.traits name methods
   | IError (name, fields) ->
@@ -100,7 +104,7 @@ let rec type_exists env typ =
   | TOptional t -> type_exists env t
   | TArray t -> type_exists env t
   | TChan t -> type_exists env t
-  | TUser name -> Hashtbl.mem env.structs name || Hashtbl.mem env.errors name
+  | TUser name -> Hashtbl.mem env.structs name || Hashtbl.mem env.enums name || Hashtbl.mem env.errors name
   | TResult (t, e) -> type_exists env t && (e = "Error" || Hashtbl.mem env.errors e)
 
 (* Get type of expression - simplified version *)
@@ -151,6 +155,7 @@ let rec infer_expr_type env expr =
      | _ -> None)
   | EOr (e, _clause) -> infer_expr_type env e
   | EStructLit (name, _fields) -> Some (TUser name)
+  | EEnumVariant (enum_name, _variant_name, _fields) -> Some (TUser enum_name)
   | EArrayLit [] -> None
   | EArrayLit (e :: _) ->
     infer_expr_type env e |> Option.map (fun t -> TArray t)
@@ -189,6 +194,14 @@ let rec check_expr env expr =
   | EStructLit (name, fields) ->
     if not (Hashtbl.mem env.structs name) then
       add_error env (Printf.sprintf "Unknown struct type: %s" name);
+    List.iter (fun (_, e) -> check_expr env e) fields
+  | EEnumVariant (enum_name, variant_name, fields) ->
+    (match Hashtbl.find_opt env.enums enum_name with
+     | None ->
+       add_error env (Printf.sprintf "Unknown enum type: %s" enum_name)
+     | Some variants ->
+       if not (List.exists (fun v -> v.variant_name = variant_name) variants) then
+         add_error env (Printf.sprintf "Unknown variant %s in enum %s" variant_name enum_name));
     List.iter (fun (_, e) -> check_expr env e) fields
   | EArrayLit elems ->
     List.iter (check_expr env) elems
@@ -292,6 +305,13 @@ let check_item env = function
       if not (type_exists env f.field_type) then
         add_error env (Printf.sprintf "Unknown type for field %s in struct %s" f.field_name name)
     ) fields
+  | IEnum (name, variants) ->
+    List.iter (fun v ->
+      List.iter (fun f ->
+        if not (type_exists env f.field_type) then
+          add_error env (Printf.sprintf "Unknown type for field %s in variant %s of enum %s" f.field_name v.variant_name name)
+      ) v.variant_fields
+    ) variants
   | ITrait (_name, _methods) ->
     ()  (* Just declarations, no bodies to check *)
   | IImpl (_type_name, trait_name, methods) ->
@@ -384,6 +404,7 @@ let rec get_expr_type env locals expr =
      | _ -> None)
   | EOr (e, _) -> get_expr_type env locals e
   | EStructLit (name, _) -> Some (TUser name)
+  | EEnumVariant (enum_name, _, _) -> Some (TUser enum_name)
   | EArrayLit [] -> None
   | EArrayLit (e :: _) ->
     get_expr_type env locals e |> Option.map (fun t -> TArray t)

@@ -190,6 +190,33 @@ let rec gen_expr ctx indent expr =
       gen_expr ctx indent fexpr
     ) fields;
     emit " }"
+  | EEnumVariant (enum_name, variant_name, fields) ->
+    emit "(";
+    emit enum_name;
+    emit "){ .tag = ";
+    emit enum_name;
+    emit "_";
+    emit variant_name;
+    if fields <> [] then begin
+      emit ", .data.";
+      emit variant_name;
+      emit " = (";
+      emit enum_name;
+      emit "_";
+      emit variant_name;
+      emit "_data){ ";
+      let first = ref true in
+      List.iter (fun (fname, fexpr) ->
+        if not !first then emit ", ";
+        first := false;
+        emit ".";
+        emit fname;
+        emit " = ";
+        gen_expr ctx indent fexpr
+      ) fields;
+      emit " }"
+    end;
+    emit " }"
   | EArrayLit elems ->
     gen_array_literal ctx indent elems
   | EChan ->
@@ -599,6 +626,74 @@ let gen_struct name fields =
 let gen_error name fields =
   gen_struct name fields
 
+(* Generate enum as C tagged union *)
+let gen_enum name variants =
+  emitln "";
+  (* Generate tag enum *)
+  emit "typedef enum { ";
+  let first = ref true in
+  List.iter (fun v ->
+    if not !first then emit ", ";
+    first := false;
+    emit name;
+    emit "_";
+    emit v.variant_name
+  ) variants;
+  emit " } ";
+  emit name;
+  emitln "_tag;";
+  emitln "";
+
+  (* Generate data struct for each variant with fields *)
+  List.iter (fun v ->
+    if v.variant_fields <> [] then begin
+      emit "typedef struct { ";
+      List.iter (fun f ->
+        emit (c_type f.field_type);
+        emit " ";
+        emit f.field_name;
+        emit "; "
+      ) v.variant_fields;
+      emit "} ";
+      emit name;
+      emit "_";
+      emit v.variant_name;
+      emitln "_data;"
+    end
+  ) variants;
+
+  (* Generate the main enum struct with union *)
+  emit "typedef struct ";
+  emit name;
+  emitln " {";
+  emit_indent 1;
+  emit name;
+  emitln "_tag tag;";
+
+  (* Only generate union if there are variants with data *)
+  let has_data = List.exists (fun v -> v.variant_fields <> []) variants in
+  if has_data then begin
+    emit_indent 1;
+    emitln "union {";
+    List.iter (fun v ->
+      if v.variant_fields <> [] then begin
+        emit_indent 2;
+        emit name;
+        emit "_";
+        emit v.variant_name;
+        emit "_data ";
+        emit v.variant_name;
+        emitln ";"
+      end
+    ) variants;
+    emit_indent 1;
+    emitln "} data;"
+  end;
+
+  emit "} ";
+  emit name;
+  emitln ";"
+
 (* Generate trait - just a comment since C doesn't have traits *)
 let gen_trait name methods =
   emitln "";
@@ -934,9 +1029,15 @@ let generate env program =
   let ctx = create_ctx env in
   gen_prelude ();
 
-  (* Forward declarations for structs *)
+  (* Forward declarations for structs and enums *)
   List.iter (function
     | IStruct (name, _) ->
+      emit "typedef struct ";
+      emit name;
+      emit " ";
+      emit name;
+      emitln ";"
+    | IEnum (name, _) ->
       emit "typedef struct ";
       emit name;
       emit " ";
@@ -970,9 +1071,10 @@ let generate env program =
     emitln ";"
   ) !user_array_types;
 
-  (* Generate struct definitions first *)
+  (* Generate struct and enum definitions first *)
   List.iter (function
     | IStruct (name, fields) -> gen_struct name fields
+    | IEnum (name, variants) -> gen_enum name variants
     | IError (name, fields) -> gen_error name fields
     | _ -> ()
   ) program;
@@ -1002,7 +1104,7 @@ let generate env program =
 
   (* Generate remaining items *)
   List.iter (function
-    | IStruct _ | IError _ -> ()  (* Already generated *)
+    | IStruct _ | IEnum _ | IError _ -> ()  (* Already generated *)
     | ITrait (name, methods) -> gen_trait name methods
     | IImpl (type_name, trait_name, methods) -> gen_impl ctx type_name trait_name methods
     | IMethod (type_name, method_name, params, ret, body) ->

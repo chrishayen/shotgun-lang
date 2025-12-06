@@ -6,6 +6,7 @@ exception Lexer_error of string
 let keywords = [
   "fn", FN;
   "struct", STRUCT;
+  "variant", VARIANT;
   "trait", TRAIT;
   "impl", IMPL;
   "error", ERROR;

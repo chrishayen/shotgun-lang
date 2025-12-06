@@ -1,0 +1,12 @@
+// Basic variant test
+
+Option :: variant {
+    Some { value int }
+    None
+}
+
+fn main {
+    Option x = Option.None
+    Option y = Option.Some { value: 42 }
+    print("variant test passed")
+}

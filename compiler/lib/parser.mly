@@ -65,7 +65,7 @@ let parse_interp_string s =
 %token <string> TYPE_IDENT
 
 (* Keywords *)
-%token FN STRUCT TRAIT IMPL ERROR
+%token FN STRUCT VARIANT TRAIT IMPL ERROR
 %token RETURN IF ELSE FOR IN MATCH
 %token GO CHAN WAIT
 %token AND OR NOT
@@ -105,6 +105,7 @@ program:
 
 item:
   | newlines struct_def = struct_definition newlines { struct_def }
+  | newlines variant_def = variant_definition newlines { variant_def }
   | newlines trait_def = trait_definition newlines { trait_def }
   | newlines impl_block = impl_block_def newlines { impl_block }
   | newlines method_def = method_definition newlines { method_def }
@@ -153,6 +154,19 @@ struct_definition:
 
 field_def:
   | newlines name = IDENT typ = typ newlines { { field_name = name; field_type = typ } }
+  ;
+
+(* Option :: variant { Some { value int }, None } *)
+variant_definition:
+  | name = TYPE_IDENT COLONCOLON VARIANT LBRACE variants = list(variant_case_def) RBRACE
+    { IEnum (name, variants) }
+  ;
+
+variant_case_def:
+  | newlines name = TYPE_IDENT newlines
+    { { variant_name = name; variant_fields = [] } }
+  | newlines name = TYPE_IDENT LBRACE fields = list(field_def) RBRACE newlines
+    { { variant_name = name; variant_fields = fields } }
   ;
 
 (* Stringer :: trait { ... } *)
@@ -360,6 +374,8 @@ primary_expr:
   | name = IDENT { EIdent name }
   | CHAN LPAREN RPAREN { EChan }
   | name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EStructLit (name, fields) }
+  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT { EEnumVariant (enum_name, variant_name, []) }
+  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE fields = field_init_list RBRACE { EEnumVariant (enum_name, variant_name, fields) }
   | LBRACKET elems = array_elems RBRACKET { EArrayLit elems }
   | LPAREN e = expr RPAREN { EParen e }
   ;

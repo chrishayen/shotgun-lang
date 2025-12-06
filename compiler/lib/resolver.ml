@@ -53,6 +53,13 @@ let merge_env ~into ~from ~namespace =
     Hashtbl.replace into.Semantic.structs name fields
   ) from.Semantic.structs;
 
+  (* Copy enums *)
+  Hashtbl.iter (fun name variants ->
+    let qualified_name = namespace ^ "_" ^ name in
+    Hashtbl.replace into.Semantic.enums qualified_name variants;
+    Hashtbl.replace into.Semantic.enums name variants
+  ) from.Semantic.enums;
+
   (* Copy traits *)
   Hashtbl.iter (fun name methods ->
     Hashtbl.replace into.Semantic.traits name methods

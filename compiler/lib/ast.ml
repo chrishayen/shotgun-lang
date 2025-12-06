@@ -75,6 +75,7 @@ and expr =
   | EIndex of expr * expr
   | EOr of expr * or_clause
   | EStructLit of string * (string * expr) list
+  | EEnumVariant of string * string * (string * expr) list  (* enum name, variant name, field inits *)
   | EArrayLit of expr list
   | EChan  (* chan() constructor *)
   | EParen of expr
@@ -106,6 +107,13 @@ type field = {
 }
 [@@deriving show, eq]
 
+(* Enum variant *)
+type enum_variant = {
+  variant_name: string;
+  variant_fields: field list;  (* empty for unit variants like None *)
+}
+[@@deriving show, eq]
+
 (* Trait method signature *)
 type trait_method = {
   tm_name: string;
@@ -128,6 +136,7 @@ type import_path = string list
 (* Top-level items *)
 type item =
   | IStruct of string * field list
+  | IEnum of string * enum_variant list
   | ITrait of string * trait_method list
   | IImpl of string * string * impl_method list  (* type, trait, methods *)
   | IMethod of string * string * param list * typ option * stmt list  (* type, method name, params, return type, body *)

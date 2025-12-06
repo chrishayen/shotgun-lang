@@ -108,6 +108,30 @@
         <pre><code><span class="fn">print</span>(alice.name)  <span class="cm">// "Alice"</span>
 <span class="fn">print</span>(bob.age)     <span class="cm">// 25</span></code></pre>
 
+        <h2>Variants (Sum Types)</h2>
+
+        <p>Variants represent values that can be one of several different types. Each variant can optionally carry data:</p>
+
+        <pre><code><span class="ty">Option</span> <span class="kw">::</span> <span class="kw">variant</span> {
+    <span class="ty">Some</span> { value <span class="ty">int</span> }
+    <span class="ty">None</span>
+}</code></pre>
+
+        <p>Create variant values using dot notation:</p>
+
+        <pre><code><span class="ty">Option</span> x = <span class="ty">Option</span>.<span class="ty">None</span>
+<span class="ty">Option</span> y = <span class="ty">Option</span>.<span class="ty">Some</span> { value: <span class="nu">42</span> }</code></pre>
+
+        <p>Variants are useful for representing mutually exclusive states:</p>
+
+        <pre><code><span class="ty">Response</span> <span class="kw">::</span> <span class="kw">variant</span> {
+    <span class="ty">Loading</span>
+    <span class="ty">Success</span> { data <span class="ty">str</span> }
+    <span class="ty">Error</span> { message <span class="ty">str</span> }
+}</code></pre>
+
+        <p>Unlike structs (which have all fields at once), a variant is exactly one of its cases at any time. This makes invalid states unrepresentable.</p>
+
         <h2>Methods</h2>
 
         <p>Add methods to structs with the <code>::</code> syntax:</p>

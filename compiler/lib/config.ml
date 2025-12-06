@@ -102,6 +102,34 @@ let resolve_import config import_path =
     else if first = "std" then
       (* Standard library - TODO: implement *)
       None
+    else if first = "bootstrap" then
+      (* Bootstrap stdlib for self-hosting experiments *)
+      (* Search up from config.root for bootstrap directory *)
+      let rec find_bootstrap dir =
+        let candidate = Filename.concat dir "bootstrap" in
+        if Sys.file_exists candidate && Sys.is_directory candidate then
+          Some candidate
+        else
+          let parent = Filename.dirname dir in
+          if parent = dir then None
+          else find_bootstrap parent
+      in
+      (match find_bootstrap config.root with
+      | None -> None
+      | Some stdlib_root ->
+        let rel_path = String.concat "/" rest ^ ".bs" in
+        let full_path = Filename.concat stdlib_root rel_path in
+        if Sys.file_exists full_path then
+          Some full_path
+        else begin
+          (* Try mod.bs convention *)
+          let dir_path = String.concat "/" rest in
+          let mod_path = Filename.concat (Filename.concat stdlib_root dir_path) "mod.bs" in
+          if Sys.file_exists mod_path then
+            Some mod_path
+          else
+            None
+        end)
     else
       (* Sibling import: utils -> ./utils.bs *)
       let rel_path = String.concat "/" import_path ^ ".bs" in
