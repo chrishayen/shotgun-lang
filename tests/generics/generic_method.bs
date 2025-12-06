@@ -1,0 +1,15 @@
+// Test: Methods on generic structs
+
+Box<T> :: struct {
+    value T
+}
+
+Box<T> :: get(self) T {
+    return self.value
+}
+
+fn main {
+    Box<int> b = Box<int> { value: 42 }
+    int x = b.get()
+    print("generic method test passed")
+}

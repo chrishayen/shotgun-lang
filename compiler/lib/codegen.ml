@@ -633,6 +633,7 @@ and gen_call ctx indent callee args =
        (* Get the type of obj to generate proper method name *)
        let type_name = match get_type ctx obj with
          | Some (TUser name) -> name
+         | Some (TApply (name, type_args)) -> mangle_generic_name name type_args
          | _ -> "_Unknown"
        in
        emit type_name;
@@ -1093,6 +1094,37 @@ let gen_monomorphized_enum base_name type_params type_args variants =
   emit mangled;
   emitln ";"
 
+(* Generate a monomorphized method *)
+let gen_monomorphized_method ctx base_name type_params type_args method_name params ret body =
+  let mangled = mangle_generic_name base_name type_args in
+  let subst = List.combine type_params type_args in
+  let method_ctx = with_method_ctx ctx mangled in
+  add_local method_ctx "self" (TApply (base_name, type_args));
+  emitln "";
+  (match ret with
+   | Some t -> emit (c_type (substitute_type subst t))
+   | None -> emit "void");
+  emit " ";
+  emit mangled;
+  emit "_";
+  emit method_name;
+  emit "(const ";
+  emit mangled;
+  emit "* self";
+  List.iter (function
+    | PSelf -> ()
+    | PNamed (t, name) ->
+      let subst_t = substitute_type subst t in
+      add_local method_ctx name subst_t;
+      emit ", ";
+      emit (c_type subst_t);
+      emit " ";
+      emit name
+  ) params;
+  emitln ") {";
+  List.iter (gen_stmt method_ctx 1) body;
+  emitln "}"
+
 (* Generate all monomorphized types based on collected instantiations *)
 let gen_monomorphized_types program =
   (* Build a map of generic definitions *)
@@ -1200,7 +1232,135 @@ let gen_monomorphized_types program =
     | _ -> ()
   ) program
 
-(* Generate trait - just a comment since C doesn't have traits *)
+(* Helper to generate monomorphized method forward declaration *)
+let gen_monomorphized_method_decl base_name type_params type_args method_name params ret =
+  let mangled = mangle_generic_name base_name type_args in
+  let subst = List.combine type_params type_args in
+  (match ret with
+   | Some t -> emit (c_type (substitute_type subst t))
+   | None -> emit "void");
+  emit " ";
+  emit mangled;
+  emit "_";
+  emit method_name;
+  emit "(const ";
+  emit mangled;
+  emit "* self";
+  List.iter (function
+    | PSelf -> ()
+    | PNamed (t, _) ->
+      let subst_t = substitute_type subst t in
+      emit ", ";
+      emit (c_type subst_t)
+  ) params;
+  emitln ");"
+
+(* Generate all monomorphized methods based on collected instantiations *)
+let gen_monomorphized_methods ?(decl_only=false) ctx program =
+  (* Build a map of generic methods: type_name -> [(method_name, type_params, params, ret, body)] *)
+  let generic_methods = Hashtbl.create 16 in
+  List.iter (function
+    | IMethod (type_name, method_name, type_params, params, ret, body) when type_params <> [] ->
+      let methods = try Hashtbl.find generic_methods type_name with Not_found -> [] in
+      Hashtbl.replace generic_methods type_name ((method_name, type_params, params, ret, body) :: methods)
+    | _ -> ()
+  ) program;
+
+  (* Track which methods we've already generated *)
+  let generated = Hashtbl.create 16 in
+
+  (* Scan for TApply usages and generate methods *)
+  let rec gen_for_type = function
+    | TApply (name, type_args) ->
+      let mangled = mangle_generic_name name type_args in
+      let key = mangled in
+      if not (Hashtbl.mem generated key) then begin
+        Hashtbl.add generated key ();
+        (* Generate methods for this type *)
+        (match Hashtbl.find_opt generic_methods name with
+         | Some methods ->
+           List.iter (fun (method_name, type_params, params, ret, body) ->
+             if decl_only then
+               gen_monomorphized_method_decl name type_params type_args method_name params ret
+             else
+               gen_monomorphized_method ctx name type_params type_args method_name params ret body
+           ) methods
+         | None -> ())
+      end
+    | TArray t -> gen_for_type t
+    | TOptional t -> gen_for_type t
+    | TChan t -> gen_for_type t
+    | TResult (t, _) -> gen_for_type t
+    | _ -> ()
+  in
+  let scan_type t = gen_for_type t in
+  let rec scan_expr = function
+    | EStructLit (_, type_args, fields) ->
+      List.iter gen_for_type type_args;
+      List.iter (fun (_, e) -> scan_expr e) fields
+    | EEnumVariant (_, type_args, _, fields) ->
+      List.iter gen_for_type type_args;
+      List.iter (fun (_, e) -> scan_expr e) fields
+    | ECall (callee, type_args, args) ->
+      scan_expr callee;
+      List.iter gen_for_type type_args;
+      List.iter scan_expr args
+    | EBinary (_, l, r) -> scan_expr l; scan_expr r
+    | EUnary (_, e) -> scan_expr e
+    | EMember (e, _) -> scan_expr e
+    | EIndex (e, idx) -> scan_expr e; scan_expr idx
+    | EOr (e, clause) ->
+      scan_expr e;
+      (match clause with
+       | OrExpr e2 -> scan_expr e2
+       | OrReturn (Some e2) -> scan_expr e2
+       | OrReturn None -> ()
+       | OrError (_, fields) -> List.iter (fun (_, e2) -> scan_expr e2) fields
+       | OrWait e2 -> scan_expr e2)
+    | EArrayLit elems -> List.iter scan_expr elems
+    | EParen e -> scan_expr e
+    | EAssign (_, l, r) -> scan_expr l; scan_expr r
+    | EString parts ->
+      List.iter (function SLiteral _ -> () | SInterp e -> scan_expr e) parts
+    | EMatch (exprs, using_type, arms) ->
+      List.iter scan_expr exprs;
+      (match using_type with Some t -> scan_type t | None -> ());
+      List.iter (fun (_, e) -> scan_expr e) arms
+    | _ -> ()
+  in
+  let rec scan_stmt = function
+    | SVarDecl (t, _, e) -> scan_type t; scan_expr e
+    | SConstDecl (_, e) -> scan_expr e
+    | SReturn (Some e) -> scan_expr e
+    | SReturn None -> ()
+    | SExpr e -> scan_expr e
+    | SIf (cond, then_stmts, else_stmts) ->
+      scan_expr cond;
+      List.iter scan_stmt then_stmts;
+      (match else_stmts with Some stmts -> List.iter scan_stmt stmts | None -> ())
+    | SFor (_, iter, body) -> scan_expr iter; List.iter scan_stmt body
+    | SGo e -> scan_expr e
+  in
+  List.iter (function
+    | IFunction (_, _type_params, params, ret, body) ->
+      List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) params;
+      (match ret with Some t -> scan_type t | None -> ());
+      List.iter scan_stmt body
+    | IMethod (_, _, _type_params, params, ret, body) ->
+      List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) params;
+      (match ret with Some t -> scan_type t | None -> ());
+      List.iter scan_stmt body
+    | IImpl (_, _, methods) ->
+      List.iter (fun m ->
+        List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) m.im_params;
+        (match m.im_return with Some t -> scan_type t | None -> ());
+        List.iter scan_stmt m.im_body
+      ) methods
+    | _ -> ()
+  ) program
+
+(* Generate trait definition - emits a comment for documentation.
+   Trait implementations (IImpl) generate the actual method code. *)
 let gen_trait name methods =
   emitln "";
   emit "/* trait ";
@@ -1602,6 +1762,9 @@ let generate env program =
     | _ -> ()
   ) program;
 
+  (* Forward declarations for monomorphized methods *)
+  gen_monomorphized_methods ~decl_only:true ctx program;
+
   (* Scan for go statements and generate wrappers *)
   scan_program_for_go ctx program;
   gen_go_wrappers ();
@@ -1621,5 +1784,8 @@ let generate env program =
     | IUses _ -> ()  (* Imports handled in multi-file compilation *)
     | _ -> ()  (* Skip generic definitions - they get monomorphized *)
   ) program;
+
+  (* Generate monomorphized methods for generic types *)
+  gen_monomorphized_methods ctx program;
 
   Buffer.contents buf

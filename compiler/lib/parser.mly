@@ -209,12 +209,15 @@ impl_method_def:
     { { im_name = name; im_params = params; im_return = ret; im_body = body } }
   ;
 
-(* Person :: greet(self) str { ... } or List<T> :: len<U>(self) int { ... } *)
+(* Person :: greet(self) str { ... } or Box<T> :: get(self) T { ... } *)
 method_definition:
   | type_name = TYPE_IDENT COLONCOLON method_name = IDENT
     LPAREN params = param_list RPAREN ret = option(return_type) body = block
     { IMethod (type_name, method_name, [], params, ret, body) }
   | type_name = TYPE_IDENT COLONCOLON method_name = IDENT tparams = type_params
+    LPAREN params = param_list RPAREN ret = option(return_type) body = block
+    { IMethod (type_name, method_name, tparams, params, ret, body) }
+  | type_name = TYPE_IDENT tparams = type_params COLONCOLON method_name = IDENT
     LPAREN params = param_list RPAREN ret = option(return_type) body = block
     { IMethod (type_name, method_name, tparams, params, ret, body) }
   ;
