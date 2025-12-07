@@ -358,13 +358,27 @@ let rec gen_expr ctx indent expr =
   | EIdent "self" -> emit "self"
   | EIdent name -> emit name
   | EBinary (op, l, r) ->
-    emit "(";
-    gen_expr ctx indent l;
-    emit " ";
-    emit (c_binop op);
-    emit " ";
-    gen_expr ctx indent r;
-    emit ")"
+    (match op, get_type ctx l with
+     | Eq, Some TStr ->
+       emit "(strcmp(";
+       gen_expr ctx indent l;
+       emit ", ";
+       gen_expr ctx indent r;
+       emit ") == 0)"
+     | Neq, Some TStr ->
+       emit "(strcmp(";
+       gen_expr ctx indent l;
+       emit ", ";
+       gen_expr ctx indent r;
+       emit ") != 0)"
+     | _ ->
+       emit "(";
+       gen_expr ctx indent l;
+       emit " ";
+       emit (c_binop op);
+       emit " ";
+       gen_expr ctx indent r;
+       emit ")")
   | EUnary (Not, e) ->
     emit "(!";
     gen_expr ctx indent e;
@@ -980,25 +994,29 @@ and gen_array_literal ctx indent elems =
       | Some t -> c_type t
       | None -> "int64_t"
     in
-    (* Generate inline array initialization *)
-    emit "(Array_";
+    let n = List.length elems in
+    (* Generate heap-allocated array *)
+    emit "({ Array_";
     emit type_name;
-    emit "*)(& (Array_";
+    emit "* _lit = malloc(sizeof(Array_";
     emit type_name;
-    emit "){ .data = (";
+    emit ")); _lit->data = malloc(";
+    emit (string_of_int n);
+    emit " * sizeof(";
     emit c_elem_type;
-    emit "[]){";
-    let first = ref true in
-    List.iter (fun e ->
-      if not !first then emit ", ";
-      first := false;
-      gen_expr ctx indent e
+    emit ")); _lit->len = ";
+    emit (string_of_int n);
+    emit "; _lit->cap = ";
+    emit (string_of_int n);
+    emit "; ";
+    List.iteri (fun i e ->
+      emit "_lit->data[";
+      emit (string_of_int i);
+      emit "] = ";
+      gen_expr ctx indent e;
+      emit "; "
     ) elems;
-    emit "}, .len = ";
-    emit (string_of_int (List.length elems));
-    emit ", .cap = ";
-    emit (string_of_int (List.length elems));
-    emit " })"
+    emit "_lit; })"
 
 (* Generate function/method call *)
 and gen_call ctx indent callee args =
@@ -1064,6 +1082,30 @@ and gen_call ctx indent callee args =
           (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
           emit ")"
         | _ -> emit "/* delete on non-map */")
+     | "push" ->
+       (match get_type ctx obj with
+        | Some (TArray elem_t) ->
+          let arr_type = c_type (TArray elem_t) in
+          (* Remove trailing * from Array_T* to get Array_T *)
+          let arr_struct = String.sub arr_type 0 (String.length arr_type - 1) in
+          emit "do { ";
+          emit arr_struct;
+          emit "** _arrp = &";
+          gen_expr ctx indent obj;
+          emit "; if (!*_arrp) { *_arrp = malloc(sizeof(";
+          emit arr_struct;
+          emit ")); (*_arrp)->data = NULL; (*_arrp)->len = 0; (*_arrp)->cap = 0; } ";
+          emit arr_struct;
+          emit "* _arr = *_arrp; ";
+          emit "if (_arr->len >= _arr->cap) { ";
+          emit "_arr->cap = _arr->cap ? _arr->cap * 2 : 4; ";
+          emit "_arr->data = realloc(_arr->data, _arr->cap * sizeof(";
+          emit (c_type elem_t);
+          emit ")); } ";
+          emit "_arr->data[_arr->len++] = ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit "; } while(0)"
+        | _ -> emit "/* push on non-array */")
      | "get" ->
        (match get_type ctx obj with
         | Some (TApply ("Map", [_k; v])) ->
@@ -1738,7 +1780,7 @@ let gen_monomorphized_method ctx base_name type_params type_args method_name par
   emit mangled;
   emit "_";
   emit method_name;
-  emit "(const ";
+  emit "(";
   emit mangled;
   emit "* self";
   List.iter (function
@@ -1882,7 +1924,7 @@ let gen_monomorphized_method_decl base_name type_params type_args method_name pa
   emit mangled;
   emit "_";
   emit method_name;
-  emit "(const ";
+  emit "(";
   emit mangled;
   emit "* self";
   List.iter (function
@@ -2024,7 +2066,7 @@ let gen_method ctx type_name method_name params ret body =
   emit type_name;
   emit "_";
   emit method_name;
-  emit "(const ";
+  emit "(";
   emit type_name;
   emit "* self";
   List.iter (function
@@ -2683,7 +2725,7 @@ let gen_method_decl type_name method_name params ret =
   emit type_name;
   emit "_";
   emit method_name;
-  emit "(const ";
+  emit "(";
   emit type_name;
   emit "* self";
   List.iter (function
