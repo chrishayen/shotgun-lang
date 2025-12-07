@@ -209,6 +209,24 @@
     <span class="cm">// Output: Next year: 31</span>
 }</code></pre>
 
+        <h2>Dynamic Arrays</h2>
+
+        <p>Build arrays dynamically with loops:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">int[]</span> squares = []
+    <span class="ty">int</span> i = <span class="nu">1</span>
+
+    <span class="kw">while</span> i <= <span class="nu">5</span> {
+        squares.<span class="fn">push</span>(i * i)
+        i += <span class="nu">1</span>
+    }
+
+    <span class="kw">for</span> n <span class="kw">in</span> squares {
+        <span class="fn">print</span>(n)  <span class="cm">// 1, 4, 9, 16, 25</span>
+    }
+}</code></pre>
+
         <h2>Pattern Matching</h2>
 
         <p>Match on values cleanly:</p>

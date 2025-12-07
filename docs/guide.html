@@ -232,6 +232,28 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 <span class="fn">print</span>(p.<span class="fn">greet</span>())     <span class="cm">// "Hello, I'm Alice!"</span>
 <span class="fn">print</span>(p.<span class="fn">is_adult</span>())  <span class="cm">// true</span></code></pre>
 
+        <h3>Methods on Generic Types</h3>
+
+        <p>Generic types can also have methods. The type parameter is available in the method:</p>
+
+        <pre><code><span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="kw">struct</span> {
+    value <span class="ty">T</span>
+}
+
+<span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="fn">get</span>(self) <span class="ty">T</span> {
+    <span class="kw">return</span> self.value
+}
+
+<span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="fn">add</span>(self, <span class="ty">T</span> other) <span class="ty">T</span> {
+    <span class="kw">return</span> self.value + other
+}
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; b = <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">10</span> }
+    <span class="fn">print</span>(b.<span class="fn">get</span>())        <span class="cm">// 10</span>
+    <span class="fn">print</span>(b.<span class="fn">add</span>(<span class="nu">32</span>))      <span class="cm">// 42</span>
+}</code></pre>
+
         <h2>Closures and Higher-Order Functions</h2>
 
         <p>Functions can be passed as arguments and returned from other functions. Use the <code>fn</code> keyword to define both function types and anonymous functions.</p>
@@ -376,6 +398,16 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
         <pre><code><span class="ty">int</span> first = numbers[<span class="nu">0</span>]
 <span class="ty">str</span> name = names[<span class="nu">1</span>]</code></pre>
 
+        <h3>Array Methods</h3>
+
+        <pre><code><span class="ty">int[]</span> items = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
+
+<span class="cm">// Get length</span>
+<span class="ty">int</span> count = items.<span class="fn">len</span>()  <span class="cm">// 3</span>
+
+<span class="cm">// Append an element</span>
+items.<span class="fn">push</span>(<span class="nu">4</span>)  <span class="cm">// items is now [1, 2, 3, 4]</span></code></pre>
+
         <h2>Maps</h2>
 
         <p>Maps are key-value collections using <code>Map&lt;K, V&gt;</code> syntax:</p>
@@ -428,6 +460,16 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
 <span class="kw">for</span> person <span class="kw">in</span> people {
     <span class="fn">print</span>(person.<span class="fn">greet</span>())
+}</code></pre>
+
+        <h3>While Loops</h3>
+
+        <p>Loop while a condition is true:</p>
+
+        <pre><code><span class="ty">int</span> count = <span class="nu">0</span>
+<span class="kw">while</span> count < <span class="nu">10</span> {
+    <span class="fn">print</span>(count)
+    count += <span class="nu">1</span>
 }</code></pre>
 
         <h3>Match Expressions</h3>
