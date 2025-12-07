@@ -1399,6 +1399,13 @@ and gen_call ctx indent callee args =
           gen_expr ctx indent obj;
           emit ")"
         | _ -> emit "/* to_lower on non-string */")
+     | "to_string" ->
+       (match get_type ctx obj with
+        | Some TChar ->
+          emit "shotgun_char_to_string(";
+          gen_expr ctx indent obj;
+          emit ")"
+        | _ -> emit "/* to_string on non-char */")
      | _ ->
        (* Get the type of obj to generate proper method name *)
        let type_name = match get_type ctx obj with
@@ -2442,6 +2449,13 @@ let gen_prelude () =
   emitln "    for (size_t i = 0; i <= len; i++) {";
   emitln "        result[i] = (s[i] >= 'A' && s[i] <= 'Z') ? s[i] + 32 : s[i];";
   emitln "    }";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
+  emitln "static char* shotgun_char_to_string(char c) {";
+  emitln "    char* result = malloc(2);";
+  emitln "    result[0] = c;";
+  emitln "    result[1] = '\\0';";
   emitln "    return result;";
   emitln "}";
   emitln "";

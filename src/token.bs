@@ -1,0 +1,189 @@
+// Token definitions for the Shotgun lexer
+//
+// A token is a categorized chunk of source text. The lexer reads raw characters
+// and produces a stream of tokens that the parser consumes.
+
+// Source location for error reporting
+Location :: struct {
+    line int
+    col int
+    file str
+}
+
+// Format a location for error messages
+Location :: format(self) str {
+    return "{self.file}:{self.line}:{self.col}"
+}
+
+// Keywords wrapper struct - provides is_keyword method
+Keywords :: struct {
+    set Map<str, bool>
+}
+
+// Check if a string is a keyword
+Keywords :: is_keyword(self, str name) bool {
+    return self.set[name] or false
+}
+
+// Create a Keywords instance with all keywords
+fn make_keywords() Keywords {
+    kw := Map<str, bool>{}
+    // Function and type definitions
+    kw["fn"] = true
+    kw["struct"] = true
+    kw["variant"] = true
+    kw["trait"] = true
+    kw["impl"] = true
+    kw["error"] = true
+    // Control flow
+    kw["return"] = true
+    kw["if"] = true
+    kw["else"] = true
+    kw["for"] = true
+    kw["while"] = true
+    kw["match"] = true
+    // Operators and special
+    kw["in"] = true
+    kw["or"] = true
+    kw["using"] = true
+    // Concurrency
+    kw["go"] = true
+    kw["chan"] = true
+    kw["wait"] = true
+    // Values
+    kw["self"] = true
+    kw["none"] = true
+    kw["true"] = true
+    kw["false"] = true
+    // Built-in types
+    kw["str"] = true
+    kw["int"] = true
+    kw["bool"] = true
+    kw["char"] = true
+    kw["f32"] = true
+    kw["f64"] = true
+    kw["u32"] = true
+    kw["u64"] = true
+    // Declarations
+    kw["const"] = true
+    kw["uses"] = true
+    return Keywords { set: kw }
+}
+
+// Token types
+Token :: variant {
+    // Literals
+    TkInt { value int }
+    TkFloat { value f64 }
+    TkString { value str }
+    TkChar { value char }
+
+    // Identifiers and keywords
+    TkIdent { name str }         // lowercase identifier (variables, functions)
+    TkTypeIdent { name str }     // uppercase identifier (types)
+    TkKeyword { name str }       // reserved word
+
+    // Operators - Arithmetic
+    TkPlus          // +
+    TkMinus         // -
+    TkStar          // *
+    TkSlash         // /
+    TkPercent       // %
+
+    // Operators - Comparison
+    TkEqEq          // ==
+    TkNeq           // !=
+    TkLt            // <
+    TkGt            // >
+    TkLte           // <=
+    TkGte           // >=
+
+    // Operators - Logical
+    TkAndAnd        // &&
+    TkOrOr          // ||
+    TkBang          // !
+
+    // Operators - Assignment
+    TkEq            // =
+    TkPlusEq        // +=
+    TkMinusEq       // -=
+    TkStarEq        // *=
+    TkSlashEq       // /=
+    TkColonEq       // :=
+
+    // Punctuation
+    TkLParen        // (
+    TkRParen        // )
+    TkLBrace        // {
+    TkRBrace        // }
+    TkLBracket      // [
+    TkRBracket      // ]
+    TkComma         // ,
+    TkColon         // :
+    TkColonColon    // ::
+    TkDot           // .
+    TkArrow         // ->
+    TkQuestion      // ?
+    TkUnderscore    // _
+
+    // Special
+    TkNewline       // Significant newline (statement terminator)
+    TkEof           // End of file
+    TkError { msg str }
+}
+
+// Get a string representation of a token for debugging
+fn token_str(Token tok) str {
+    return match tok using Token {
+        TkInt { value: v } -> "INT({v})",
+        TkFloat { value: v } -> "FLOAT({v})",
+        TkString { value: v } -> "STRING({v})",
+        TkChar { value: v } -> "CHAR({v})",
+        TkIdent { name: n } -> "IDENT({n})",
+        TkTypeIdent { name: n } -> "TYPE({n})",
+        TkKeyword { name: n } -> "KW({n})",
+        TkPlus -> "PLUS",
+        TkMinus -> "MINUS",
+        TkStar -> "STAR",
+        TkSlash -> "SLASH",
+        TkPercent -> "PERCENT",
+        TkEqEq -> "EQEQ",
+        TkNeq -> "NEQ",
+        TkLt -> "LT",
+        TkGt -> "GT",
+        TkLte -> "LTE",
+        TkGte -> "GTE",
+        TkAndAnd -> "ANDAND",
+        TkOrOr -> "OROR",
+        TkBang -> "BANG",
+        TkEq -> "EQ",
+        TkPlusEq -> "PLUSEQ",
+        TkMinusEq -> "MINUSEQ",
+        TkStarEq -> "STAREQ",
+        TkSlashEq -> "SLASHEQ",
+        TkColonEq -> "COLONEQ",
+        TkLParen -> "LPAREN",
+        TkRParen -> "RPAREN",
+        TkLBrace -> "LBRACE",
+        TkRBrace -> "RBRACE",
+        TkLBracket -> "LBRACKET",
+        TkRBracket -> "RBRACKET",
+        TkComma -> "COMMA",
+        TkColon -> "COLON",
+        TkColonColon -> "COLONCOLON",
+        TkDot -> "DOT",
+        TkArrow -> "ARROW",
+        TkQuestion -> "QUESTION",
+        TkUnderscore -> "UNDERSCORE",
+        TkNewline -> "NEWLINE",
+        TkEof -> "EOF",
+        TkError { msg: m } -> "ERROR({m})",
+        _ -> "UNKNOWN"
+    }
+}
+
+// A token paired with its source location
+LocatedToken :: struct {
+    token Token
+    location Location
+}

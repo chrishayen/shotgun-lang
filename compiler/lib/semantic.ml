@@ -249,6 +249,11 @@ let rec infer_expr_type env expr =
            | "slice" | "trim" | "replace" | "to_upper" | "to_lower" -> Some TStr
            | "split" -> Some (TArray TStr)
            | _ -> None)
+        (* Char built-in methods *)
+        | Some TChar ->
+          (match method_name with
+           | "to_string" -> Some TStr
+           | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt
         | Some (TArray _) when method_name = "push" -> None  (* void return *)
@@ -733,6 +738,11 @@ let rec get_expr_type env locals expr =
            | "contains" | "starts_with" | "ends_with" -> Some TBool
            | "slice" | "trim" | "replace" | "to_upper" | "to_lower" -> Some TStr
            | "split" -> Some (TArray TStr)
+           | _ -> None)
+        (* Char built-in methods *)
+        | Some TChar ->
+          (match method_name with
+           | "to_string" -> Some TStr
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt

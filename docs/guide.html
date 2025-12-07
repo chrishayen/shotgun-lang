@@ -34,6 +34,16 @@
             <li><code>int</code> - 64-bit signed integer</li>
             <li><code>str</code> - string</li>
             <li><code>bool</code> - boolean (<code>true</code> or <code>false</code>)</li>
+            <li><code>char</code> - single character (e.g., <code>'a'</code>, <code>'\n'</code>)</li>
+        </ul>
+
+        <p>Convert between characters and their integer values using <code>chr()</code> and <code>ord()</code>:</p>
+
+        <pre><code>ch := <span class="fn">chr</span>(<span class="nu">65</span>)        <span class="cm">// 'A'</span>
+code := <span class="fn">ord</span>(<span class="ch">'A'</span>)       <span class="cm">// 65</span>
+s := ch.<span class="fn">to_string</span>()   <span class="cm">// "A"</span></code></pre>
+
+        <ul>
             <li><code>f32</code> - 32-bit floating point</li>
             <li><code>f64</code> - 64-bit floating point</li>
             <li><code>u32</code> - 32-bit unsigned integer</li>

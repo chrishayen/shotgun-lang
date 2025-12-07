@@ -1,0 +1,30 @@
+// Main entry point for the self-hosted Shotgun compiler
+//
+// For now, this is just a test driver for the lexer.
+
+uses: shotgun.lexer
+uses: shotgun.token
+
+fn main() {
+    source := "fn main x := 42 + 3"
+    lexer := new_lexer(source, "test.bs")
+
+    print("Lexing: {source}")
+    print("---")
+
+    done := false
+    while !done {
+        tok := lexer.next_token()
+        s := token_str(tok.token)
+        print("{tok.location.line}:{tok.location.col} {s}")
+
+        // Check if EOF
+        is_eof := match tok.token using Token {
+            TkEof -> true,
+            _ -> false
+        }
+        if is_eof {
+            done = true
+        }
+    }
+}
