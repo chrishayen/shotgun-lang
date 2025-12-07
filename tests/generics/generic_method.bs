@@ -11,5 +11,10 @@ Box<T> :: get(self) T {
 fn main {
     Box<int> b = Box<int> { value: 42 }
     int x = b.get()
-    print("generic method test passed")
+
+    if x == 42 {
+        print("generic method test passed")
+    } else {
+        print("FAIL: method returned wrong value")
+    }
 }

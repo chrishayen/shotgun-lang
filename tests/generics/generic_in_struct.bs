@@ -21,5 +21,19 @@ fn main {
         age: Option<int>.None
     }
 
-    print("generic in struct test passed")
+    int age1 = match p1.age using Option<int> {
+        Some { value: v } -> v,
+        None -> 0
+    }
+
+    int age2 = match p2.age using Option<int> {
+        Some { value: v } -> v,
+        None -> 0
+    }
+
+    if p1.name == "Alice" and age1 == 30 and p2.name == "Unknown" and age2 == 0 {
+        print("generic in struct test passed")
+    } else {
+        print("FAIL: values incorrect")
+    }
 }

@@ -11,5 +11,9 @@ fn main {
 
     int sum = a.value + b.value + c.value
 
-    print("generic reuse same test passed")
+    if sum == 6 {
+        print("generic reuse same test passed")
+    } else {
+        print("FAIL: sum doesn't match")
+    }
 }

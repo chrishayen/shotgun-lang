@@ -14,5 +14,18 @@ fn main {
     Pair<int, str> p = Pair<int, str> { first: 42, second: "hello" }
     Result<int, str> ok = Result<int, str>.Ok { value: 100 }
     Result<int, str> e = Result<int, str>.Err { err: "oops" }
-    print("multi param test passed")
+
+    int pf = p.first
+    str ps = p.second
+
+    int okval = match ok using Result<int, str> {
+        Ok { value: v } -> v,
+        Err { err: msg } -> 0
+    }
+
+    if pf == 42 and ps == "hello" and okval == 100 {
+        print("multi param test passed")
+    } else {
+        print("FAIL: values don't match")
+    }
 }

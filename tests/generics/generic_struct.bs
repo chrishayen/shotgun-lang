@@ -7,5 +7,13 @@ Box<T> :: struct {
 fn main {
     Box<int> int_box = Box<int> { value: 42 }
     Box<str> str_box = Box<str> { value: "hello" }
-    print("generic struct test passed")
+
+    int n = int_box.value
+    str s = str_box.value
+
+    if n == 42 and s == "hello" {
+        print("generic struct test passed")
+    } else {
+        print("FAIL: values don't match")
+    }
 }

@@ -11,9 +11,14 @@ fn main {
         Box<int> { value: 3 }
     ]
 
+    int sum = 0
     for b in boxes {
-        int v = b.value
+        sum = sum + b.value
     }
 
-    print("generic array test passed")
+    if sum == 6 {
+        print("generic array test passed")
+    } else {
+        print("FAIL: sum should be 6")
+    }
 }

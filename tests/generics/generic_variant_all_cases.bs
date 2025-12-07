@@ -16,8 +16,12 @@ fn main {
 
     int y = match fail using Result<int, str> {
         Ok { value: w } -> w,
-        Err { err: msg } -> 0
+        Err { err: msg } -> 99
     }
 
-    print("generic variant all cases test passed")
+    if x == 42 and y == 99 {
+        print("generic variant all cases test passed")
+    } else {
+        print("FAIL: match results incorrect")
+    }
 }

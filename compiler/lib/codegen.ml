@@ -355,6 +355,70 @@ let rec gen_expr ctx indent expr =
   | EMatch (exprs, using_type, arms) ->
     gen_match_expr ctx indent exprs using_type arms
 
+(* Get binding types from a pattern, given the using_type for variants *)
+and get_pattern_binding_types ctx using_type pat =
+  match pat with
+  | PWildcard | PLiteral _ -> []
+  | PIdent name ->
+    (* Single identifier pattern - type is the match expression type *)
+    (match using_type with Some t -> [(name, t)] | None -> [])
+  | PVariant (enum_type_opt, variant_name, bindings) ->
+    let enum_type = match enum_type_opt with
+      | Some t -> Some t
+      | None -> using_type
+    in
+    (match enum_type with
+     | Some (TApply (enum_name, type_args)) ->
+       (* Look up the variant's fields in the generic enum definition *)
+       (match Hashtbl.find_opt ctx.env.Semantic.enums enum_name with
+        | Some variant_list ->
+          (* Get type params from the generic_enum_params hashtable *)
+          let type_params = match Hashtbl.find_opt ctx.env.Semantic.generic_enum_params enum_name with
+            | Some params -> params
+            | None -> []
+          in
+          (* Find the variant *)
+          (match List.find_opt (fun v -> v.Ast.variant_name = variant_name) variant_list with
+           | Some v ->
+             (* For each binding, find the field type and substitute *)
+             List.filter_map (fun (field_name, binding_name) ->
+               match List.find_opt (fun f -> f.Ast.field_name = field_name) v.Ast.variant_fields with
+               | Some f ->
+                 let field_type = f.Ast.field_type in
+                 (* Substitute type parameters: if field_type is TUser "T" and type_args is [TInt], use TInt *)
+                 let subst_type =
+                   match field_type with
+                   | TUser param_name ->
+                     (* Find which type param this is and get corresponding type arg *)
+                     (try
+                       let idx = List.mapi (fun i p -> (i, p)) type_params |>
+                                 List.find (fun (_, p) -> p = param_name) |> fst in
+                       List.nth type_args idx
+                     with _ -> field_type)
+                   | _ -> field_type
+                 in
+                 Some (binding_name, subst_type)
+               | None -> None
+             ) bindings
+           | None -> [])
+        | None -> [])
+     | Some (TUser enum_name) ->
+       (* Non-generic enum - just look up field types directly *)
+       (match Hashtbl.find_opt ctx.env.Semantic.enums enum_name with
+        | Some variant_list ->
+          (match List.find_opt (fun v -> v.Ast.variant_name = variant_name) variant_list with
+           | Some v ->
+             List.filter_map (fun (field_name, binding_name) ->
+               match List.find_opt (fun f -> f.Ast.field_name = field_name) v.Ast.variant_fields with
+               | Some f -> Some (binding_name, f.Ast.field_type)
+               | None -> None
+             ) bindings
+           | None -> [])
+        | None -> [])
+     | _ -> [])
+  | PTuple pats ->
+    List.concat_map (fun p -> get_pattern_binding_types ctx using_type p) pats
+
 (* Generate match expression *)
 and gen_match_expr ctx indent exprs using_type arms =
   (* For now, generate a simple if-else chain for patterns *)
@@ -384,7 +448,10 @@ and gen_match_expr ctx indent exprs using_type arms =
   emit_indent (indent + 1);
   (match arms with
    | [] -> emit "int _match_result = 0"
-   | (_, first_result) :: _ ->
+   | (first_pat, first_result) :: _ ->
+     (* Add pattern bindings to ctx.locals temporarily to get correct type *)
+     let bindings = get_pattern_binding_types ctx using_type first_pat in
+     List.iter (fun (name, typ) -> add_local ctx name typ) bindings;
      let result_type = get_type ctx first_result in
      let c_t = match result_type with
        | Some t -> c_type t
@@ -1021,6 +1088,12 @@ let gen_monomorphized_struct base_name type_params type_args fields =
   ) fields;
   emit "} ";
   emit mangled;
+  emitln ";";
+  (* Also generate array type for this monomorphized struct *)
+  emit "typedef struct { ";
+  emit mangled;
+  emit "* data; size_t len; size_t cap; } Array_";
+  emit mangled;
   emitln ";"
 
 (* Generate monomorphized enum: Option<int> -> Option_int64 with T->int64_t *)
@@ -1215,6 +1288,14 @@ let gen_monomorphized_types program =
     | SGo e -> scan_expr e
   in
   List.iter (function
+    | IStruct (_, type_params, fields) when type_params = [] ->
+      (* Scan non-generic struct fields for generic type references *)
+      List.iter (fun f -> scan_type f.field_type) fields
+    | IEnum (_, type_params, variants) when type_params = [] ->
+      (* Scan non-generic enum variant fields for generic type references *)
+      List.iter (fun v ->
+        List.iter (fun f -> scan_type f.field_type) v.variant_fields
+      ) variants
     | IFunction (_, _type_params, params, ret, body) ->
       List.iter (function PSelf -> () | PNamed (t, _) -> scan_type t) params;
       (match ret with Some t -> scan_type t | None -> ());
@@ -1735,16 +1816,16 @@ let generate env program =
     emitln ";"
   ) !user_array_types;
 
-  (* Generate struct and enum definitions first - only non-generic ones *)
+  (* Generate monomorphized types FIRST - non-generic structs may reference them *)
+  gen_monomorphized_types program;
+
+  (* Generate struct and enum definitions - only non-generic ones *)
   List.iter (function
     | IStruct (name, type_params, fields) when type_params = [] -> gen_struct name fields
     | IEnum (name, type_params, variants) when type_params = [] -> gen_enum name variants
     | IError (name, fields) -> gen_error name fields
     | _ -> ()
   ) program;
-
-  (* Generate monomorphized types for generic instantiations *)
-  gen_monomorphized_types program;
 
   (* Forward declarations for all functions and methods - only non-generic ones *)
   emitln "";

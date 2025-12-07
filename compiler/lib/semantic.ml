@@ -20,6 +20,8 @@ type env = {
   errors: (string, field list) Hashtbl.t;
   methods: (string * string, param list * typ option) Hashtbl.t;  (* (type, method) -> params, return *)
   impls: (string * string, impl_method list) Hashtbl.t;  (* (type, trait) -> methods *)
+  generic_enum_params: (string, string list) Hashtbl.t;  (* enum name -> type params *)
+  generic_struct_params: (string, string list) Hashtbl.t;  (* struct name -> type params *)
   in_method: bool;
   current_type: string option;
   errors_list: string list ref;  (* Use ref so it's shared across scopes *)
@@ -33,6 +35,8 @@ let create_env () = {
   errors = Hashtbl.create 16;
   methods = Hashtbl.create 64;
   impls = Hashtbl.create 32;
+  generic_enum_params = Hashtbl.create 16;
+  generic_struct_params = Hashtbl.create 16;
   in_method = false;
   current_type = None;
   errors_list = ref [];
@@ -61,10 +65,12 @@ let check_param_order env params =
 
 (* Register all top-level declarations first *)
 let register_item env = function
-  | IStruct (name, _type_params, fields) ->
-    Hashtbl.replace env.structs name fields
-  | IEnum (name, _type_params, variants) ->
-    Hashtbl.replace env.enums name variants
+  | IStruct (name, type_params, fields) ->
+    Hashtbl.replace env.structs name fields;
+    if type_params <> [] then Hashtbl.replace env.generic_struct_params name type_params
+  | IEnum (name, type_params, variants) ->
+    Hashtbl.replace env.enums name variants;
+    if type_params <> [] then Hashtbl.replace env.generic_enum_params name type_params
   | ITrait (name, methods) ->
     Hashtbl.replace env.traits name methods
   | IError (name, fields) ->

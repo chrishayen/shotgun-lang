@@ -22,5 +22,14 @@ fn main {
 
     Option<Point> maybe_point = Option<Point>.Some { value: p }
 
-    print("generic with user type test passed")
+    Point matched = match maybe_point using Option<Point> {
+        Some { value: v } -> v,
+        None -> Point { x: 0, y: 0 }
+    }
+
+    if extracted.x == 10 and extracted.y == 20 and matched.x == 10 and matched.y == 20 {
+        print("generic with user type test passed")
+    } else {
+        print("FAIL: point values incorrect")
+    }
 }
