@@ -154,7 +154,8 @@ let rec infer_expr_type env expr =
           (match method_name with
            | "len" | "at" | "find" -> Some TInt
            | "contains" | "starts_with" | "ends_with" -> Some TBool
-           | "slice" -> Some TStr
+           | "slice" | "trim" | "replace" | "to_upper" | "to_lower" -> Some TStr
+           | "split" -> Some (TArray TStr)
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt
@@ -495,7 +496,8 @@ let rec get_expr_type env locals expr =
           (match method_name with
            | "len" | "at" | "find" -> Some TInt
            | "contains" | "starts_with" | "ends_with" -> Some TBool
-           | "slice" -> Some TStr
+           | "slice" | "trim" | "replace" | "to_upper" | "to_lower" -> Some TStr
+           | "split" -> Some (TArray TStr)
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt

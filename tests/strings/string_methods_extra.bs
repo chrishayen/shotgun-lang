@@ -1,0 +1,23 @@
+fn main() {
+    // trim() - remove leading/trailing whitespace
+    str padded = "  hello world  "
+    print(padded.trim())
+
+    // to_upper() / to_lower()
+    str mixed = "Hello World"
+    print(mixed.to_upper())
+    print(mixed.to_lower())
+
+    // replace()
+    str original = "hello world"
+    print(original.replace("world", "shotgun"))
+    print(original.replace("l", "L"))
+
+    // split()
+    str csv = "a,b,c,d"
+    str[] parts = csv.split(",")
+    print(parts.len())
+    for part in parts {
+        print(part)
+    }
+}

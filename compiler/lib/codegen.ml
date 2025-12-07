@@ -910,6 +910,50 @@ and gen_call ctx indent callee args =
            | _ -> ());
           emit ")"
         | _ -> emit "/* slice on non-string */")
+     | "split" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_split(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")"
+        | _ -> emit "/* split on non-string */")
+     | "trim" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_trim(";
+          gen_expr ctx indent obj;
+          emit ")"
+        | _ -> emit "/* trim on non-string */")
+     | "replace" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_replace(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with
+           | [old_s; new_s] ->
+             gen_expr ctx indent old_s;
+             emit ", ";
+             gen_expr ctx indent new_s
+           | _ -> ());
+          emit ")"
+        | _ -> emit "/* replace on non-string */")
+     | "to_upper" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_to_upper(";
+          gen_expr ctx indent obj;
+          emit ")"
+        | _ -> emit "/* to_upper on non-string */")
+     | "to_lower" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_to_lower(";
+          gen_expr ctx indent obj;
+          emit ")"
+        | _ -> emit "/* to_lower on non-string */")
      | _ ->
        (* Get the type of obj to generate proper method name *)
        let type_name = match get_type ctx obj with
@@ -1794,9 +1838,85 @@ let gen_prelude () =
   emitln "    return strcmp(s + slen - suffixlen, suffix) == 0;";
   emitln "}";
   emitln "";
+  emitln "static char* shotgun_str_trim(char* s) {";
+  emitln "    while (*s && (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r')) s++;";
+  emitln "    if (*s == 0) return strdup(\"\");";
+  emitln "    char* end = s + strlen(s) - 1;";
+  emitln "    while (end > s && (*end == ' ' || *end == '\\t' || *end == '\\n' || *end == '\\r')) end--;";
+  emitln "    size_t len = end - s + 1;";
+  emitln "    char* result = malloc(len + 1);";
+  emitln "    memcpy(result, s, len);";
+  emitln "    result[len] = '\\0';";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
+  emitln "static char* shotgun_str_replace(char* s, char* old, char* new_s) {";
+  emitln "    size_t old_len = strlen(old);";
+  emitln "    size_t new_len = strlen(new_s);";
+  emitln "    size_t count = 0;";
+  emitln "    char* tmp = s;";
+  emitln "    while ((tmp = strstr(tmp, old))) { count++; tmp += old_len; }";
+  emitln "    size_t result_len = strlen(s) + count * (new_len - old_len);";
+  emitln "    char* result = malloc(result_len + 1);";
+  emitln "    char* dst = result;";
+  emitln "    while (*s) {";
+  emitln "        if (strncmp(s, old, old_len) == 0) {";
+  emitln "            memcpy(dst, new_s, new_len);";
+  emitln "            dst += new_len;";
+  emitln "            s += old_len;";
+  emitln "        } else {";
+  emitln "            *dst++ = *s++;";
+  emitln "        }";
+  emitln "    }";
+  emitln "    *dst = '\\0';";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
+  emitln "static char* shotgun_str_to_upper(char* s) {";
+  emitln "    size_t len = strlen(s);";
+  emitln "    char* result = malloc(len + 1);";
+  emitln "    for (size_t i = 0; i <= len; i++) {";
+  emitln "        result[i] = (s[i] >= 'a' && s[i] <= 'z') ? s[i] - 32 : s[i];";
+  emitln "    }";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
+  emitln "static char* shotgun_str_to_lower(char* s) {";
+  emitln "    size_t len = strlen(s);";
+  emitln "    char* result = malloc(len + 1);";
+  emitln "    for (size_t i = 0; i <= len; i++) {";
+  emitln "        result[i] = (s[i] >= 'A' && s[i] <= 'Z') ? s[i] + 32 : s[i];";
+  emitln "    }";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
   emitln "/* Array runtime */";
-  emitln "typedef struct { int64_t* data; size_t len; size_t cap; } Array_int64;";
   emitln "typedef struct { char** data; size_t len; size_t cap; } Array_str;";
+  emitln "";
+  emitln "static Array_str* shotgun_str_split(char* s, char* delim) {";
+  emitln "    size_t delim_len = strlen(delim);";
+  emitln "    size_t count = 1;";
+  emitln "    char* tmp = s;";
+  emitln "    while ((tmp = strstr(tmp, delim))) { count++; tmp += delim_len; }";
+  emitln "    Array_str* arr = malloc(sizeof(Array_str));";
+  emitln "    arr->data = malloc(sizeof(char*) * count);";
+  emitln "    arr->len = count;";
+  emitln "    arr->cap = count;";
+  emitln "    size_t i = 0;";
+  emitln "    char* start = s;";
+  emitln "    while ((tmp = strstr(start, delim))) {";
+  emitln "        size_t part_len = tmp - start;";
+  emitln "        arr->data[i] = malloc(part_len + 1);";
+  emitln "        memcpy(arr->data[i], start, part_len);";
+  emitln "        arr->data[i][part_len] = '\\0';";
+  emitln "        i++;";
+  emitln "        start = tmp + delim_len;";
+  emitln "    }";
+  emitln "    arr->data[i] = strdup(start);";
+  emitln "    return arr;";
+  emitln "}";
+  emitln "";
+  emitln "typedef struct { int64_t* data; size_t len; size_t cap; } Array_int64;";
   emitln "typedef struct { bool* data; size_t len; size_t cap; } Array_bool;";
   emitln "typedef struct { float* data; size_t len; size_t cap; } Array_f32;";
   emitln "typedef struct { double* data; size_t len; size_t cap; } Array_f64;";

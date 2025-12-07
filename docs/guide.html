@@ -502,11 +502,23 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 <span class="ty">bool</span> starts = s.<span class="fn">starts_with</span>(<span class="st">"hello"</span>)  <span class="cm">// true</span>
 <span class="ty">bool</span> ends = s.<span class="fn">ends_with</span>(<span class="st">"world"</span>)      <span class="cm">// true</span></code></pre>
 
-        <h3>Slicing</h3>
+        <h3>Slicing and Splitting</h3>
 
         <pre><code><span class="ty">str</span> s = <span class="st">"hello world"</span>
 <span class="ty">str</span> sub = s.<span class="fn">slice</span>(<span class="nu">0</span>, <span class="nu">5</span>)    <span class="cm">// "hello"</span>
-<span class="ty">str</span> sub2 = s.<span class="fn">slice</span>(<span class="nu">6</span>, <span class="nu">11</span>)  <span class="cm">// "world"</span></code></pre>
+<span class="ty">str</span> sub2 = s.<span class="fn">slice</span>(<span class="nu">6</span>, <span class="nu">11</span>)  <span class="cm">// "world"</span>
+
+<span class="ty">str</span> csv = <span class="st">"a,b,c"</span>
+<span class="ty">str[]</span> parts = csv.<span class="fn">split</span>(<span class="st">","</span>)  <span class="cm">// ["a", "b", "c"]</span></code></pre>
+
+        <h3>Transformation</h3>
+
+        <pre><code><span class="ty">str</span> s = <span class="st">"  Hello World  "</span>
+
+<span class="ty">str</span> trimmed = s.<span class="fn">trim</span>()           <span class="cm">// "Hello World"</span>
+<span class="ty">str</span> upper = s.<span class="fn">to_upper</span>()         <span class="cm">// "  HELLO WORLD  "</span>
+<span class="ty">str</span> lower = s.<span class="fn">to_lower</span>()         <span class="cm">// "  hello world  "</span>
+<span class="ty">str</span> replaced = s.<span class="fn">replace</span>(<span class="st">"World"</span>, <span class="st">"Shotgun"</span>)  <span class="cm">// "  Hello Shotgun  "</span></code></pre>
 
         <h2>Operators</h2>
 
