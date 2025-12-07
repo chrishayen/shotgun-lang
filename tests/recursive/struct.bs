@@ -1,0 +1,19 @@
+// Test recursive struct (tree node)
+
+Node :: struct {
+    value int
+    children Node[]
+}
+
+fn main {
+    // Create a leaf node
+    Node leaf = Node { value: 1, children: [] }
+
+    // Create a parent with children
+    Node[] kids = [leaf]
+    Node parent = Node { value: 0, children: kids }
+
+    print(parent.value)
+    print(parent.children[0].value)
+    print("done")
+}

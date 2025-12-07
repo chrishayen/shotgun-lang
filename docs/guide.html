@@ -132,6 +132,31 @@
 
         <p>Unlike structs (which have all fields at once), a variant is exactly one of its cases at any time. This makes invalid states unrepresentable.</p>
 
+        <h2>Recursive Types</h2>
+
+        <p>Types can reference themselves, useful for tree structures and ASTs:</p>
+
+        <pre><code><span class="cm">// Recursive struct via arrays</span>
+<span class="ty">Node</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    value <span class="ty">int</span>
+    children <span class="ty">Node</span>[]
+}
+
+<span class="cm">// Recursive variant (like an AST)</span>
+<span class="ty">Expr</span> <span class="kw">::</span> <span class="kw">variant</span> {
+    <span class="ty">Int</span> { value <span class="ty">int</span> }
+    <span class="ty">Binary</span> {
+        left <span class="ty">Expr</span>
+        right <span class="ty">Expr</span>
+    }
+}</code></pre>
+
+        <p>Recursive variant fields are automatically heap-allocated as pointers:</p>
+
+        <pre><code><span class="ty">Expr</span> a = <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">1</span> }
+<span class="ty">Expr</span> b = <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">2</span> }
+<span class="ty">Expr</span> add = <span class="ty">Expr</span>.<span class="ty">Binary</span> { left: a, right: b }</code></pre>
+
         <h2>Generics</h2>
 
         <p>Define type-safe containers with type parameters using angle brackets:</p>
@@ -289,6 +314,34 @@
 
         <pre><code><span class="ty">int</span> first = numbers[<span class="nu">0</span>]
 <span class="ty">str</span> name = names[<span class="nu">1</span>]</code></pre>
+
+        <h2>Maps</h2>
+
+        <p>Maps are key-value collections using <code>Map&lt;K, V&gt;</code> syntax:</p>
+
+        <pre><code><span class="ty">Map</span>&lt;<span class="ty">str</span>, <span class="ty">int</span>&gt; counts = <span class="ty">Map</span>&lt;<span class="ty">str</span>, <span class="ty">int</span>&gt;{}
+
+<span class="cm">// Set values using index syntax</span>
+counts[<span class="st">"foo"</span>] = <span class="nu">1</span>
+counts[<span class="st">"bar"</span>] = <span class="nu">2</span>
+
+<span class="cm">// Get values</span>
+<span class="ty">int</span> foo_count = counts[<span class="st">"foo"</span>]</code></pre>
+
+        <h3>Map Methods</h3>
+
+        <pre><code><span class="cm">// Check if key exists</span>
+<span class="kw">if</span> counts.<span class="fn">has</span>(<span class="st">"foo"</span>) {
+    <span class="fn">print</span>(<span class="st">"found foo"</span>)
+}
+
+<span class="cm">// Get number of entries</span>
+<span class="ty">int</span> size = counts.<span class="fn">len</span>()
+
+<span class="cm">// Delete a key</span>
+counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre>
+
+        <p>Maps currently support string keys only. Integer keys will be added in a future version.</p>
 
         <h2>Control Flow</h2>
 

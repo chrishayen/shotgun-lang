@@ -114,7 +114,8 @@ let rec type_exists env typ =
   | TResult (t, e) -> type_exists env t && (e = "Error" || Hashtbl.mem env.errors e)
   | TParam _ -> true  (* Type parameters are always valid within their scope *)
   | TApply (name, args) ->
-    (Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
+    (* Map<K, V> is a built-in generic type *)
+    (name = "Map" || Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
     List.for_all (type_exists env) args
 
 (* Get type of expression - simplified version *)
@@ -162,6 +163,7 @@ let rec infer_expr_type env expr =
   | EIndex (arr, _idx) ->
     (match infer_expr_type env arr with
      | Some (TArray t) -> Some t
+     | Some (TApply ("Map", [_k; v])) -> Some v  (* Map indexing returns value type *)
      | _ -> None)
   | EOr (e, _clause) -> infer_expr_type env e
   | EStructLit (name, type_args, _fields) ->
@@ -259,7 +261,8 @@ let rec check_expr env expr =
      | OrError (_, fields) -> List.iter (fun (_, e2) -> check_expr env e2) fields
      | OrWait e2 -> check_expr env e2)
   | EStructLit (name, _type_args, fields) ->
-    if not (Hashtbl.mem env.structs name) then
+    (* Map is a built-in type, not a user struct *)
+    if name <> "Map" && not (Hashtbl.mem env.structs name) then
       add_error env (Printf.sprintf "Unknown struct type: %s" name);
     List.iter (fun (_, e) -> check_expr env e) fields
   | EEnumVariant (enum_name, _type_args, variant_name, fields) ->
@@ -380,7 +383,8 @@ let rec type_exists_with_params env type_params typ =
   | TChan t -> type_exists_with_params env type_params t
   | TResult (t, e) -> type_exists_with_params env type_params t && (e = "Error" || Hashtbl.mem env.errors e)
   | TApply (name, args) ->
-    (Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
+    (* Map<K, V> is a built-in generic type *)
+    (name = "Map" || Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
     List.for_all (type_exists_with_params env type_params) args
   | _ -> type_exists env typ
 
@@ -487,6 +491,7 @@ let rec get_expr_type env locals expr =
   | EIndex (arr, _) ->
     (match get_expr_type env locals arr with
      | Some (TArray t) -> Some t
+     | Some (TApply ("Map", [_k; v])) -> Some v  (* Map indexing returns value type *)
      | _ -> None)
   | EOr (e, _) -> get_expr_type env locals e
   | EStructLit (name, type_args, _) ->

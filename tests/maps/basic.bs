@@ -1,0 +1,43 @@
+// Basic map operations
+
+fn main {
+    // Create an empty map
+    Map<str, int> counts = Map<str, int>{}
+
+    // Set values using index syntax
+    counts["foo"] = 1
+    counts["bar"] = 2
+    counts["baz"] = 3
+
+    // Get values using index syntax
+    int foo_count = counts["foo"]
+    print(foo_count)  // 1
+
+    int bar_count = counts["bar"]
+    print(bar_count)  // 2
+
+    // Check if key exists
+    if counts.has("foo") {
+        print("has foo")
+    }
+
+    if counts.has("missing") {
+        print("ERROR: should not have missing")
+    }
+
+    // Get length
+    int size = counts.len()
+    print(size)  // 3
+
+    // Delete a key
+    counts.delete("bar")
+    int new_size = counts.len()
+    print(new_size)  // 2
+
+    // Verify bar is gone
+    if counts.has("bar") {
+        print("ERROR: bar should be deleted")
+    }
+
+    print("done")
+}

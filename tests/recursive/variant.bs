@@ -1,0 +1,27 @@
+// Test recursive variant (like AST nodes)
+
+Expr :: variant {
+    Int { value int }
+    Binary {
+        left Expr
+        right Expr
+    }
+}
+
+fn main {
+    // Create leaf nodes
+    Expr a = Expr.Int { value: 1 }
+    Expr b = Expr.Int { value: 2 }
+
+    // Create a binary expression containing other expressions
+    Expr add = Expr.Binary { left: a, right: b }
+
+    // Pattern match on the recursive structure
+    str result = match add using Expr {
+        Int { value: v } -> "int",
+        Binary { left: l, right: r } -> "binary"
+    }
+
+    print(result)
+    print("done")
+}

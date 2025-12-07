@@ -28,6 +28,13 @@ let next_go_id () =
   go_counter := id + 1;
   id
 
+(* Check if a type directly references a given type name (for recursive types) *)
+let rec type_references_name name = function
+  | TUser n -> n = name
+  | TOptional t -> type_references_name name t
+  | TArray _ -> false  (* Arrays are already pointers *)
+  | _ -> false
+
 (* Convert Shotgun type to C type *)
 let rec c_type = function
   | TInt -> "int64_t"
@@ -44,7 +51,15 @@ let rec c_type = function
   | TResult (t, _) -> c_type t  (* Simplified: just return the value type *)
   | TVoid -> "void"
   | TParam name -> name  (* Type parameter - should be substituted before codegen *)
+  | TApply ("Map", _) -> "ShotgunMap*"  (* Maps use generic runtime *)
   | TApply (name, args) -> mangle_generic_name name args
+
+(* Convert type to C, using pointers for recursive references to parent_name *)
+and c_type_in_parent parent_name t =
+  if type_references_name parent_name t then
+    c_type t ^ "*"  (* Use pointer for recursive reference *)
+  else
+    c_type t
 
 (* Mangle a generic type name: List<int> -> List_int *)
 and mangle_generic_name name args =
@@ -289,12 +304,32 @@ let rec gen_expr ctx indent expr =
     emit (if use_arrow then "->" else ".");
     emit field
   | EIndex (arr, idx) ->
-    gen_expr ctx indent arr;
-    emit "->data[";
-    gen_expr ctx indent idx;
-    emit "]"
+    (match get_type ctx arr with
+     | Some (TApply ("Map", [_k; v])) ->
+       (* Map indexing: dereference void pointer from shotgun_map_get *)
+       emit "*(";
+       emit (c_type v);
+       emit "*)shotgun_map_get(";
+       gen_expr ctx indent arr;
+       emit ", ";
+       gen_expr ctx indent idx;
+       emit ")"
+     | _ ->
+       (* Array indexing *)
+       gen_expr ctx indent arr;
+       emit "->data[";
+       gen_expr ctx indent idx;
+       emit "]")
   | EOr (e, clause) ->
     gen_or ctx indent e clause
+  | EStructLit ("Map", type_args, _fields) ->
+    (* Map<K, V>{} creates an empty map *)
+    (match type_args with
+     | [_k; v] ->
+       emit "shotgun_map_create(sizeof(";
+       emit (c_type v);
+       emit "))"
+     | _ -> emit "shotgun_map_create(sizeof(int64_t))")
   | EStructLit (name, type_args, fields) ->
     let mangled = if type_args = [] then name else mangle_generic_name name type_args in
     emit "(";
@@ -312,6 +347,15 @@ let rec gen_expr ctx indent expr =
     emit " }"
   | EEnumVariant (enum_name, type_args, variant_name, fields) ->
     let mangled = if type_args = [] then enum_name else mangle_generic_name enum_name type_args in
+    (* Look up variant field types to detect recursive fields *)
+    let field_types =
+      match Hashtbl.find_opt ctx.env.Semantic.enums enum_name with
+      | Some variants ->
+        (match List.find_opt (fun v -> v.variant_name = variant_name) variants with
+         | Some v -> List.map (fun f -> (f.field_name, f.field_type)) v.variant_fields
+         | None -> [])
+      | None -> []
+    in
     emit "(";
     emit mangled;
     emit "){ .tag = ";
@@ -333,7 +377,33 @@ let rec gen_expr ctx indent expr =
         emit ".";
         emit fname;
         emit " = ";
-        gen_expr ctx indent fexpr
+        (* Check if this field is recursive (references parent enum) *)
+        let field_type = List.assoc_opt fname field_types in
+        let is_recursive = match field_type with
+          | Some ft -> type_references_name enum_name ft
+          | None -> false
+        in
+        if is_recursive then begin
+          (* Allocate memory for recursive field *)
+          (* For simple identifiers, take address directly *)
+          (match fexpr with
+           | EIdent _ ->
+             emit "shotgun_alloc_copy(sizeof(";
+             emit mangled;
+             emit "), &";
+             gen_expr ctx indent fexpr;
+             emit ")"
+           | _ ->
+             (* For complex expressions, use statement expression to create addressable temp *)
+             emit "({ ";
+             emit mangled;
+             emit " _tmp = ";
+             gen_expr ctx indent fexpr;
+             emit "; shotgun_alloc_copy(sizeof(";
+             emit mangled;
+             emit "), &_tmp); })")
+        end else
+          gen_expr ctx indent fexpr
       ) fields;
       emit " }"
     end;
@@ -347,11 +417,32 @@ let rec gen_expr ctx indent expr =
     gen_expr ctx indent e;
     emit ")"
   | EAssign (op, lhs, rhs) ->
-    gen_expr ctx indent lhs;
-    emit " ";
-    emit (c_assignop op);
-    emit " ";
-    gen_expr ctx indent rhs
+    (match lhs with
+     | EIndex (map_expr, key_expr) ->
+       (match get_type ctx map_expr with
+        | Some (TApply ("Map", [_k; v])) when op = Assign ->
+          (* Map assignment: shotgun_map_set(m, key, &(V){value}) *)
+          emit "shotgun_map_set(";
+          gen_expr ctx indent map_expr;
+          emit ", ";
+          gen_expr ctx indent key_expr;
+          emit ", &(";
+          emit (c_type v);
+          emit "){";
+          gen_expr ctx indent rhs;
+          emit "})"
+        | _ ->
+          gen_expr ctx indent lhs;
+          emit " ";
+          emit (c_assignop op);
+          emit " ";
+          gen_expr ctx indent rhs)
+     | _ ->
+       gen_expr ctx indent lhs;
+       emit " ";
+       emit (c_assignop op);
+       emit " ";
+       gen_expr ctx indent rhs)
   | EMatch (exprs, using_type, arms) ->
     gen_match_expr ctx indent exprs using_type arms
 
@@ -696,6 +787,63 @@ and gen_call ctx indent callee args =
        emit "(";
        gen_expr ctx indent obj;
        emit ")"
+     (* Map methods *)
+     | "has" ->
+       (match get_type ctx obj with
+        | Some (TApply ("Map", _)) ->
+          emit "shotgun_map_has(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")"
+        | _ -> emit "/* has on non-map */")
+     | "len" ->
+       (match get_type ctx obj with
+        | Some (TApply ("Map", _)) ->
+          emit "(int64_t)shotgun_map_len(";
+          gen_expr ctx indent obj;
+          emit ")"
+        | Some (TArray _) ->
+          emit "(int64_t)";
+          gen_expr ctx indent obj;
+          emit "->len"
+        | _ -> emit "/* len on unknown type */")
+     | "delete" ->
+       (match get_type ctx obj with
+        | Some (TApply ("Map", _)) ->
+          emit "shotgun_map_delete(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")"
+        | _ -> emit "/* delete on non-map */")
+     | "get" ->
+       (match get_type ctx obj with
+        | Some (TApply ("Map", [_k; v])) ->
+          emit "*(";
+          emit (c_type v);
+          emit "*)shotgun_map_get(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")"
+        | _ -> emit "/* get on non-map */")
+     | "set" ->
+       (match get_type ctx obj with
+        | Some (TApply ("Map", [_k; v])) ->
+          emit "shotgun_map_set(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with
+           | [key; value] ->
+             gen_expr ctx indent key;
+             emit ", &(";
+             emit (c_type v);
+             emit "){";
+             gen_expr ctx indent value;
+             emit "})"
+           | _ -> emit "/* invalid set args */)")
+        | _ -> emit "/* set on non-map */")
      | _ ->
        (* Get the type of obj to generate proper method name *)
        let type_name = match get_type ctx obj with
@@ -1025,7 +1173,7 @@ let gen_enum name variants =
     if v.variant_fields <> [] then begin
       emit "typedef struct { ";
       List.iter (fun f ->
-        emit (c_type f.field_type);
+        emit (c_type_in_parent name f.field_type);
         emit " ";
         emit f.field_name;
         emit "; "
@@ -1552,6 +1700,13 @@ let gen_prelude () =
   emitln "    return buf;";
   emitln "}";
   emitln "";
+  emitln "/* Allocation helper for recursive types */";
+  emitln "static void* shotgun_alloc_copy(size_t size, void* src) {";
+  emitln "    void* p = malloc(size);";
+  emitln "    memcpy(p, src, size);";
+  emitln "    return p;";
+  emitln "}";
+  emitln "";
   emitln "/* Array runtime */";
   emitln "typedef struct { int64_t* data; size_t len; size_t cap; } Array_int64;";
   emitln "typedef struct { char** data; size_t len; size_t cap; } Array_str;";
@@ -1628,6 +1783,99 @@ let gen_prelude () =
   emitln "static inline Chan_f64* chan_create_f64(void) { return shotgun_chan_create(sizeof(double)); }";
   emitln "static inline void chan_send_f64(Chan_f64* c, double v) { shotgun_chan_send(c, &v); }";
   emitln "static inline double chan_recv_f64(Chan_f64* c) { double v; shotgun_chan_recv(c, &v); return v; }";
+  emitln "";
+  (* Hash map runtime *)
+  emitln "/* Hash map runtime */";
+  emitln "typedef struct {";
+  emitln "    char* key;";
+  emitln "    void* value;";
+  emitln "    bool occupied;";
+  emitln "    bool deleted;";
+  emitln "} ShotgunMapEntry;";
+  emitln "";
+  emitln "typedef struct {";
+  emitln "    ShotgunMapEntry* buckets;";
+  emitln "    size_t capacity;";
+  emitln "    size_t size;";
+  emitln "    size_t value_size;";
+  emitln "} ShotgunMap;";
+  emitln "";
+  emitln "static uint64_t shotgun_hash_str(const char* s) {";
+  emitln "    uint64_t h = 14695981039346656037ULL;";
+  emitln "    while (*s) { h ^= (uint64_t)*s++; h *= 1099511628211ULL; }";
+  emitln "    return h;";
+  emitln "}";
+  emitln "";
+  emitln "static ShotgunMap* shotgun_map_create(size_t value_size) {";
+  emitln "    ShotgunMap* m = malloc(sizeof(ShotgunMap));";
+  emitln "    m->capacity = 16;";
+  emitln "    m->size = 0;";
+  emitln "    m->value_size = value_size;";
+  emitln "    m->buckets = calloc(m->capacity, sizeof(ShotgunMapEntry));";
+  emitln "    return m;";
+  emitln "}";
+  emitln "";
+  emitln "static void shotgun_map_resize(ShotgunMap* m) {";
+  emitln "    size_t old_cap = m->capacity;";
+  emitln "    ShotgunMapEntry* old_buckets = m->buckets;";
+  emitln "    m->capacity *= 2;";
+  emitln "    m->buckets = calloc(m->capacity, sizeof(ShotgunMapEntry));";
+  emitln "    m->size = 0;";
+  emitln "    for (size_t i = 0; i < old_cap; i++) {";
+  emitln "        if (old_buckets[i].occupied && !old_buckets[i].deleted) {";
+  emitln "            uint64_t h = shotgun_hash_str(old_buckets[i].key) % m->capacity;";
+  emitln "            while (m->buckets[h].occupied) h = (h + 1) % m->capacity;";
+  emitln "            m->buckets[h] = old_buckets[i];";
+  emitln "            m->size++;";
+  emitln "        }";
+  emitln "    }";
+  emitln "    free(old_buckets);";
+  emitln "}";
+  emitln "";
+  emitln "static void shotgun_map_set(ShotgunMap* m, char* key, void* value) {";
+  emitln "    if (m->size * 2 >= m->capacity) shotgun_map_resize(m);";
+  emitln "    uint64_t h = shotgun_hash_str(key) % m->capacity;";
+  emitln "    while (m->buckets[h].occupied && !m->buckets[h].deleted && strcmp(m->buckets[h].key, key) != 0) {";
+  emitln "        h = (h + 1) % m->capacity;";
+  emitln "    }";
+  emitln "    if (!m->buckets[h].occupied || m->buckets[h].deleted) {";
+  emitln "        m->buckets[h].key = strdup(key);";
+  emitln "        m->buckets[h].value = malloc(m->value_size);";
+  emitln "        m->buckets[h].occupied = true;";
+  emitln "        m->buckets[h].deleted = false;";
+  emitln "        m->size++;";
+  emitln "    }";
+  emitln "    memcpy(m->buckets[h].value, value, m->value_size);";
+  emitln "}";
+  emitln "";
+  emitln "static void* shotgun_map_get(ShotgunMap* m, char* key) {";
+  emitln "    uint64_t h = shotgun_hash_str(key) % m->capacity;";
+  emitln "    while (m->buckets[h].occupied) {";
+  emitln "        if (!m->buckets[h].deleted && strcmp(m->buckets[h].key, key) == 0) {";
+  emitln "            return m->buckets[h].value;";
+  emitln "        }";
+  emitln "        h = (h + 1) % m->capacity;";
+  emitln "    }";
+  emitln "    return NULL;";
+  emitln "}";
+  emitln "";
+  emitln "static bool shotgun_map_has(ShotgunMap* m, char* key) {";
+  emitln "    return shotgun_map_get(m, key) != NULL;";
+  emitln "}";
+  emitln "";
+  emitln "static void shotgun_map_delete(ShotgunMap* m, char* key) {";
+  emitln "    uint64_t h = shotgun_hash_str(key) % m->capacity;";
+  emitln "    while (m->buckets[h].occupied) {";
+  emitln "        if (!m->buckets[h].deleted && strcmp(m->buckets[h].key, key) == 0) {";
+  emitln "            m->buckets[h].deleted = true;";
+  emitln "            m->size--;";
+  emitln "            return;";
+  emitln "        }";
+  emitln "        h = (h + 1) % m->capacity;";
+  emitln "    }";
+  emitln "}";
+  emitln "";
+  emitln "static size_t shotgun_map_len(ShotgunMap* m) { return m->size; }";
   emitln ""
 
 (* Generate goroutine wrapper struct and function *)
