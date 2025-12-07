@@ -5,7 +5,7 @@ type project_config = {
   root: string;  (* Directory containing shotgun.toml *)
 }
 
-(* Simple TOML parser for shotgun.toml - only handles name = "value" *)
+(* Simple TOML parser for shotgun.toml - only handles key = "value" *)
 let parse_toml content =
   let lines = String.split_on_char '\n' content in
   let result = Hashtbl.create 8 in
@@ -13,19 +13,23 @@ let parse_toml content =
     let line = String.trim line in
     (* Skip empty lines and comments *)
     if String.length line > 0 && line.[0] <> '#' then begin
-      match String.split_on_char '=' line with
-      | [key; value] ->
-        let key = String.trim key in
-        let value = String.trim value in
-        (* Strip quotes from value *)
+      match String.index_opt line '=' with
+      | None -> failwith ("Invalid config line (expected key = \"value\"): " ^ line)
+      | Some idx ->
+        let key = String.trim (String.sub line 0 idx) in
+        let value = String.trim (String.sub line (idx + 1) (String.length line - idx - 1)) in
+        if key = "" || value = "" then
+          failwith ("Invalid config line (missing key or value): " ^ line);
+        (* Strip quotes from value; require balanced quotes when present *)
         let value =
-          if String.length value >= 2 && value.[0] = '"' then
+          if String.length value >= 2 && value.[0] = '"' && value.[String.length value - 1] = '"' then
             String.sub value 1 (String.length value - 2)
+          else if String.contains value '"' then
+            failwith ("Invalid quoted value in config: " ^ line)
           else
             value
         in
         Hashtbl.replace result key value
-      | _ -> ()
     end
   ) lines;
   result
@@ -61,22 +65,25 @@ let load_config start_path =
     let ic = open_in config_path in
     let content = really_input_string ic (in_channel_length ic) in
     close_in ic;
-    let config = parse_toml content in
-    match Hashtbl.find_opt config "name" with
-    | None -> None
-    | Some name ->
-      (* Make root absolute *)
-      let root = Filename.dirname config_path in
-      let abs_root =
-        if Filename.is_relative root then
-          Filename.concat (Sys.getcwd ()) root
-        else
-          root
-      in
-      Some {
-        name;
-        root = abs_root;
-      }
+    (try
+       let config = parse_toml content in
+       match Hashtbl.find_opt config "name" with
+       | None -> None
+       | Some name ->
+         (* Make root absolute *)
+         let root = Filename.dirname config_path in
+         let abs_root =
+           if Filename.is_relative root then
+             Filename.concat (Sys.getcwd ()) root
+           else
+             root
+         in
+         Some {
+           name;
+           root = abs_root;
+         }
+     with Failure _ ->
+       None)
 
 (* Resolve an import path to a file path *)
 let resolve_import config import_path =

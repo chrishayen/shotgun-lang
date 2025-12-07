@@ -2,14 +2,8 @@
 
 open Ast
 
-(* Buffer for output *)
-let buf = Buffer.create 4096
-let closure_typedefs_buf = Buffer.create 256
+module StringSet = Set.Make(String)
 
-let current_buf = ref buf
-let emit s = Buffer.add_string !current_buf s
-let emitln s = Buffer.add_string !current_buf s; Buffer.add_char !current_buf '\n'
-let emit_indent n = for _ = 1 to n do Buffer.add_string !current_buf "    " done
 
 (* Goroutine wrapper tracking *)
 type go_info = {
@@ -17,18 +11,6 @@ type go_info = {
   go_func: string;
   go_arg_types: typ list;
 }
-
-let go_counter = ref 0
-let go_wrappers : go_info list ref = ref []
-
-let reset_go_state () =
-  go_counter := 0;
-  go_wrappers := []
-
-let next_go_id () =
-  let id = !go_counter in
-  go_counter := id + 1;
-  id
 
 (* Anonymous function/closure tracking *)
 type closure_info = {
@@ -39,19 +21,67 @@ type closure_info = {
   closure_captures: (string * typ) list;  (* captured variables with types *)
 }
 
-let closure_counter = ref 0
-let closure_defs : closure_info list ref = ref []
-let fn_ptr_types : (typ list * typ option, unit) Hashtbl.t = Hashtbl.create 16
+(* Per-invocation codegen state to avoid global cross-talk *)
+type state = {
+  buf: Buffer.t;
+  closure_typedefs_buf: Buffer.t;
+  mutable current_buf: Buffer.t;
+  mutable go_counter: int;
+  mutable go_wrappers: go_info list;
+  mutable closure_counter: int;
+  mutable closure_defs: closure_info list;
+  fn_ptr_types: (typ list * typ option, unit) Hashtbl.t;
+  mutable generic_instantiations: StringSet.t;
+}
+
+let create_state () =
+  let main_buf = Buffer.create 4096 in
+  let closure_buf = Buffer.create 256 in
+  {
+    buf = main_buf;
+    closure_typedefs_buf = closure_buf;
+    current_buf = main_buf;
+    go_counter = 0;
+    go_wrappers = [];
+    closure_counter = 0;
+    closure_defs = [];
+    fn_ptr_types = Hashtbl.create 16;
+    generic_instantiations = StringSet.empty;
+  }
+
+let current_state : state option ref = ref None
+
+let get_state () =
+  match !current_state with
+  | Some st -> st
+  | None -> failwith "codegen state not initialized"
+
+let emit s = Buffer.add_string (get_state ()).current_buf s
+let emitln s = Buffer.add_string (get_state ()).current_buf s; Buffer.add_char (get_state ()).current_buf '\n'
+let emit_indent n = for _ = 1 to n do Buffer.add_string (get_state ()).current_buf "    " done
+
+let reset_go_state () =
+  let st = get_state () in
+  st.go_counter <- 0;
+  st.go_wrappers <- []
+
+let next_go_id () =
+  let st = get_state () in
+  let id = st.go_counter in
+  st.go_counter <- id + 1;
+  id
 
 let reset_closure_state () =
-  closure_counter := 0;
-  closure_defs := [];
-  Hashtbl.clear fn_ptr_types;
-  Buffer.clear closure_typedefs_buf
+  let st = get_state () in
+  st.closure_counter <- 0;
+  st.closure_defs <- [];
+  Hashtbl.clear st.fn_ptr_types;
+  Buffer.clear st.closure_typedefs_buf
 
 let next_closure_id () =
-  let id = !closure_counter in
-  closure_counter := id + 1;
+  let st = get_state () in
+  let id = st.closure_counter in
+  st.closure_counter <- id + 1;
   id
 
 (* Check if a type directly references a given type name (for recursive types) *)
@@ -162,10 +192,6 @@ type ctx = {
   mutable match_counter: int;
 }
 
-(* Track generic instantiations for monomorphization *)
-module StringSet = Set.Make(String)
-let generic_instantiations = ref StringSet.empty
-
 (* Substitute type parameters in a type *)
 let rec substitute_type subst = function
   | TUser name ->
@@ -183,7 +209,8 @@ let rec substitute_type subst = function
 let rec collect_type_instantiation = function
   | TApply (name, args) ->
     let mangled = mangle_generic_name name args in
-    generic_instantiations := StringSet.add mangled !generic_instantiations;
+    let st = get_state () in
+    st.generic_instantiations <- StringSet.add mangled st.generic_instantiations;
     List.iter collect_type_instantiation args
   | TArray t -> collect_type_instantiation t
   | TOptional t -> collect_type_instantiation t
@@ -253,7 +280,8 @@ let rec collect_stmt_instantiations = function
 
 (* Collect all instantiations from the program *)
 let collect_all_instantiations program =
-  generic_instantiations := StringSet.empty;
+  let st = get_state () in
+  st.generic_instantiations <- StringSet.empty;
   List.iter (function
     | IFunction (_, _type_params, params, ret, body) ->
       List.iter (function PSelf -> () | PNamed (t, _) -> collect_type_instantiation t) params;
@@ -326,36 +354,9 @@ let rec gen_expr ctx indent expr =
   | ECall (callee, _type_args, args) ->
     gen_call ctx indent callee args
   | EMember (obj, field) ->
-    gen_expr ctx indent obj;
-    (* Use -> for pointers (self, or pointer types) *)
-    let use_arrow = match obj with
-      | EIdent "self" -> true
-      | _ ->
-        match get_type ctx obj with
-        | Some (TOptional _) -> true  (* Pointers *)
-        | Some (TArray _) -> true
-        | Some (TChan _) -> true
-        | _ -> false
-    in
-    emit (if use_arrow then "->" else ".");
-    emit field
+    gen_member ctx indent obj field
   | EIndex (arr, idx) ->
-    (match get_type ctx arr with
-     | Some (TApply ("Map", [_k; v])) ->
-       (* Map indexing: dereference void pointer from shotgun_map_get *)
-       emit "*(";
-       emit (c_type v);
-       emit "*)shotgun_map_get(";
-       gen_expr ctx indent arr;
-       emit ", ";
-       gen_expr ctx indent idx;
-       emit ")"
-     | _ ->
-       (* Array indexing *)
-       gen_expr ctx indent arr;
-       emit "->data[";
-       gen_expr ctx indent idx;
-       emit "]")
+    gen_index ctx indent arr idx
   | EOr (e, clause) ->
     gen_or ctx indent e clause
   | EStructLit ("Map", type_args, _fields) ->
@@ -365,85 +366,11 @@ let rec gen_expr ctx indent expr =
        emit "shotgun_map_create(sizeof(";
        emit (c_type v);
        emit "))"
-     | _ -> emit "shotgun_map_create(sizeof(int64_t))")
+         | _ -> emit "shotgun_map_create(sizeof(int64_t))")
   | EStructLit (name, type_args, fields) ->
-    let mangled = if type_args = [] then name else mangle_generic_name name type_args in
-    emit "(";
-    emit mangled;
-    emit "){ ";
-    let first = ref true in
-    List.iter (fun (fname, fexpr) ->
-      if not !first then emit ", ";
-      first := false;
-      emit ".";
-      emit fname;
-      emit " = ";
-      gen_expr ctx indent fexpr
-    ) fields;
-    emit " }"
+    gen_struct_literal ctx indent name type_args fields
   | EEnumVariant (enum_name, type_args, variant_name, fields) ->
-    let mangled = if type_args = [] then enum_name else mangle_generic_name enum_name type_args in
-    (* Look up variant field types to detect recursive fields *)
-    let field_types =
-      match Hashtbl.find_opt ctx.env.Semantic.enums enum_name with
-      | Some variants ->
-        (match List.find_opt (fun v -> v.variant_name = variant_name) variants with
-         | Some v -> List.map (fun f -> (f.field_name, f.field_type)) v.variant_fields
-         | None -> [])
-      | None -> []
-    in
-    emit "(";
-    emit mangled;
-    emit "){ .tag = ";
-    emit mangled;
-    emit "_";
-    emit variant_name;
-    if fields <> [] then begin
-      emit ", .data.";
-      emit variant_name;
-      emit " = (";
-      emit mangled;
-      emit "_";
-      emit variant_name;
-      emit "_data){ ";
-      let first = ref true in
-      List.iter (fun (fname, fexpr) ->
-        if not !first then emit ", ";
-        first := false;
-        emit ".";
-        emit fname;
-        emit " = ";
-        (* Check if this field is recursive (references parent enum) *)
-        let field_type = List.assoc_opt fname field_types in
-        let is_recursive = match field_type with
-          | Some ft -> type_references_name enum_name ft
-          | None -> false
-        in
-        if is_recursive then begin
-          (* Allocate memory for recursive field *)
-          (* For simple identifiers, take address directly *)
-          (match fexpr with
-           | EIdent _ ->
-             emit "shotgun_alloc_copy(sizeof(";
-             emit mangled;
-             emit "), &";
-             gen_expr ctx indent fexpr;
-             emit ")"
-           | _ ->
-             (* For complex expressions, use statement expression to create addressable temp *)
-             emit "({ ";
-             emit mangled;
-             emit " _tmp = ";
-             gen_expr ctx indent fexpr;
-             emit "; shotgun_alloc_copy(sizeof(";
-             emit mangled;
-             emit "), &_tmp); })")
-        end else
-          gen_expr ctx indent fexpr
-      ) fields;
-      emit " }"
-    end;
-    emit " }"
+    gen_enum_literal ctx indent enum_name type_args variant_name fields
   | EArrayLit elems ->
     gen_array_literal ctx indent elems
   | EChan ->
@@ -453,36 +380,144 @@ let rec gen_expr ctx indent expr =
     gen_expr ctx indent e;
     emit ")"
   | EAssign (op, lhs, rhs) ->
-    (match lhs with
-     | EIndex (map_expr, key_expr) ->
-       (match get_type ctx map_expr with
-        | Some (TApply ("Map", [_k; v])) when op = Assign ->
-          (* Map assignment: shotgun_map_set(m, key, &(V){value}) *)
-          emit "shotgun_map_set(";
-          gen_expr ctx indent map_expr;
-          emit ", ";
-          gen_expr ctx indent key_expr;
-          emit ", &(";
-          emit (c_type v);
-          emit "){";
-          gen_expr ctx indent rhs;
-          emit "})"
-        | _ ->
-          gen_expr ctx indent lhs;
-          emit " ";
-          emit (c_assignop op);
-          emit " ";
-          gen_expr ctx indent rhs)
+    gen_assignment ctx indent op lhs rhs
+  | EMatch (exprs, using_type, arms) ->
+    gen_match_expr ctx indent exprs using_type arms
+  | EAnonFn (params, ret_type, body, captures) ->
+    gen_closure_expr ctx indent params ret_type body captures
+
+and gen_member ctx indent obj field =
+  gen_expr ctx indent obj;
+  let use_arrow =
+    match obj with
+    | EIdent "self" -> true
+    | _ ->
+      match get_type ctx obj with
+      | Some (TOptional _) -> true
+      | Some (TArray _) -> true
+      | Some (TChan _) -> true
+      | _ -> false
+  in
+  emit (if use_arrow then "->" else ".");
+  emit field
+
+and gen_index ctx indent arr idx =
+  match get_type ctx arr with
+  | Some (TApply ("Map", [_k; v])) ->
+    emit "*(";
+    emit (c_type v);
+    emit "*)shotgun_map_get(";
+    gen_expr ctx indent arr;
+    emit ", ";
+    gen_expr ctx indent idx;
+    emit ")"
+  | _ ->
+    gen_expr ctx indent arr;
+    emit "->data[";
+    gen_expr ctx indent idx;
+    emit "]"
+
+and gen_struct_literal ctx indent name type_args fields =
+  let mangled = if type_args = [] then name else mangle_generic_name name type_args in
+  emit "(";
+  emit mangled;
+  emit "){ ";
+  let first = ref true in
+  List.iter (fun (fname, fexpr) ->
+    if not !first then emit ", ";
+    first := false;
+    emit ".";
+    emit fname;
+    emit " = ";
+    gen_expr ctx indent fexpr
+  ) fields;
+  emit " }"
+
+and gen_enum_literal ctx indent enum_name type_args variant_name fields =
+  let mangled = if type_args = [] then enum_name else mangle_generic_name enum_name type_args in
+  let field_types =
+    match Hashtbl.find_opt ctx.env.Semantic.enums enum_name with
+    | Some variants ->
+      (match List.find_opt (fun v -> v.variant_name = variant_name) variants with
+       | Some v -> List.map (fun f -> (f.field_name, f.field_type)) v.variant_fields
+       | None -> [])
+    | None -> []
+  in
+  emit "(";
+  emit mangled;
+  emit "){ .tag = ";
+  emit mangled;
+  emit "_";
+  emit variant_name;
+  if fields <> [] then begin
+    emit ", .data.";
+    emit variant_name;
+    emit " = (";
+    emit mangled;
+    emit "_";
+    emit variant_name;
+    emit "_data){ ";
+    let first = ref true in
+    List.iter (fun (fname, fexpr) ->
+      if not !first then emit ", ";
+      first := false;
+      emit ".";
+      emit fname;
+      emit " = ";
+      let field_type = List.assoc_opt fname field_types in
+      let is_recursive = match field_type with
+        | Some ft -> type_references_name enum_name ft
+        | None -> false
+      in
+      if is_recursive then begin
+        (match fexpr with
+         | EIdent _ ->
+           emit "shotgun_alloc_copy(sizeof(";
+           emit mangled;
+           emit "), &";
+           gen_expr ctx indent fexpr;
+           emit ")"
+         | _ ->
+           emit "({ ";
+           emit mangled;
+           emit " _tmp = ";
+           gen_expr ctx indent fexpr;
+           emit "; shotgun_alloc_copy(sizeof(";
+           emit mangled;
+           emit "), &_tmp); })")
+      end else
+        gen_expr ctx indent fexpr
+    ) fields;
+    emit " }"
+  end;
+  emit " }"
+
+and gen_assignment ctx indent op lhs rhs =
+  match lhs with
+  | EIndex (map_expr, key_expr) ->
+    (match get_type ctx map_expr with
+     | Some (TApply ("Map", [_k; v])) when op = Assign ->
+       emit "shotgun_map_set(";
+       gen_expr ctx indent map_expr;
+       emit ", ";
+       gen_expr ctx indent key_expr;
+       emit ", &(";
+       emit (c_type v);
+       emit "){";
+       gen_expr ctx indent rhs;
+       emit "})"
      | _ ->
        gen_expr ctx indent lhs;
        emit " ";
        emit (c_assignop op);
        emit " ";
        gen_expr ctx indent rhs)
-  | EMatch (exprs, using_type, arms) ->
-    gen_match_expr ctx indent exprs using_type arms
-  | EAnonFn (params, ret_type, body, captures) ->
-    gen_closure_expr ctx indent params ret_type body captures
+  | _ ->
+    gen_expr ctx indent lhs;
+    emit " ";
+    emit (c_assignop op);
+    emit " ";
+    gen_expr ctx indent rhs
 
 (* Get binding types from a pattern, given the using_type for variants *)
 and get_pattern_binding_types ctx using_type pat =
@@ -735,16 +770,17 @@ and gen_closure_expr ctx _indent params ret_type body _captures =
 
   (* Register the function pointer type *)
   let param_types = List.map fst params in
-  Hashtbl.replace fn_ptr_types (param_types, inferred_ret_type) ();
+  Hashtbl.replace (get_state ()).fn_ptr_types (param_types, inferred_ret_type) ();
 
   (* Register closure for later generation *)
-  closure_defs := {
-    closure_id;
-    closure_params = params;
-    closure_ret = inferred_ret_type;
-    closure_body = body;
-    closure_captures = capture_types;
-  } :: !closure_defs;
+  let st = get_state () in
+  st.closure_defs <- {
+      closure_id;
+      closure_params = params;
+      closure_ret = inferred_ret_type;
+      closure_body = body;
+      closure_captures = capture_types;
+    } :: st.closure_defs;
 
   (* Always emit closure struct initialization *)
   emit "(Closure_";
@@ -2397,7 +2433,8 @@ let gen_go_wrapper info =
 
 (* Generate all collected goroutine wrappers *)
 let gen_go_wrappers () =
-  List.iter gen_go_wrapper (List.rev !go_wrappers)
+  let st = get_state () in
+  List.iter gen_go_wrapper (List.rev st.go_wrappers)
 
 (* Generate closure type definition *)
 let gen_closure_typedef param_types ret_type =
@@ -2474,12 +2511,14 @@ let gen_closure_fn ctx closure_info =
 
 (* Generate all collected closures *)
 let gen_closures ctx =
-  List.iter (gen_closure_fn ctx) (List.rev !closure_defs)
+  let st_defs = (get_state ()).closure_defs in
+  List.iter (gen_closure_fn ctx) (List.rev st_defs)
 
 (* Generate function pointer typedef and forward declarations for closures *)
 let gen_closure_preludes () =
-  let old_buf = !current_buf in
-  current_buf := closure_typedefs_buf;
+  let st = get_state () in
+  let old_buf = st.current_buf in
+  st.current_buf <- st.closure_typedefs_buf;
 
   (* Generate closure struct types *)
   Hashtbl.iter (fun (param_types, ret_type) () ->
@@ -2502,10 +2541,11 @@ let gen_closure_preludes () =
     emit "} ";
     emit closure_name;
     emitln ";"
-  ) fn_ptr_types;
-  if Hashtbl.length fn_ptr_types > 0 then emitln "";
+  ) (get_state ()).fn_ptr_types;
+  if Hashtbl.length (get_state ()).fn_ptr_types > 0 then emitln "";
 
   (* Generate environment structs for closures with captures *)
+  let st_defs = (get_state ()).closure_defs in
   List.iter (fun { closure_id; closure_captures; _ } ->
     if closure_captures <> [] then begin
       emit "typedef struct _anon_env_";
@@ -2522,8 +2562,8 @@ let gen_closure_preludes () =
       emit (string_of_int closure_id);
       emitln ";"
     end
-  ) (List.rev !closure_defs);
-  if List.exists (fun ci -> ci.closure_captures <> []) !closure_defs then emitln "";
+  ) (List.rev st_defs);
+  if List.exists (fun ci -> ci.closure_captures <> []) st_defs then emitln "";
 
   (* Generate forward declarations for anonymous functions *)
   List.iter (fun { closure_id; closure_params; closure_ret; _ } ->
@@ -2537,9 +2577,9 @@ let gen_closure_preludes () =
       emit (c_type t)
     ) closure_params;
     emitln ");"
-  ) (List.rev !closure_defs);
+  ) (List.rev st_defs);
 
-  current_buf := old_buf
+  st.current_buf <- old_buf
 
 (* Scan statements for go calls to collect wrapper info (first pass) *)
 let rec scan_stmt_for_go ctx stmt =
@@ -2559,7 +2599,8 @@ let rec scan_stmt_for_go ctx stmt =
      | ECall (EIdent func_name, _type_args, args) ->
        let go_id = next_go_id () in
        let arg_types = List.filter_map (fun arg -> get_type ctx arg) args in
-       go_wrappers := { go_id; go_func = func_name; go_arg_types = arg_types } :: !go_wrappers
+       let st = get_state () in
+       st.go_wrappers <- { go_id; go_func = func_name; go_arg_types = arg_types } :: st.go_wrappers
      | _ -> ())
   | SIf (_, then_stmts, else_stmts) ->
     List.iter (scan_stmt_for_go ctx) then_stmts;
@@ -2639,8 +2680,11 @@ let gen_method_decl type_name method_name params ret =
 
 (* Generate program *)
 let generate env program =
-  Buffer.clear buf;
-  current_buf := buf;
+  (match !current_state with
+   | Some _ -> failwith "codegen generate already running"
+   | None -> ());
+  let st = create_state () in
+  current_state := Some st;
   reset_go_state ();
   reset_closure_state ();
   let ctx = create_ctx env in
@@ -2723,7 +2767,7 @@ let generate env program =
   gen_go_wrappers ();
 
   (* Reset go counter for actual codegen (must match scan order) *)
-  go_counter := 0;
+  st.go_counter <- 0;
 
   (* Generate remaining items - only non-generic ones *)
   List.iter (function
@@ -2749,20 +2793,24 @@ let generate env program =
 
   (* Combine: main buffer + closure typedefs at the right place *)
   (* For now, prepend closure typedefs before the forward declarations section *)
-  let main_code = Buffer.contents buf in
-  let typedef_code = Buffer.contents closure_typedefs_buf in
-  if String.length typedef_code > 0 then
-    (* Insert typedefs before "/* Forward declarations */" marker *)
-    let marker = "/* Forward declarations */" in
-    match String.split_on_char '\n' main_code |> List.mapi (fun i line -> (i, line))
-          |> List.find_opt (fun (_, line) -> String.trim line = marker) with
-    | Some (idx, _) ->
-      let lines = String.split_on_char '\n' main_code in
-      let before = List.filteri (fun i _ -> i < idx) lines in
-      let after = List.filteri (fun i _ -> i >= idx) lines in
-      String.concat "\n" before ^ "\n/* Function pointer types */\n" ^ typedef_code ^ "\n" ^ String.concat "\n" after
-    | None ->
-      (* Marker not found, just prepend *)
-      typedef_code ^ main_code
-  else
-    main_code
+  let main_code = Buffer.contents st.buf in
+  let typedef_code = Buffer.contents st.closure_typedefs_buf in
+  let combined =
+    if String.length typedef_code > 0 then
+      (* Insert typedefs before "/* Forward declarations */" marker *)
+      let marker = "/* Forward declarations */" in
+      match String.split_on_char '\n' main_code |> List.mapi (fun i line -> (i, line))
+            |> List.find_opt (fun (_, line) -> String.trim line = marker) with
+      | Some (idx, _) ->
+        let lines = String.split_on_char '\n' main_code in
+        let before = List.filteri (fun i _ -> i < idx) lines in
+        let after = List.filteri (fun i _ -> i >= idx) lines in
+        String.concat "\n" before ^ "\n/* Function pointer types */\n" ^ typedef_code ^ "\n" ^ String.concat "\n" after
+      | None ->
+        (* Marker not found, just prepend *)
+        typedef_code ^ main_code
+    else
+      main_code
+  in
+  current_state := None;
+  combined

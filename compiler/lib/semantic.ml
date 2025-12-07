@@ -45,6 +45,13 @@ let create_env () = {
 let add_error env msg =
   env.errors_list := msg :: !(env.errors_list)
 
+let find_index pred lst =
+  let rec aux i = function
+    | [] -> None
+    | x :: xs -> if pred x then Some i else aux (i + 1) xs
+  in
+  aux 0 lst
+
 let push_scope env =
   (* Create a new env with a copy of symbols for scoping *)
   { env with symbols = Hashtbl.copy env.symbols }
@@ -101,7 +108,32 @@ let rec types_equal t1 t2 =
   | TChan a, TChan b -> types_equal a b
   | TUser a, TUser b -> a = b
   | TResult (a1, e1), TResult (a2, e2) -> types_equal a1 a2 && e1 = e2
+  | TFunc (params1, ret1), TFunc (params2, ret2) ->
+    List.length params1 = List.length params2 &&
+    List.for_all2 types_equal params1 params2 &&
+    (match ret1, ret2 with
+     | None, None -> true
+     | Some r1, Some r2 -> types_equal r1 r2
+     | _ -> false)
   | _ -> false
+
+(* Substitute generic type parameters with concrete args *)
+let rec substitute_type_params type_params type_args typ =
+  match typ with
+  | TUser name ->
+    (match find_index ((=) name) type_params with
+     | Some idx when idx < List.length type_args -> List.nth type_args idx
+     | _ -> typ)
+  | TArray t -> TArray (substitute_type_params type_params type_args t)
+  | TOptional t -> TOptional (substitute_type_params type_params type_args t)
+  | TChan t -> TChan (substitute_type_params type_params type_args t)
+  | TResult (t, e) -> TResult (substitute_type_params type_params type_args t, e)
+  | TApply (name, args) -> TApply (name, List.map (substitute_type_params type_params type_args) args)
+  | TFunc (params, ret) ->
+    let params' = List.map (substitute_type_params type_params type_args) params in
+    let ret' = Option.map (substitute_type_params type_params type_args) ret in
+    TFunc (params', ret')
+  | t -> t
 
 (* Check if a type is defined *)
 let rec type_exists env typ =
@@ -114,7 +146,14 @@ let rec type_exists env typ =
   | TResult (t, e) -> type_exists env t && (e = "Error" || Hashtbl.mem env.errors e)
   | TParam _ -> true  (* Type parameters are always valid within their scope *)
   | TApply (name, args) ->
+    let arity_ok =
+      match Hashtbl.find_opt env.generic_struct_params name, Hashtbl.find_opt env.generic_enum_params name with
+      | Some tparams, _ -> List.length tparams = List.length args
+      | _, Some tparams -> List.length tparams = List.length args
+      | _ -> true
+    in
     (* Map<K, V> is a built-in generic type *)
+    arity_ok &&
     (name = "Map" || Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
     List.for_all (type_exists env) args
   | TFunc (param_types, ret_type) ->
@@ -133,9 +172,14 @@ let rec infer_expr_type env expr =
     (match Hashtbl.find_opt env.symbols name with
      | Some (SVar (t, _)) -> Some t
      | _ -> None)
-  | EBinary (op, _l, _r) ->
+  | EBinary (op, l, r) ->
     (match op with
-     | Add | Sub | Mul | Div | Mod -> Some TInt
+     | Add | Sub | Mul | Div | Mod ->
+       let lt = infer_expr_type env l in
+       let rt = infer_expr_type env r in
+       (match lt, rt with
+        | Some l, Some r when types_equal l r -> Some l
+        | _ -> Some TInt)
      | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> Some TBool)
   | EUnary (Not, _) -> Some TBool
   | ECall (callee, _type_args, _args) ->
@@ -146,12 +190,24 @@ let rec infer_expr_type env expr =
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
         | Some (SFunc (_, ret)) -> ret
+        | Some (SVar (TFunc (_, ret), _)) -> ret
         | _ -> None)
      | EMember (obj, method_name) ->
        (match infer_expr_type env obj with
+        | Some (TApply ("Map", _)) when method_name = "len" -> Some TInt
+        | Some (TApply ("Map", _)) when method_name = "has" -> Some TBool
+        | Some (TApply ("Map", [_k; v])) when method_name = "get" -> Some v
         | Some (TUser type_name) ->
           (match Hashtbl.find_opt env.methods (type_name, method_name) with
            | Some (_, ret) -> ret
+           | None -> None)
+        | Some (TApply (type_name, type_args)) ->
+          (match Hashtbl.find_opt env.methods (type_name, method_name) with
+           | Some (_, ret) ->
+             let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
+             (match ret with
+              | Some r -> Some (substitute_type_params tparams type_args r)
+              | None -> None)
            | None -> None)
         | Some (TChan t) when method_name = "recv" ->
           Some t
@@ -165,10 +221,6 @@ let rec infer_expr_type env expr =
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt
-        (* Map built-in methods *)
-        | Some (TApply ("Map", _)) when method_name = "len" -> Some TInt
-        | Some (TApply ("Map", _)) when method_name = "has" -> Some TBool
-        | Some (TApply ("Map", [_k; v])) when method_name = "get" -> Some v
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->
@@ -178,6 +230,13 @@ let rec infer_expr_type env expr =
         | Some fields ->
           List.find_opt (fun f -> f.field_name = field_name) fields
           |> Option.map (fun f -> f.field_type)
+        | None -> None)
+     | Some (TApply (type_name, type_args)) ->
+       (match Hashtbl.find_opt env.structs type_name with
+        | Some fields ->
+          let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
+          List.find_opt (fun f -> f.field_name = field_name) fields
+          |> Option.map (fun f -> substitute_type_params tparams type_args f.field_type)
         | None -> None)
      | _ -> None)
   | EIndex (arr, _idx) ->
@@ -260,11 +319,19 @@ and bind_pattern_vars env pat expr_types using_type =
     let typ = match get_matched_type 0 with Some t -> t | None -> TInt in
     Hashtbl.replace env.symbols name (SVar (typ, false))
   | PVariant (enum_type_opt, variant_name, bindings) ->
-    let enum_name = match enum_type_opt with
-      | Some t -> get_enum_name_from_type t
-      | None -> Option.bind using_type get_enum_name_from_type
+    let enum_type = match enum_type_opt with
+      | Some t -> Some t
+      | None -> using_type
     in
-    let enum_name = match enum_name with Some n -> n | None -> "" in
+    let enum_name = Option.bind enum_type get_enum_name_from_type |> Option.value ~default:"" in
+    let type_args = match enum_type with
+      | Some (TApply (_, args)) -> args
+      | _ -> []
+    in
+    let subst = match Hashtbl.find_opt env.generic_enum_params enum_name with
+      | Some tparams -> Some (tparams, type_args)
+      | None -> None
+    in
     (* Validate enum exists *)
     (match Hashtbl.find_opt env.enums enum_name with
      | None ->
@@ -282,7 +349,12 @@ and bind_pattern_vars env pat expr_types using_type =
             | None ->
               add_error env (Printf.sprintf "Unknown field %s in variant %s.%s" field_name enum_name variant_name)
             | Some field ->
-              Hashtbl.replace env.symbols binding_name (SVar (field.field_type, false))
+              let ftype =
+                match subst with
+                | Some (tparams, targs) -> substitute_type_params tparams targs field.field_type
+                | None -> field.field_type
+              in
+              Hashtbl.replace env.symbols binding_name (SVar (ftype, false))
           ) bindings))
   | PTuple patterns ->
     List.iteri (fun i p ->
@@ -291,6 +363,22 @@ and bind_pattern_vars env pat expr_types using_type =
     ) patterns
 
 (* Check expression - add variable to scope, check types *)
+let check_call_arity env name expected actual =
+  if expected <> actual then
+    add_error env (Printf.sprintf "Function '%s' expects %d argument(s) but got %d" name expected actual)
+
+let check_method_arity env type_name method_name expected actual =
+  if expected <> actual then
+    add_error env (Printf.sprintf "Method '%s.%s' expects %d argument(s) but got %d" type_name method_name expected actual)
+
+let check_type_compat env context expected actual_opt =
+  match actual_opt with
+  | None -> ()
+  | Some actual ->
+    if not (types_equal expected actual) then
+      add_error env (Printf.sprintf "Type mismatch in %s: expected %s but found %s"
+                       context (Ast.show_typ expected) (Ast.show_typ actual))
+
 let rec check_expr env expr =
   match expr with
   | EIdent "self" when not env.in_method ->
@@ -304,7 +392,62 @@ let rec check_expr env expr =
     check_expr env e
   | ECall (callee, _type_args, args) ->
     check_expr env callee;
-    List.iter (check_expr env) args
+    List.iter (check_expr env) args;
+    (match callee with
+     | EIdent name ->
+      (match Hashtbl.find_opt env.symbols name with
+      | Some (SFunc (params, ret)) ->
+        check_call_arity env name (List.length params) (List.length args);
+        let named_params = List.filter (function PSelf -> false | _ -> true) params in
+        if List.length named_params = List.length args then
+          List.iter2 (fun param arg ->
+            match param with
+            | PSelf -> ()
+            | PNamed (pt, _) ->
+              let at = infer_expr_type env arg in
+              check_type_compat env ("call to " ^ name) pt at
+          ) named_params args;
+        ignore ret
+        | _ -> ())
+     | EMember (obj, method_name) ->
+       (match infer_expr_type env obj with
+        | Some (TUser type_name) ->
+          (match Hashtbl.find_opt env.methods (type_name, method_name) with
+           | Some (params, ret) ->
+             let arity = List.length (List.filter (function PSelf -> false | _ -> true) params) in
+             check_method_arity env type_name method_name arity (List.length args)
+            ; List.iter2 (fun param arg ->
+                match param with
+                | PSelf -> ()
+                | PNamed (pt, _) ->
+                  let at = infer_expr_type env arg in
+                  check_type_compat env (Printf.sprintf "call to %s.%s" type_name method_name) pt at
+              ) (List.filter (function PSelf -> false | _ -> true) params) args;
+            ignore ret
+           | None -> ())
+        | Some (TApply (type_name, type_args)) ->
+          (match Hashtbl.find_opt env.methods (type_name, method_name) with
+           | Some (params, ret) ->
+             let arity = List.length (List.filter (function PSelf -> false | _ -> true) params) in
+             check_method_arity env type_name method_name arity (List.length args);
+             let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
+             let subst_param p =
+               match p with
+               | PSelf -> PSelf
+               | PNamed (pt, n) -> PNamed (substitute_type_params tparams type_args pt, n)
+             in
+             let substituted_params = List.filter (function PSelf -> false | _ -> true) (List.map subst_param params) in
+             List.iter2 (fun param arg ->
+               match param with
+               | PNamed (pt, _) ->
+                 let at = infer_expr_type env arg in
+                 check_type_compat env (Printf.sprintf "call to %s.%s" type_name method_name) pt at
+               | PSelf -> ()
+             ) substituted_params args;
+             ignore ret
+           | None -> ())
+        | _ -> ())
+     | _ -> ())
   | EMember (obj, _) ->
     check_expr env obj
   | EIndex (arr, idx) ->
@@ -337,6 +480,11 @@ let rec check_expr env expr =
   | EAssign (_, lhs, rhs) ->
     check_expr env lhs;
     check_expr env rhs;
+    (* Type compatibility check *)
+    (match infer_expr_type env lhs, infer_expr_type env rhs with
+     | Some lt, Some rt -> if not (types_equal lt rt) then
+         add_error env (Printf.sprintf "Assignment type mismatch: %s vs %s" (Ast.show_typ lt) (Ast.show_typ rt))
+     | _ -> ());
     (* Check for const reassignment *)
     (match lhs with
      | EIdent name ->
@@ -356,12 +504,23 @@ let rec check_expr env expr =
     List.iter (check_expr env) exprs;
     (* Infer types of matched expressions for binding *)
     let expr_types = List.map (infer_expr_type env) exprs in
+    (* Require all arms to return same type when present *)
+    let arm_result_types = ref [] in
     (* Check each arm *)
     List.iter (fun (pat, result_expr) ->
       let arm_env = push_scope env in
       bind_pattern_vars arm_env pat expr_types using_type;
       check_expr arm_env result_expr
-    ) arms
+      |> ignore;
+      arm_result_types := infer_expr_type arm_env result_expr :: !arm_result_types
+    ) arms;
+    (match List.filter_map (fun x -> x) !arm_result_types with
+     | [] -> ()
+     | first :: rest ->
+       List.iter (fun t ->
+         if not (types_equal t first) then
+           add_error env "Match arms must produce the same type"
+       ) rest)
   | EAnonFn (params, _ret_type, body, _captures) ->
     (* Create a new scope for the anonymous function *)
     let fn_env = push_scope env in
@@ -386,7 +545,9 @@ and check_stmt env stmt =
     (* Infer type from expression *)
     let typ = match infer_expr_type env expr with
       | Some t -> t
-      | None -> TUser "unknown"  (* fallback *)
+      | None ->
+        add_error env (Printf.sprintf "Cannot infer type for '%s'" name);
+        TUser "unknown"
     in
     Hashtbl.replace env.symbols name (SVar (typ, false))
   | SConstDecl (name, expr) ->
@@ -394,7 +555,9 @@ and check_stmt env stmt =
     (* Infer type from expression *)
     let typ = match infer_expr_type env expr with
       | Some t -> t
-      | None -> TUser "unknown"  (* fallback *)
+      | None ->
+        add_error env (Printf.sprintf "Cannot infer type for const '%s'" name);
+        TUser "unknown"
     in
     Hashtbl.replace env.symbols name (SVar (typ, true))
   | SReturn (Some e) ->
@@ -413,9 +576,13 @@ and check_stmt env stmt =
     check_expr env iter;
     let body_env = push_scope env in
     (* Infer type of loop variable from iterator *)
-    let var_type = match infer_expr_type env iter with
+    let var_type =
+      match infer_expr_type env iter with
       | Some (TArray t) -> t
-      | _ -> TUser "unknown"
+      | Some _ ->
+        add_error env "For loop expects an array/iterable"; TUser "unknown"
+      | None ->
+        add_error env "For loop iterator type could not be inferred"; TUser "unknown"
     in
     Hashtbl.replace body_env.symbols var (SVar (var_type, false));
     List.iter (check_stmt body_env) body
@@ -423,30 +590,6 @@ and check_stmt env stmt =
     check_expr env e
   | SExpr e ->
     check_expr env e
-
-(* Check a function body *)
-let check_function env params body =
-  check_param_order env params;
-  let func_env = push_scope env in
-  List.iter (function
-    | PSelf -> ()  (* self handled separately *)
-    | PNamed (t, name) -> Hashtbl.replace func_env.symbols name (SVar (t, false))
-  ) params;
-  List.iter (check_stmt func_env) body
-
-(* Check a method body *)
-let check_method env type_name params body =
-  check_param_order env params;
-  let method_env = { (push_scope env) with
-    in_method = true;
-    current_type = Some type_name
-  } in
-  Hashtbl.replace method_env.symbols "self" (SVar (TUser type_name, false));
-  List.iter (function
-    | PSelf -> ()
-    | PNamed (t, name) -> Hashtbl.replace method_env.symbols name (SVar (t, false))
-  ) params;
-  List.iter (check_stmt method_env) body
 
 (* Check if a type is valid given a list of type parameters in scope *)
 let rec type_exists_with_params env type_params typ =
@@ -458,62 +601,17 @@ let rec type_exists_with_params env type_params typ =
   | TChan t -> type_exists_with_params env type_params t
   | TResult (t, e) -> type_exists_with_params env type_params t && (e = "Error" || Hashtbl.mem env.errors e)
   | TApply (name, args) ->
+    let arity_ok =
+      match Hashtbl.find_opt env.generic_struct_params name, Hashtbl.find_opt env.generic_enum_params name with
+      | Some tparams, _ -> List.length tparams = List.length args
+      | _, Some tparams -> List.length tparams = List.length args
+      | _ -> true
+    in
     (* Map<K, V> is a built-in generic type *)
+    arity_ok &&
     (name = "Map" || Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
     List.for_all (type_exists_with_params env type_params) args
   | _ -> type_exists env typ
-
-(* Check an item *)
-let check_item env = function
-  | IStruct (name, type_params, fields) ->
-    List.iter (fun f ->
-      if not (type_exists_with_params env type_params f.field_type) then
-        add_error env (Printf.sprintf "Unknown type for field %s in struct %s" f.field_name name)
-    ) fields
-  | IEnum (name, type_params, variants) ->
-    List.iter (fun v ->
-      List.iter (fun f ->
-        if not (type_exists_with_params env type_params f.field_type) then
-          add_error env (Printf.sprintf "Unknown type for field %s in variant %s of enum %s" f.field_name v.variant_name name)
-      ) v.variant_fields
-    ) variants
-  | ITrait (_name, _methods) ->
-    ()  (* Just declarations, no bodies to check *)
-  | IImpl (_type_name, trait_name, methods) ->
-    if not (Hashtbl.mem env.traits trait_name) then
-      add_error env (Printf.sprintf "Unknown trait: %s" trait_name);
-    List.iter (fun m ->
-      check_method env _type_name m.im_params m.im_body
-    ) methods
-  | IMethod (type_name, _method_name, _type_params, params, _ret, body) ->
-    if not (Hashtbl.mem env.structs type_name) then
-      add_error env (Printf.sprintf "Method defined for unknown type: %s" type_name);
-    check_method env type_name params body
-  | IFunction (_name, _type_params, params, _ret, body) ->
-    check_function env params body
-  | IError (_name, _fields) ->
-    ()  (* Just a type definition *)
-  | IUses _paths ->
-    ()  (* TODO: validate imports exist *)
-
-(* Run semantic analysis on a program *)
-let analyze program =
-  let env = create_env () in
-  (* First pass: register all declarations *)
-  List.iter (register_item env) program;
-  (* Second pass: check all items *)
-  List.iter (check_item env) program;
-  if !(env.errors_list) = [] then
-    Ok env
-  else
-    Error (List.rev !(env.errors_list))
-
-(* Run semantic analysis and return env with warnings *)
-let analyze_with_warnings program =
-  let env = create_env () in
-  List.iter (register_item env) program;
-  List.iter (check_item env) program;
-  (env, List.rev !(env.errors_list))
 
 (* Query type of an expression given an env and local variable types *)
 let rec get_expr_type env locals expr =
@@ -534,9 +632,14 @@ let rec get_expr_type env locals expr =
        match Hashtbl.find_opt env.symbols name with
        | Some (SVar (t, _)) -> Some t
        | _ -> None)
-  | EBinary (op, _, _) ->
+  | EBinary (op, l, r) ->
     (match op with
-     | Add | Sub | Mul | Div | Mod -> Some TInt
+     | Add | Sub | Mul | Div | Mod ->
+       let lt = get_expr_type env locals l in
+       let rt = get_expr_type env locals r in
+       (match lt, rt with
+        | Some l, Some r when types_equal l r -> Some l
+        | _ -> Some TInt)
      | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> Some TBool)
   | EUnary (Not, _) -> Some TBool
   | ECall (callee, _type_args, _) ->
@@ -547,12 +650,24 @@ let rec get_expr_type env locals expr =
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
         | Some (SFunc (_, ret)) -> ret
+        | Some (SVar (TFunc (_, ret), _)) -> ret
         | _ -> None)
      | EMember (obj, method_name) ->
        (match get_expr_type env locals obj with
+        | Some (TApply ("Map", _)) when method_name = "len" -> Some TInt
+        | Some (TApply ("Map", _)) when method_name = "has" -> Some TBool
+        | Some (TApply ("Map", [_k; v])) when method_name = "get" -> Some v
         | Some (TUser type_name) ->
           (match Hashtbl.find_opt env.methods (type_name, method_name) with
            | Some (_, ret) -> ret
+           | None -> None)
+        | Some (TApply (type_name, type_args)) ->
+          (match Hashtbl.find_opt env.methods (type_name, method_name) with
+           | Some (_, ret) ->
+             let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
+             (match ret with
+              | Some r -> Some (substitute_type_params tparams type_args r)
+              | None -> None)
            | None -> None)
         | Some (TChan t) when method_name = "recv" -> Some t
         (* String built-in methods *)
@@ -565,10 +680,6 @@ let rec get_expr_type env locals expr =
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt
-        (* Map built-in methods *)
-        | Some (TApply ("Map", _)) when method_name = "len" -> Some TInt
-        | Some (TApply ("Map", _)) when method_name = "has" -> Some TBool
-        | Some (TApply ("Map", [_k; v])) when method_name = "get" -> Some v
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->
@@ -578,6 +689,13 @@ let rec get_expr_type env locals expr =
         | Some fields ->
           List.find_opt (fun f -> f.field_name = field_name) fields
           |> Option.map (fun f -> f.field_type)
+        | None -> None)
+     | Some (TApply (type_name, type_args)) ->
+       (match Hashtbl.find_opt env.structs type_name with
+        | Some fields ->
+          let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
+          List.find_opt (fun f -> f.field_name = field_name) fields
+          |> Option.map (fun f -> substitute_type_params tparams type_args f.field_type)
         | None -> None)
      | _ -> None)
   | EIndex (arr, _) ->
@@ -639,3 +757,119 @@ and infer_return_type_from_stmt_with_locals env locals stmt =
        | None -> None)
   | SFor (_, _, body) -> infer_return_type_from_stmts_with_locals env locals body
   | _ -> None
+
+(* Collect return expression types in a body *)
+let rec collect_return_types env locals = function
+  | [] -> []
+  | stmt :: rest ->
+    let current =
+      match stmt with
+      | SReturn (Some e) -> [get_expr_type env locals e]
+      | SReturn None -> [None]
+      | SIf (_, then_stmts, else_stmts) ->
+        collect_return_types env locals then_stmts @
+        (match else_stmts with Some stmts -> collect_return_types env locals stmts | None -> [])
+      | SFor (_, _, body) -> collect_return_types env locals body
+      | _ -> []
+    in
+    current @ collect_return_types env locals rest
+
+(* Validate that return statements match declared return type when present *)
+let check_return_types env params declared_ret body =
+  match declared_ret with
+  | None -> ()  (* void allows bare return/none *)
+  | Some ret_type ->
+    let locals = Hashtbl.create 16 in
+    List.iter (function
+      | PSelf ->
+        (match env.current_type with
+         | Some tname -> Hashtbl.replace locals "self" (TUser tname)
+         | None -> ())
+      | PNamed (t, name) -> Hashtbl.replace locals name t
+    ) params;
+    let returns = collect_return_types env locals body in
+    List.iter (function
+      | Some t when not (types_equal t ret_type) ->
+        add_error env (Printf.sprintf "Return type mismatch: expected %s but found %s"
+                         (Ast.show_typ ret_type) (Ast.show_typ t))
+      | None -> ()  (* ignore if type couldn't be inferred *)
+      | _ -> ()
+    ) returns
+
+(* Check a function body *)
+let check_function env params ret body =
+  check_param_order env params;
+  let func_env = push_scope env in
+  List.iter (function
+    | PSelf -> ()  (* self handled separately *)
+    | PNamed (t, name) -> Hashtbl.replace func_env.symbols name (SVar (t, false))
+  ) params;
+  List.iter (check_stmt func_env) body;
+  check_return_types func_env params ret body
+
+(* Check a method body *)
+let check_method env type_name params ret body =
+  check_param_order env params;
+  let method_env = { (push_scope env) with
+    in_method = true;
+    current_type = Some type_name
+  } in
+  Hashtbl.replace method_env.symbols "self" (SVar (TUser type_name, false));
+  List.iter (function
+    | PSelf -> ()
+    | PNamed (t, name) -> Hashtbl.replace method_env.symbols name (SVar (t, false))
+  ) params;
+  List.iter (check_stmt method_env) body;
+  check_return_types method_env params ret body
+
+(* Check an item *)
+let check_item env = function
+  | IStruct (name, type_params, fields) ->
+    List.iter (fun f ->
+      if not (type_exists_with_params env type_params f.field_type) then
+        add_error env (Printf.sprintf "Unknown type for field %s in struct %s" f.field_name name)
+    ) fields
+  | IEnum (name, type_params, variants) ->
+    List.iter (fun v ->
+      List.iter (fun f ->
+        if not (type_exists_with_params env type_params f.field_type) then
+          add_error env (Printf.sprintf "Unknown type for field %s in variant %s of enum %s" f.field_name v.variant_name name)
+      ) v.variant_fields
+    ) variants
+  | ITrait (_name, _methods) ->
+    ()  (* Just declarations, no bodies to check *)
+  | IImpl (_type_name, trait_name, methods) ->
+    if not (Hashtbl.mem env.traits trait_name) then
+      add_error env (Printf.sprintf "Unknown trait: %s" trait_name);
+    List.iter (fun m ->
+      check_method env _type_name m.im_params m.im_return m.im_body
+    ) methods
+  | IMethod (type_name, _method_name, _type_params, params, _ret, body) ->
+    if not (Hashtbl.mem env.structs type_name) then
+      add_error env (Printf.sprintf "Method defined for unknown type: %s" type_name);
+    check_method env type_name params _ret body
+  | IFunction (_name, _type_params, params, _ret, body) ->
+    check_function env params _ret body
+  | IError (_name, _fields) ->
+    ()  (* Just a type definition *)
+  | IUses _paths ->
+    ()  (* TODO: validate imports exist *)
+
+(* Run semantic analysis on a program *)
+let analyze program =
+  let env = create_env () in
+  (* First pass: register all declarations *)
+  List.iter (register_item env) program;
+  (* Second pass: check all items *)
+  List.iter (check_item env) program;
+  if !(env.errors_list) = [] then
+    Ok env
+  else
+    Error (List.rev !(env.errors_list))
+
+(* Run semantic analysis and return env with warnings *)
+let analyze_with_warnings program =
+  let env = create_env () in
+  List.iter (register_item env) program;
+  List.iter (check_item env) program;
+  (env, List.rev !(env.errors_list))

@@ -14,6 +14,43 @@ let _assert_eq msg expected actual =
   if expected <> actual then
     failwith (Printf.sprintf "%s: expected %s, got %s" msg expected actual)
 
+let contains haystack needle =
+  try
+    ignore (Str.search_forward (Str.regexp_string needle) haystack 0);
+    true
+  with Not_found -> false
+
+let temp_dir () =
+  Random.self_init ();
+  let dir = Filename.concat (Filename.get_temp_dir_name ()) ("shotgun_test_" ^ string_of_int (Random.bits ())) in
+  Sys.mkdir dir 0o755;
+  dir
+
+let write_file path contents =
+  let oc = open_out path in
+  output_string oc contents;
+  close_out oc
+
+let compile_and_run_c c_code =
+  let dir = temp_dir () in
+  let c_path = Filename.concat dir "test.c" in
+  let bin_path = Filename.concat dir "a.out" in
+  write_file c_path c_code;
+  let compile_cmd = Printf.sprintf "gcc -std=gnu99 -pthread -o %s %s" bin_path c_path in
+  let compile_rc = Sys.command compile_cmd in
+  if compile_rc <> 0 then failwith "gcc failed";
+  let ic = Unix.open_process_in bin_path in
+  let buf = Buffer.create 64 in
+  (try
+     while true do
+       let line = input_line ic in
+       Buffer.add_string buf line;
+       Buffer.add_char buf '\n'
+     done
+   with End_of_file -> ());
+  ignore (Unix.close_process_in ic);
+  Buffer.contents buf
+
 (* Lexer tests *)
 let test_lexer () =
   let lex s =
@@ -195,6 +232,67 @@ let test_parser () =
     | _ -> failwith "unexpected AST"
   )
 
+(* Semantic tests *)
+let test_semantic () =
+  let parse s =
+    let lexbuf = Lexing.from_string s in
+    Lexer.reset_nesting ();
+    Parser.program Lexer.token lexbuf
+  in
+  let expect_error name source matcher =
+    test name (fun () ->
+      let ast = parse source in
+      match Semantic.analyze ast with
+      | Ok _ -> failwith "expected semantic error"
+      | Error errs ->
+        if not (List.exists matcher errs) then
+          failwith ("unexpected errors: " ^ String.concat "; " errs))
+  in
+
+  expect_error "semantic: arity mismatch" "fn add(int a) int { return a }\nfn main { add(1, 2) }"
+    (fun e -> contains e "Function 'add' expects");
+
+  expect_error "semantic: return mismatch" "fn foo() int { return true }\n"
+    (fun e -> contains e "Return type mismatch");
+
+  expect_error "semantic: cannot infer type" "fn main { x := none }"
+    (fun e -> contains e "Cannot infer type for");
+
+  expect_error "semantic: for requires array" "fn main { for x in 5 { } }"
+    (fun e -> contains e "For loop expects an array")
+
+(* Resolver/config tests *)
+let test_resolver_and_config () =
+  test "config: parses name" (fun () ->
+    let dir = temp_dir () in
+    let cfg = Filename.concat dir "shotgun.toml" in
+    write_file cfg "name = \"myapp\"";
+    match Config.load_config cfg with
+    | Some c when c.Config.name = "myapp" -> ()
+    | _ -> failwith "expected config to parse"
+  );
+
+  test "config: rejects malformed line" (fun () ->
+    let dir = temp_dir () in
+    let cfg = Filename.concat dir "shotgun.toml" in
+    write_file cfg "name: oops";
+    match Config.load_config cfg with
+    | None -> ()
+    | Some _ -> failwith "expected malformed config to fail"
+  );
+
+  test "resolver: detects import collision" (fun () ->
+    let env_main = Semantic.create_env () in
+    let env_import = Semantic.create_env () in
+    Hashtbl.replace env_import.Semantic.structs "Foo" [];
+    let errors = ref [] in
+    Resolver.merge_env ~into:env_main ~from:env_import ~namespace:"ns" ~errors;
+    (* second merge triggers collision on unqualified name *)
+    Resolver.merge_env ~into:env_main ~from:env_import ~namespace:"ns2" ~errors;
+    if not (List.exists (fun e -> contains e "Import collision: struct Foo") !errors) then
+      failwith "expected struct collision error"
+  )
+
 (* Codegen tests *)
 let test_codegen () =
   let gen s =
@@ -223,6 +321,13 @@ let test_codegen () =
   test "codegen: method" (fun () ->
     let c = gen "Person :: struct { name str }\nPerson :: greet(self) str { return \"hi\" }" in
     assert (String.length c > 0)
+  );
+
+  test "codegen: runtime program executes" (fun () ->
+    let program = "fn main { print(\"OK\") }" in
+    let c = gen program in
+    let output = compile_and_run_c c in
+    if not (contains output "OK") then failwith ("unexpected runtime output: " ^ output)
   )
 
 (* Run all tests *)
@@ -231,6 +336,10 @@ let () =
   test_lexer ();
   print_endline "";
   test_parser ();
+  print_endline "";
+  test_semantic ();
+  print_endline "";
+  test_resolver_and_config ();
   print_endline "";
   test_codegen ();
   print_endline "\nDone."

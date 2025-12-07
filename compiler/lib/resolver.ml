@@ -43,30 +43,41 @@ let get_uses program =
   ) program
   |> List.flatten
 
-(* Merge symbols from one env into another *)
-let merge_env ~into ~from ~namespace =
+(* Merge symbols from one env into another, recording collisions *)
+let merge_env ~into ~from ~namespace ~errors =
   (* Copy structs with namespace prefix *)
   Hashtbl.iter (fun name fields ->
     let qualified_name = namespace ^ "_" ^ name in
+    if Hashtbl.mem into.Semantic.structs qualified_name then
+      errors := Printf.sprintf "Import collision: struct %s already defined" qualified_name :: !errors;
     Hashtbl.replace into.Semantic.structs qualified_name fields;
-    (* Also add without prefix for convenience *)
+    if Hashtbl.mem into.Semantic.structs name then
+      errors := Printf.sprintf "Import collision: struct %s already defined" name :: !errors;
     Hashtbl.replace into.Semantic.structs name fields
   ) from.Semantic.structs;
 
   (* Copy enums *)
   Hashtbl.iter (fun name variants ->
     let qualified_name = namespace ^ "_" ^ name in
+    if Hashtbl.mem into.Semantic.enums qualified_name then
+      errors := Printf.sprintf "Import collision: enum %s already defined" qualified_name :: !errors;
     Hashtbl.replace into.Semantic.enums qualified_name variants;
+    if Hashtbl.mem into.Semantic.enums name then
+      errors := Printf.sprintf "Import collision: enum %s already defined" name :: !errors;
     Hashtbl.replace into.Semantic.enums name variants
   ) from.Semantic.enums;
 
   (* Copy traits *)
   Hashtbl.iter (fun name methods ->
+    if Hashtbl.mem into.Semantic.traits name then
+      errors := Printf.sprintf "Import collision: trait %s already defined" name :: !errors;
     Hashtbl.replace into.Semantic.traits name methods
   ) from.Semantic.traits;
 
   (* Copy errors *)
   Hashtbl.iter (fun name fields ->
+    if Hashtbl.mem into.Semantic.errors name then
+      errors := Printf.sprintf "Import collision: error %s already defined" name :: !errors;
     Hashtbl.replace into.Semantic.errors name fields
   ) from.Semantic.errors;
 
@@ -74,12 +85,17 @@ let merge_env ~into ~from ~namespace =
   Hashtbl.iter (fun name sym ->
     match sym with
     | Semantic.SFunc _ ->
+      if Hashtbl.mem into.Semantic.symbols name then
+        errors := Printf.sprintf "Import collision: function %s already defined" name :: !errors;
       Hashtbl.replace into.Semantic.symbols name sym
     | _ -> ()
   ) from.Semantic.symbols;
 
   (* Copy methods *)
   Hashtbl.iter (fun key value ->
+    if Hashtbl.mem into.Semantic.methods key then
+      let (tname, mname) = key in
+      errors := Printf.sprintf "Import collision: method %s.%s already defined" tname mname :: !errors;
     Hashtbl.replace into.Semantic.methods key value
   ) from.Semantic.methods
 
@@ -149,7 +165,7 @@ let analyze_with_imports config cache program =
           | Some ns -> ns
           | None -> "unknown"
         in
-        merge_env ~into:main_env ~from:imported_env ~namespace
+        merge_env ~into:main_env ~from:imported_env ~namespace ~errors:import_errors
   ) uses;
 
   (* Now register and check the main program items with merged env *)
