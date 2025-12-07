@@ -18,6 +18,7 @@ module.exports = grammar({
     _item: $ => choice(
       $.uses_statement,
       $.struct_definition,
+      $.variant_definition,
       $.trait_definition,
       $.impl_block,
       $.method_definition,
@@ -60,6 +61,29 @@ module.exports = grammar({
       '{',
       repeat($.field_definition),
       '}',
+    ),
+
+    // Option :: variant { Some { value int } None }
+    variant_definition: $ => seq(
+      field('name', $.type_identifier),
+      optional($.type_parameters),
+      '::',
+      'variant',
+      '{',
+      repeat($.variant_case),
+      '}',
+    ),
+
+    variant_case: $ => seq(
+      field('name', $.type_identifier),
+      optional(seq('{', repeat($.field_definition), '}')),
+    ),
+
+    type_parameters: $ => seq(
+      '<',
+      $.identifier,
+      repeat(seq(',', $.identifier)),
+      '>',
     ),
 
     field_definition: $ => seq(
@@ -196,10 +220,12 @@ module.exports = grammar({
 
     _statement: $ => choice(
       $.variable_declaration,
+      $.inferred_declaration,
       $.const_declaration,
       $.return_statement,
       $.if_statement,
       $.for_statement,
+      $.while_statement,
       $.match_statement,
       $.go_statement,
       $.expression_statement,
@@ -209,6 +235,13 @@ module.exports = grammar({
       $._type,
       field('name', $.identifier),
       '=',
+      $._expression,
+    ),
+
+    // name := expr (type inferred)
+    inferred_declaration: $ => seq(
+      field('name', $.identifier),
+      ':=',
       $._expression,
     ),
 
@@ -237,6 +270,12 @@ module.exports = grammar({
       'for',
       $.identifier,
       'in',
+      $._expression,
+      $.block,
+    ),
+
+    while_statement: $ => seq(
+      'while',
       $._expression,
       $.block,
     ),
@@ -285,8 +324,9 @@ module.exports = grammar({
     paren_expression: $ => seq('(', $._expression, ')'),
 
     binary_expression: $ => choice(
+      prec.left(1, seq($._expression, '||', $._expression)),
       prec.left(2, seq($._expression, 'and', $._expression)),
-      prec.left(3, seq($._expression, choice('==', '!=', '<', '>', '<=', '>='), $._expression)),
+      prec.left(3, seq($._expression, choice('==', '!=', '<', '>', '<=', '>=', 'in'), $._expression)),
       prec.left(4, seq($._expression, choice('+', '-'), $._expression)),
       prec.left(5, seq($._expression, choice('*', '/', '%'), $._expression)),
     ),
