@@ -1,0 +1,15 @@
+fn main() {
+    // Write a file
+    write_file("/tmp/shotgun_test.txt", "Hello from Shotgun!")
+
+    // Read it back
+    str content = read_file("/tmp/shotgun_test.txt")
+    print(content)
+
+    // Write multiple lines
+    str multiline = "Line 1\nLine 2\nLine 3"
+    write_file("/tmp/shotgun_multi.txt", multiline)
+
+    str read_multi = read_file("/tmp/shotgun_multi.txt")
+    print(read_multi)
+}

@@ -137,6 +137,9 @@ let rec infer_expr_type env expr =
   | EUnary (Not, _) -> Some TBool
   | ECall (callee, _type_args, _args) ->
     (match callee with
+     | EIdent "read_file" -> Some TStr
+     | EIdent "write_file" -> None  (* void *)
+     | EIdent "print" -> None  (* void *)
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
         | Some (SFunc (_, ret)) -> ret
@@ -251,7 +254,7 @@ let rec check_expr env expr =
   match expr with
   | EIdent "self" when not env.in_method ->
     add_error env "'self' used outside of method"
-  | EIdent name when not (Hashtbl.mem env.symbols name) && name <> "self" && name <> "print" ->
+  | EIdent name when not (Hashtbl.mem env.symbols name) && name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file" ->
     add_error env (Printf.sprintf "Undefined variable: %s" name)
   | EBinary (_, l, r) ->
     check_expr env l;
@@ -480,6 +483,9 @@ let rec get_expr_type env locals expr =
   | EUnary (Not, _) -> Some TBool
   | ECall (callee, _type_args, _) ->
     (match callee with
+     | EIdent "read_file" -> Some TStr
+     | EIdent "write_file" -> None  (* void *)
+     | EIdent "print" -> None  (* void *)
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
         | Some (SFunc (_, ret)) -> ret

@@ -997,6 +997,19 @@ and gen_call ctx indent callee args =
           emit ")")
      | _ ->
        emit "printf(\"\\n\")")
+  | EIdent "read_file" ->
+    emit "shotgun_read_file(";
+    (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+    emit ")"
+  | EIdent "write_file" ->
+    emit "shotgun_write_file(";
+    (match args with
+     | [path; content] ->
+       gen_expr ctx indent path;
+       emit ", ";
+       gen_expr ctx indent content
+     | _ -> ());
+    emit ")"
   | EIdent name ->
     emit name;
     emit "(";
@@ -1914,6 +1927,28 @@ let gen_prelude () =
   emitln "    }";
   emitln "    arr->data[i] = strdup(start);";
   emitln "    return arr;";
+  emitln "}";
+  emitln "";
+  emitln "/* File I/O runtime */";
+  emitln "static char* shotgun_read_file(char* path) {";
+  emitln "    FILE* f = fopen(path, \"r\");";
+  emitln "    if (!f) return NULL;";
+  emitln "    fseek(f, 0, SEEK_END);";
+  emitln "    long len = ftell(f);";
+  emitln "    fseek(f, 0, SEEK_SET);";
+  emitln "    char* buf = malloc(len + 1);";
+  emitln "    fread(buf, 1, len, f);";
+  emitln "    buf[len] = '\\0';";
+  emitln "    fclose(f);";
+  emitln "    return buf;";
+  emitln "}";
+  emitln "";
+  emitln "static void shotgun_write_file(char* path, char* content) {";
+  emitln "    FILE* f = fopen(path, \"w\");";
+  emitln "    if (f) {";
+  emitln "        fputs(content, f);";
+  emitln "        fclose(f);";
+  emitln "    }";
   emitln "}";
   emitln "";
   emitln "typedef struct { int64_t* data; size_t len; size_t cap; } Array_int64;";
