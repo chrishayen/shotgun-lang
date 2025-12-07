@@ -799,6 +799,10 @@ and gen_call ctx indent callee args =
         | _ -> emit "/* has on non-map */")
      | "len" ->
        (match get_type ctx obj with
+        | Some TStr ->
+          emit "(int64_t)strlen(";
+          gen_expr ctx indent obj;
+          emit ")"
         | Some (TApply ("Map", _)) ->
           emit "(int64_t)shotgun_map_len(";
           gen_expr ctx indent obj;
@@ -844,6 +848,68 @@ and gen_call ctx indent callee args =
              emit "})"
            | _ -> emit "/* invalid set args */)")
         | _ -> emit "/* set on non-map */")
+     (* String methods *)
+     | "at" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "(int64_t)(";
+          gen_expr ctx indent obj;
+          emit ")[";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit "]"
+        | _ -> emit "/* at on non-string */")
+     | "contains" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "(strstr(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ") != NULL)"
+        | _ -> emit "/* contains on non-string */")
+     | "starts_with" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "(strncmp(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ", strlen(";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")) == 0)"
+        | _ -> emit "/* starts_with on non-string */")
+     | "ends_with" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_ends_with(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")"
+        | _ -> emit "/* ends_with on non-string */")
+     | "find" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_find(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+          emit ")"
+        | _ -> emit "/* find on non-string */")
+     | "slice" ->
+       (match get_type ctx obj with
+        | Some TStr ->
+          emit "shotgun_str_slice(";
+          gen_expr ctx indent obj;
+          emit ", ";
+          (match args with
+           | [start; end_] ->
+             gen_expr ctx indent start;
+             emit ", ";
+             gen_expr ctx indent end_
+           | _ -> ());
+          emit ")"
+        | _ -> emit "/* slice on non-string */")
      | _ ->
        (* Get the type of obj to generate proper method name *)
        let type_name = match get_type ctx obj with
@@ -874,9 +940,9 @@ and gen_call ctx indent callee args =
           gen_expr ctx indent arg;
           emit ")"
         | Some TBool ->
-          emit "printf(\"%d\\n\", ";
+          emit "printf(\"%s\\n\", (";
           gen_expr ctx indent arg;
-          emit ")"
+          emit ") ? \"true\" : \"false\")"
         | Some TF32 | Some TF64 ->
           emit "printf(\"%f\\n\", ";
           gen_expr ctx indent arg;
@@ -1705,6 +1771,27 @@ let gen_prelude () =
   emitln "    void* p = malloc(size);";
   emitln "    memcpy(p, src, size);";
   emitln "    return p;";
+  emitln "}";
+  emitln "";
+  emitln "/* String runtime */";
+  emitln "static char* shotgun_str_slice(char* s, int64_t start, int64_t end) {";
+  emitln "    int64_t len = end - start;";
+  emitln "    char* result = malloc(len + 1);";
+  emitln "    memcpy(result, s + start, len);";
+  emitln "    result[len] = '\\0';";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
+  emitln "static int64_t shotgun_str_find(char* s, char* substr) {";
+  emitln "    char* pos = strstr(s, substr);";
+  emitln "    return pos ? (int64_t)(pos - s) : -1;";
+  emitln "}";
+  emitln "";
+  emitln "static bool shotgun_str_ends_with(char* s, char* suffix) {";
+  emitln "    size_t slen = strlen(s);";
+  emitln "    size_t suffixlen = strlen(suffix);";
+  emitln "    if (suffixlen > slen) return false;";
+  emitln "    return strcmp(s + slen - suffixlen, suffix) == 0;";
   emitln "}";
   emitln "";
   emitln "/* Array runtime */";

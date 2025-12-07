@@ -482,6 +482,32 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <pre><code><span class="fn">print</span>(<span class="st">"Use \{name\} for interpolation"</span>)</code></pre>
 
+        <h2>String Methods</h2>
+
+        <p>Strings have built-in methods for common operations:</p>
+
+        <h3>Length and Character Access</h3>
+
+        <pre><code><span class="ty">str</span> s = <span class="st">"hello"</span>
+<span class="ty">int</span> length = s.<span class="fn">len</span>()      <span class="cm">// 5</span>
+<span class="ty">int</span> ch = s.<span class="fn">at</span>(<span class="nu">0</span>)          <span class="cm">// 104 (ASCII code for 'h')</span></code></pre>
+
+        <h3>Searching</h3>
+
+        <pre><code><span class="ty">str</span> s = <span class="st">"hello world"</span>
+
+<span class="ty">bool</span> has = s.<span class="fn">contains</span>(<span class="st">"world"</span>)     <span class="cm">// true</span>
+<span class="ty">int</span> pos = s.<span class="fn">find</span>(<span class="st">"world"</span>)          <span class="cm">// 6 (position, or -1 if not found)</span>
+
+<span class="ty">bool</span> starts = s.<span class="fn">starts_with</span>(<span class="st">"hello"</span>)  <span class="cm">// true</span>
+<span class="ty">bool</span> ends = s.<span class="fn">ends_with</span>(<span class="st">"world"</span>)      <span class="cm">// true</span></code></pre>
+
+        <h3>Slicing</h3>
+
+        <pre><code><span class="ty">str</span> s = <span class="st">"hello world"</span>
+<span class="ty">str</span> sub = s.<span class="fn">slice</span>(<span class="nu">0</span>, <span class="nu">5</span>)    <span class="cm">// "hello"</span>
+<span class="ty">str</span> sub2 = s.<span class="fn">slice</span>(<span class="nu">6</span>, <span class="nu">11</span>)  <span class="cm">// "world"</span></code></pre>
+
         <h2>Operators</h2>
 
         <h3>Arithmetic</h3>

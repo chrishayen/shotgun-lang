@@ -149,6 +149,19 @@ let rec infer_expr_type env expr =
            | None -> None)
         | Some (TChan t) when method_name = "recv" ->
           Some t
+        (* String built-in methods *)
+        | Some TStr ->
+          (match method_name with
+           | "len" | "at" | "find" -> Some TInt
+           | "contains" | "starts_with" | "ends_with" -> Some TBool
+           | "slice" -> Some TStr
+           | _ -> None)
+        (* Array built-in methods *)
+        | Some (TArray _) when method_name = "len" -> Some TInt
+        (* Map built-in methods *)
+        | Some (TApply ("Map", _)) when method_name = "len" -> Some TInt
+        | Some (TApply ("Map", _)) when method_name = "has" -> Some TBool
+        | Some (TApply ("Map", [_k; v])) when method_name = "get" -> Some v
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->
@@ -477,6 +490,19 @@ let rec get_expr_type env locals expr =
            | Some (_, ret) -> ret
            | None -> None)
         | Some (TChan t) when method_name = "recv" -> Some t
+        (* String built-in methods *)
+        | Some TStr ->
+          (match method_name with
+           | "len" | "at" | "find" -> Some TInt
+           | "contains" | "starts_with" | "ends_with" -> Some TBool
+           | "slice" -> Some TStr
+           | _ -> None)
+        (* Array built-in methods *)
+        | Some (TArray _) when method_name = "len" -> Some TInt
+        (* Map built-in methods *)
+        | Some (TApply ("Map", _)) when method_name = "len" -> Some TInt
+        | Some (TApply ("Map", _)) when method_name = "has" -> Some TBool
+        | Some (TApply ("Map", [_k; v])) when method_name = "get" -> Some v
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->

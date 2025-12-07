@@ -1,0 +1,29 @@
+fn main() {
+    str s = "hello world"
+
+    // len() - get string length
+    print(s.len())
+
+    // at() - get character at index (as int)
+    print(s.at(0))
+
+    // contains() - check if substring exists
+    print(s.contains("world"))
+    print(s.contains("foo"))
+
+    // starts_with() - check prefix
+    print(s.starts_with("hello"))
+    print(s.starts_with("world"))
+
+    // ends_with() - check suffix
+    print(s.ends_with("world"))
+    print(s.ends_with("hello"))
+
+    // find() - find substring position (-1 if not found)
+    print(s.find("world"))
+    print(s.find("foo"))
+
+    // slice() - extract substring
+    print(s.slice(0, 5))
+    print(s.slice(6, 11))
+}
