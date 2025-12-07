@@ -60,6 +60,7 @@ let parse_interp_string s =
 (* Tokens *)
 %token <int> INTEGER
 %token <float> FLOAT
+%token <char> CHARACTER
 %token <string> INTERP_STRING  (* full string including interpolation markers *)
 %token <string> IDENT
 %token <string> TYPE_IDENT
@@ -75,7 +76,7 @@ let parse_interp_string s =
 %token UNDERSCORE
 
 (* Type keywords *)
-%token STR INT BOOL F32 F64 U32 U64
+%token STR INT BOOL CHAR F32 F64 U32 U64
 
 (* Symbols *)
 %token COLONCOLON COLONEQ ARROW QUESTION DASH
@@ -261,6 +262,7 @@ typ:
   | STR { TStr }
   | INT { TInt }
   | BOOL { TBool }
+  | CHAR { TChar }
   | F32 { TF32 }
   | F64 { TF64 }
   | U32 { TU32 }
@@ -283,6 +285,7 @@ primitive_or_user:
   | STR { TStr }
   | INT { TInt }
   | BOOL { TBool }
+  | CHAR { TChar }
   | F32 { TF32 }
   | F64 { TF64 }
   | U32 { TU32 }
@@ -324,6 +327,7 @@ pattern:
   | UNDERSCORE { PWildcard }
   | name = IDENT { PIdent name }
   | i = INTEGER { PLiteral (EInt i) }
+  | c = CHARACTER { PLiteral (EChar c) }
   | TRUE { PLiteral (EBool true) }
   | FALSE { PLiteral (EBool false) }
   | s = INTERP_STRING { PLiteral (EString (parse_interp_string s)) }
@@ -441,6 +445,7 @@ type_args:
 primary_expr:
   | i = INTEGER { EInt i }
   | f = FLOAT { EFloat f }
+  | c = CHARACTER { EChar c }
   | s = string_expr { s }
   | TRUE { EBool true }
   | FALSE { EBool false }

@@ -13,6 +13,7 @@ type typ =
   | TInt
   | TStr
   | TBool
+  | TChar
   | TF32
   | TF64
   | TU32
@@ -79,6 +80,7 @@ and expr =
   | EFloat of float
   | EString of string_part list
   | EBool of bool
+  | EChar of char
   | ENone
   | EIdent of string
   | EBinary of binop * expr * expr

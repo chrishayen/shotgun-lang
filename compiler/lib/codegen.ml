@@ -114,6 +114,7 @@ let rec c_type = function
   | TInt -> "int64_t"
   | TStr -> "char*"
   | TBool -> "bool"
+  | TChar -> "char"
   | TF32 -> "float"
   | TF64 -> "double"
   | TU32 -> "uint32_t"
@@ -149,6 +150,7 @@ and c_type_name = function
   | TInt -> "int64"
   | TStr -> "str"
   | TBool -> "bool"
+  | TChar -> "char"
   | TF32 -> "f32"
   | TF64 -> "f64"
   | TU32 -> "u32"
@@ -196,6 +198,7 @@ let format_spec = function
   | TInt -> "%\" PRId64 \""
   | TStr -> "%s"
   | TBool -> "%d"
+  | TChar -> "%c"
   | TF32 -> "%f"
   | TF64 -> "%f"
   | TU32 -> "%\" PRIu32 \""
@@ -358,6 +361,7 @@ let rec gen_expr ctx indent expr =
   | EString parts -> gen_string_parts ctx parts
   | EBool true -> emit "true"
   | EBool false -> emit "false"
+  | EChar c -> emit (Printf.sprintf "'%s'" (Char.escaped c))
   | ENone -> emit "NULL"
   | EIdent "self" -> emit "self"
   | EIdent name -> emit name
@@ -375,6 +379,12 @@ let rec gen_expr ctx indent expr =
        emit ", ";
        gen_expr ctx indent r;
        emit ") != 0)"
+     | Add, Some TStr ->
+       emit "shotgun_concat(";
+       gen_expr ctx indent l;
+       emit ", ";
+       gen_expr ctx indent r;
+       emit ")"
      | In, _ ->
        (* Generate inline search: ({ int _in_r = 0; T _in_v = val; arr_t _in_a = arr; for (...) { if (...) { _in_r = 1; break; } } _in_r; }) *)
        let elem_type = get_type ctx l in
@@ -928,7 +938,7 @@ and gen_closure_expr ctx _indent params ret_type body _captures =
   let bound_names = param_names @ local_decls in
   let free_vars = List.filter (fun name ->
     not (List.mem name bound_names) &&
-    name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file"
+    name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file" && name <> "chr" && name <> "ord"
   ) used_idents in
   (* Remove duplicates *)
   let free_vars = List.sort_uniq String.compare free_vars in
@@ -1401,8 +1411,10 @@ and gen_call ctx indent callee args =
        emit method_name;
        emit "(";
        (* Pass obj as first argument (pointer to self) *)
-       emit "&";
-       gen_expr ctx indent obj;
+       (* If obj is 'self', it's already a pointer, so don't add & *)
+       (match obj with
+        | EIdent "self" -> emit "self"
+        | _ -> emit "&"; gen_expr ctx indent obj);
        List.iter (fun arg ->
          emit ", ";
          gen_expr ctx indent arg
@@ -1444,6 +1456,16 @@ and gen_call ctx indent callee args =
        emit ", ";
        gen_expr ctx indent content
      | _ -> ());
+    emit ")"
+  | EIdent "chr" ->
+    (* Convert int to char *)
+    emit "(char)(";
+    (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
+    emit ")"
+  | EIdent "ord" ->
+    (* Convert char to int *)
+    emit "(int64_t)(";
+    (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
     emit ")"
   | EIdent name ->
     (* Check if this is a closure variable *)
@@ -1513,7 +1535,29 @@ and gen_call ctx indent callee args =
 
 (* Generate or expression *)
 and gen_or ctx indent e clause =
+  (* Check if expression is a map index - needs special handling to avoid null deref *)
+  let is_map_index = match e with
+    | EIndex (arr, _) ->
+      (match get_type ctx arr with
+       | Some (TApply ("Map", _)) -> true
+       | _ -> false)
+    | _ -> false
+  in
   match clause with
+  | OrExpr default_e when is_map_index ->
+    (* For map access: check if key exists first using shotgun_map_get != NULL *)
+    (match e with
+     | EIndex (arr, idx) ->
+       emit "(shotgun_map_get(";
+       gen_expr ctx indent arr;
+       emit ", ";
+       gen_expr ctx indent idx;
+       emit ") ? (";
+       gen_expr ctx indent e;
+       emit ") : (";
+       gen_expr ctx indent default_e;
+       emit "))"
+     | _ -> ())
   | OrExpr default_e ->
     emit "((";
     gen_expr ctx indent e;
@@ -2320,6 +2364,15 @@ let gen_prelude () =
   emitln "}";
   emitln "";
   emitln "/* String runtime */";
+  emitln "static char* shotgun_concat(char* a, char* b) {";
+  emitln "    size_t len_a = strlen(a);";
+  emitln "    size_t len_b = strlen(b);";
+  emitln "    char* result = malloc(len_a + len_b + 1);";
+  emitln "    memcpy(result, a, len_a);";
+  emitln "    memcpy(result + len_a, b, len_b + 1);";
+  emitln "    return result;";
+  emitln "}";
+  emitln "";
   emitln "static char* shotgun_str_slice(char* s, int64_t start, int64_t end) {";
   emitln "    int64_t len = end - start;";
   emitln "    char* result = malloc(len + 1);";

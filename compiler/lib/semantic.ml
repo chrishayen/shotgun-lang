@@ -115,6 +115,7 @@ let rec types_equal t1 t2 =
   | TInt, TInt -> true
   | TStr, TStr -> true
   | TBool, TBool -> true
+  | TChar, TChar -> true
   | TF32, TF32 -> true
   | TF64, TF64 -> true
   | TU32, TU32 -> true
@@ -132,6 +133,11 @@ let rec types_equal t1 t2 =
      | None, None -> true
      | Some r1, Some r2 -> types_equal r1 r2
      | _ -> false)
+  | TApply (name1, args1), TApply (name2, args2) ->
+    name1 = name2 &&
+    List.length args1 = List.length args2 &&
+    List.for_all2 types_equal args1 args2
+  | TParam a, TParam b -> a = b
   | _ -> false
 
 (* Substitute generic type parameters with concrete args *)
@@ -155,7 +161,7 @@ let rec substitute_type_params type_params type_args typ =
 (* Check if a type is defined *)
 let rec type_exists env typ =
   match typ with
-  | TInt | TStr | TBool | TF32 | TF64 | TU32 | TU64 | TVoid -> true
+  | TInt | TStr | TBool | TChar | TF32 | TF64 | TU32 | TU64 | TVoid -> true
   | TOptional t -> type_exists env t
   | TArray t -> type_exists env t
   | TChan t -> type_exists env t
@@ -188,6 +194,7 @@ let rec infer_expr_type env expr =
   | EFloat _ -> Some TF64
   | EString _ -> Some TStr
   | EBool _ -> Some TBool
+  | EChar _ -> Some TChar
   | ENone -> None  (* Can be any optional type *)
   | EIdent name ->
     (match Hashtbl.find_opt env.symbols name with
@@ -208,6 +215,8 @@ let rec infer_expr_type env expr =
      | EIdent "read_file" -> Some TStr
      | EIdent "write_file" -> None  (* void *)
      | EIdent "print" -> None  (* void *)
+     | EIdent "chr" -> Some TChar  (* int -> char *)
+     | EIdent "ord" -> Some TInt   (* char -> int *)
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
         | Some (SFunc (_, ret)) -> ret
@@ -410,7 +419,7 @@ let rec check_expr env expr =
   match expr with
   | EIdent "self" when not env.in_method ->
     add_error env "'self' used outside of method"
-  | EIdent name when not (Hashtbl.mem env.symbols name) && name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file" ->
+  | EIdent name when not (Hashtbl.mem env.symbols name) && name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file" && name <> "chr" && name <> "ord" ->
     add_error env (Printf.sprintf "Undefined variable: %s" name)
   | EBinary (op, l, r) ->
     check_expr env l;
@@ -664,6 +673,7 @@ let rec get_expr_type env locals expr =
   | EFloat _ -> Some TF64
   | EString _ -> Some TStr
   | EBool _ -> Some TBool
+  | EChar _ -> Some TChar
   | ENone -> None
   | EIdent "self" ->
     (match Hashtbl.find_opt locals "self" with
@@ -691,6 +701,8 @@ let rec get_expr_type env locals expr =
      | EIdent "read_file" -> Some TStr
      | EIdent "write_file" -> None  (* void *)
      | EIdent "print" -> None  (* void *)
+     | EIdent "chr" -> Some TChar  (* int -> char *)
+     | EIdent "ord" -> Some TInt   (* char -> int *)
      | EIdent name ->
        (match Hashtbl.find_opt env.symbols name with
         | Some (SFunc (_, ret)) -> ret

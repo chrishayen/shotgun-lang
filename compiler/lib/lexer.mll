@@ -28,6 +28,7 @@ let keywords = [
   "str", STR;
   "int", INT;
   "bool", BOOL;
+  "char", CHAR;
   "f32", F32;
   "f64", F64;
   "u32", U32;
@@ -127,6 +128,15 @@ rule token = parse
 
   (* String - read entire string including interpolations *)
   | '"' { read_string (Buffer.create 64) lexbuf }
+
+  (* Character literal *)
+  | "'" ([^ '\\' '\''] as c) "'" { CHARACTER c }
+  | "'" '\\' 'n' "'" { CHARACTER '\n' }
+  | "'" '\\' 'r' "'" { CHARACTER '\r' }
+  | "'" '\\' 't' "'" { CHARACTER '\t' }
+  | "'" '\\' '\\' "'" { CHARACTER '\\' }
+  | "'" '\\' '\'' "'" { CHARACTER '\'' }
+  | "'" '\\' '0' "'" { CHARACTER '\000' }
 
   (* Symbols *)
   | "::" { COLONCOLON }

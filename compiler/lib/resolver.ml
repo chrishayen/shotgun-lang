@@ -91,13 +91,15 @@ let merge_env ~into ~from ~namespace ~errors =
     | _ -> ()
   ) from.Semantic.symbols;
 
-  (* Copy methods *)
-  Hashtbl.iter (fun key value ->
-    if Hashtbl.mem into.Semantic.methods key then
+  (* Copy methods - fold forces evaluation *)
+  let () = Hashtbl.fold (fun key value () ->
+    if Hashtbl.mem into.Semantic.methods key then begin
       let (tname, mname) = key in
-      errors := Printf.sprintf "Import collision: method %s.%s already defined" tname mname :: !errors;
+      errors := Printf.sprintf "Import collision: method %s.%s already defined" tname mname :: !errors
+    end;
     Hashtbl.replace into.Semantic.methods key value
-  ) from.Semantic.methods
+  ) from.Semantic.methods () in
+  ()
 
 (* Resolve and load all imports for a file (with project config) *)
 let rec resolve_imports cache config current_file program =
@@ -158,9 +160,9 @@ let rec resolve_imports_relative cache current_file program =
 
   List.rev !errors
 
-(* Analyze a program with its imports *)
-let analyze_with_imports config cache program =
-  (* First analyze the imported modules *)
+(* Analyze a program with its imports (recursive) *)
+let rec analyze_with_imports config cache program =
+  (* First analyze the imported modules recursively *)
   let uses = get_uses program in
   let import_errors = ref [] in
 
@@ -172,7 +174,8 @@ let analyze_with_imports config cache program =
         match Hashtbl.find_opt cache.parsed resolved_path with
         | None -> ()  (* Not parsed, error reported elsewhere *)
         | Some imported_program ->
-          let (env, warnings) = Semantic.analyze_with_warnings imported_program in
+          (* Recursively analyze with imports to handle transitive dependencies *)
+          let (env, warnings) = analyze_with_imports config cache imported_program in
           List.iter (fun w ->
             import_errors := (resolved_path ^ ": " ^ w) :: !import_errors
           ) warnings;
@@ -206,29 +209,36 @@ let analyze_with_imports config cache program =
 
   (main_env, !import_errors @ main_warnings)
 
-(* Collect all items from a program and its imports *)
+(* Collect all items from a program and its imports (recursive, with deduplication) *)
 let collect_all_items cache config program =
-  let uses = get_uses program in
-  let imported_items = ref [] in
+  let seen_paths = Hashtbl.create 16 in
+  let rec collect program =
+    let uses = get_uses program in
+    let imported_items = ref [] in
 
-  List.iter (fun import_path ->
-    match Config.resolve_import config import_path with
-    | None -> ()
-    | Some resolved_path ->
-      match Hashtbl.find_opt cache.parsed resolved_path with
+    List.iter (fun import_path ->
+      match Config.resolve_import config import_path with
       | None -> ()
-      | Some imported_program ->
-        (* Filter out IUses from imported programs to avoid duplication *)
-        let items = List.filter (function IUses _ -> false | _ -> true) imported_program in
-        imported_items := items @ !imported_items
-  ) uses;
+      | Some resolved_path ->
+        if not (Hashtbl.mem seen_paths resolved_path) then begin
+          Hashtbl.add seen_paths resolved_path true;
+          match Hashtbl.find_opt cache.parsed resolved_path with
+          | None -> ()
+          | Some imported_program ->
+            (* Recursively collect items from this import's imports first *)
+            let transitive_items = collect imported_program in
+            imported_items := transitive_items @ !imported_items
+        end
+    ) uses;
 
-  (* Return imported items first, then main program items (excluding uses) *)
-  let main_items = List.filter (function IUses _ -> false | _ -> true) program in
-  !imported_items @ main_items
+    (* Return imported items first, then this program's items (excluding uses) *)
+    let this_items = List.filter (function IUses _ -> false | _ -> true) program in
+    !imported_items @ this_items
+  in
+  collect program
 
-(* Analyze a program with its imports (relative resolution, no config) *)
-let analyze_with_imports_relative cache current_file program =
+(* Analyze a program with its imports (relative resolution, no config) - recursive *)
+let rec analyze_with_imports_relative cache current_file program =
   let base_dir = Filename.dirname current_file in
   let uses = get_uses program in
   let import_errors = ref [] in
@@ -241,7 +251,8 @@ let analyze_with_imports_relative cache current_file program =
         match Hashtbl.find_opt cache.parsed resolved_path with
         | None -> ()  (* Not parsed, error reported elsewhere *)
         | Some imported_program ->
-          let (env, warnings) = Semantic.analyze_with_warnings imported_program in
+          (* Recursively analyze with imports to handle transitive dependencies *)
+          let (env, warnings) = analyze_with_imports_relative cache resolved_path imported_program in
           List.iter (fun w ->
             import_errors := (resolved_path ^ ": " ^ w) :: !import_errors
           ) warnings;
@@ -252,7 +263,7 @@ let analyze_with_imports_relative cache current_file program =
   (* Create env and pre-populate with imported symbols BEFORE analysis *)
   let main_env = Semantic.create_env () in
 
-  (* Merge imported symbols into main env first *)
+  (* Merge imported symbols into main env - duplicates are harmless (replace overwrites) *)
   List.iter (fun import_path ->
     match Config.resolve_import_relative base_dir import_path with
     | None -> ()
@@ -275,24 +286,31 @@ let analyze_with_imports_relative cache current_file program =
 
   (main_env, !import_errors @ main_warnings)
 
-(* Collect all items from a program and its imports (relative resolution, no config) *)
+(* Collect all items from a program and its imports (relative resolution, no config) - recursive *)
 let collect_all_items_relative cache current_file program =
-  let base_dir = Filename.dirname current_file in
-  let uses = get_uses program in
-  let imported_items = ref [] in
+  let seen_paths = Hashtbl.create 16 in
+  let rec collect current_file program =
+    let base_dir = Filename.dirname current_file in
+    let uses = get_uses program in
+    let imported_items = ref [] in
 
-  List.iter (fun import_path ->
-    match Config.resolve_import_relative base_dir import_path with
-    | None -> ()
-    | Some resolved_path ->
-      match Hashtbl.find_opt cache.parsed resolved_path with
+    List.iter (fun import_path ->
+      match Config.resolve_import_relative base_dir import_path with
       | None -> ()
-      | Some imported_program ->
-        (* Filter out IUses from imported programs to avoid duplication *)
-        let items = List.filter (function IUses _ -> false | _ -> true) imported_program in
-        imported_items := items @ !imported_items
-  ) uses;
+      | Some resolved_path ->
+        if not (Hashtbl.mem seen_paths resolved_path) then begin
+          Hashtbl.add seen_paths resolved_path true;
+          match Hashtbl.find_opt cache.parsed resolved_path with
+          | None -> ()
+          | Some imported_program ->
+            (* Recursively collect items from this import's imports first *)
+            let transitive_items = collect resolved_path imported_program in
+            imported_items := transitive_items @ !imported_items
+        end
+    ) uses;
 
-  (* Return imported items first, then main program items (excluding uses) *)
-  let main_items = List.filter (function IUses _ -> false | _ -> true) program in
-  !imported_items @ main_items
+    (* Return imported items first, then this program's items (excluding uses) *)
+    let this_items = List.filter (function IUses _ -> false | _ -> true) program in
+    !imported_items @ this_items
+  in
+  collect current_file program
