@@ -190,9 +190,11 @@ let cmd_build filename output_opt =
     let oc = open_out c_file in
     output_string oc c_code;
     close_out oc;
-    Printf.printf "Generated %s\n" c_file;
     (* Compile *)
-    match compile_c c_file output with
+    let result = compile_c c_file output in
+    (* Clean up C file *)
+    Sys.remove c_file;
+    match result with
     | Error e ->
       prerr_endline e;
       exit 1
