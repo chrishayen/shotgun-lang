@@ -19,7 +19,7 @@ fn main {
         Err { err: msg } -> 99
     }
 
-    if x == 42 and y == 99 {
+    if x == 42 && y == 99 {
         print("generic variant all cases test passed")
     } else {
         print("FAIL: match results incorrect")

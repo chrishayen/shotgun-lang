@@ -26,7 +26,7 @@ fn main() {
     while pos < source.len() {
         int ch = source.at(pos)
         // Convert to uppercase by subtracting 32 if lowercase
-        if ch >= 97 and ch <= 122 {
+        if ch >= 97 && ch <= 122 {
             result = "{result}{source.slice(pos, pos + 1)}"
         }
         pos = pos + 1

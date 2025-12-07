@@ -3,7 +3,7 @@
 fn main() {
     str source = "fn main x := 42"
 
-    // Character-by-character iteration using at() and len()
+    // Character-by-character iteration using at() && len()
     int len = source.len()
     print(len)  // 15
 
@@ -51,7 +51,7 @@ fn main() {
     // Check if character is a digit (48-57)
     str digits = "0123456789"
     int digit_4 = digits.at(4)  // '4' = 52
-    if digit_4 >= 48 and digit_4 <= 57 {
+    if digit_4 >= 48 && digit_4 <= 57 {
         print("is digit")
     }
 
@@ -59,7 +59,7 @@ fn main() {
     int lower_a = 97
     int lower_z = 122
     int test_char = source.at(0)  // 'f' = 102
-    if test_char >= lower_a and test_char <= lower_z {
+    if test_char >= lower_a && test_char <= lower_z {
         print("is lowercase")
     }
 
@@ -69,7 +69,7 @@ fn main() {
     str combined = "{prefix}_{suffix}"
     print(combined)  // token_value
 
-    // Test starts_with and ends_with
+    // Test starts_with && ends_with
     if source.starts_with("fn") {
         print("starts with fn")
     }

@@ -26,7 +26,7 @@ fn main {
         None -> 99
     }
 
-    if result1 == 42 and result2 == 99 {
+    if result1 == 42 && result2 == 99 {
         print("nested generics test passed")
     } else {
         print("FAIL: nested values incorrect")

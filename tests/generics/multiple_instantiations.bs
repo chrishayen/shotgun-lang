@@ -15,7 +15,7 @@ fn main {
     bool b = bool_box.value
     f64 f = float_box.value
 
-    if i == 42 and s == "hello" and b == true and f > 3.0 {
+    if i == 42 && s == "hello" && b == true && f > 3.0 {
         print("multiple instantiations test passed")
     } else {
         print("FAIL: values don't match")

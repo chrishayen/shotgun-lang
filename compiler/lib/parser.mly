@@ -68,7 +68,8 @@ let parse_interp_string s =
 %token FN STRUCT VARIANT TRAIT IMPL ERROR
 %token RETURN IF ELSE FOR WHILE IN MATCH USING
 %token GO CHAN WAIT
-%token AND OR NOT
+%token OR
+%token ANDAND BANG  (* && and ! *)
 %token SELF NONE TRUE FALSE CONST
 %token USES
 %token UNDERSCORE
@@ -90,12 +91,12 @@ let parse_interp_string s =
 (* Precedence - lowest to highest *)
 %left OROR
 %left OR
-%left AND
+%left ANDAND
 %left EQEQ NEQ
 %left LT GT LTE GTE
 %left PLUS MINUS
 %left STAR SLASH PERCENT
-%right NOT
+%right BANG
 %left DOT LPAREN LBRACKET
 
 %start <Ast.program> program
@@ -385,7 +386,7 @@ or_clause:
 
 and_expr:
   | e = cmp_expr { e }
-  | l = and_expr AND r = cmp_expr { EBinary (And, l, r) }
+  | l = and_expr ANDAND r = cmp_expr { EBinary (And, l, r) }
   ;
 
 cmp_expr:
@@ -414,7 +415,7 @@ mul_expr:
 
 unary_expr:
   | e = postfix_expr { e }
-  | NOT e = unary_expr { EUnary (Not, e) }
+  | BANG e = unary_expr { EUnary (Not, e) }
   ;
 
 postfix_expr:

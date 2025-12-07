@@ -27,7 +27,7 @@ fn main {
         None -> Point { x: 0, y: 0 }
     }
 
-    if extracted.x == 10 and extracted.y == 20 and matched.x == 10 and matched.y == 20 {
+    if extracted.x == 10 && extracted.y == 20 && matched.x == 10 && matched.y == 20 {
         print("generic with user type test passed")
     } else {
         print("FAIL: point values incorrect")

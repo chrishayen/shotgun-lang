@@ -519,9 +519,9 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <h3>Logical Operators</h3>
 
-        <p>Use <code>and</code>, <code>||</code>, and <code>not</code>:</p>
+        <p>Use <code>&&</code>, <code>||</code>, and <code>!</code>:</p>
 
-        <pre><code><span class="kw">if</span> x > <span class="nu">0</span> <span class="kw">and</span> y > <span class="nu">0</span> {
+        <pre><code><span class="kw">if</span> x > <span class="nu">0</span> && y > <span class="nu">0</span> {
     <span class="fn">print</span>(<span class="st">"both positive"</span>)
 }
 
@@ -529,7 +529,7 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
     <span class="fn">print</span>(<span class="st">"at least one zero"</span>)
 }
 
-<span class="kw">if not</span> done {
+<span class="kw">if</span> !done {
     <span class="fn">print</span>(<span class="st">"still working"</span>)
 }</code></pre>
 

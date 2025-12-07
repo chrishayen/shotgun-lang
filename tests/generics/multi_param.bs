@@ -23,7 +23,7 @@ fn main {
         Err { err: msg } -> 0
     }
 
-    if pf == 42 and ps == "hello" and okval == 100 {
+    if pf == 42 && ps == "hello" && okval == 100 {
         print("multi param test passed")
     } else {
         print("FAIL: values don't match")

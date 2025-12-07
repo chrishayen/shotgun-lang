@@ -19,7 +19,7 @@ fn main {
         None -> 0
     }
 
-    if result1 == 0 and result2 == 42 {
+    if result1 == 0 && result2 == 42 {
         print("generic empty variant test passed")
     } else {
         print("FAIL: match results incorrect")

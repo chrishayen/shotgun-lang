@@ -17,7 +17,7 @@ fn main {
     int sum = b.add(32)
     int x = b.get()
 
-    if sum == 42 and x == 10 {
+    if sum == 42 && x == 10 {
         print("generic method with params test passed")
     } else {
         print("FAIL: method results don't match")

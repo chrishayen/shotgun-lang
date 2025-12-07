@@ -15,7 +15,7 @@ fn main {
 
     // Test negative case
     str other = "hello"
-    if not (other in ["fn", "if", "else"]) {
+    if !(other in ["fn", "if", "else"]) {
         print("hello is not a keyword")
     }
 

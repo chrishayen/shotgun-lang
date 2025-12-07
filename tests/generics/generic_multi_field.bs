@@ -18,7 +18,7 @@ fn main {
     int n = c.count
     int sum = a + b
 
-    if a == 10 and b == 20 and n == 2 and sum == 30 {
+    if a == 10 && b == 20 && n == 2 && sum == 30 {
         print("generic multi field test passed")
     } else {
         print("FAIL: field values incorrect")

@@ -20,9 +20,7 @@ let keywords = [
   "go", GO;
   "chan", CHAN;
   "wait", WAIT;
-  "and", AND;
   "or", OR;
-  "not", NOT;
   "self", SELF;
   "none", NONE;
   "true", TRUE;
@@ -160,7 +158,9 @@ rule token = parse
   | "*" { STAR }
   | "/" { SLASH }
   | "%" { PERCENT }
+  | "&&" { ANDAND }
   | "||" { OROR }
+  | "!" { BANG }
 
   | eof { EOF }
   | _ as c { raise (Lexer_error (Printf.sprintf "Unexpected character: %c" c)) }

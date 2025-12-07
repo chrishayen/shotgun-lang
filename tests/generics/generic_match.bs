@@ -19,7 +19,7 @@ fn main {
         None -> 99
     }
 
-    if result == 42 and result2 == 99 {
+    if result == 42 && result2 == 99 {
         print("generic match test passed")
     } else {
         print("FAIL: match results don't match")

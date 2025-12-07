@@ -31,7 +31,7 @@ fn main {
         None -> 0
     }
 
-    if p1.name == "Alice" and age1 == 30 and p2.name == "Unknown" and age2 == 0 {
+    if p1.name == "Alice" && age1 == 30 && p2.name == "Unknown" && age2 == 0 {
         print("generic in struct test passed")
     } else {
         print("FAIL: values incorrect")

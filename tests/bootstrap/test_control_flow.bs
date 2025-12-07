@@ -77,12 +77,12 @@ fn main {
     // Logical operators
     bool x = true
     bool y = false
-    t.assert_true(x and true)
-    t.assert_false(x and y)
-    t.assert_true(x or y)
-    t.assert_false(y or false)
-    t.assert_true(not y)
-    t.assert_false(not x)
+    t.assert_true(x && true)
+    t.assert_false(x && y)
+    t.assert_true(x || y)
+    t.assert_false(y || false)
+    t.assert_true(!y)
+    t.assert_false(!x)
 
     t.summary()
 }

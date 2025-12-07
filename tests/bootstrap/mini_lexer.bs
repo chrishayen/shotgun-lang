@@ -23,12 +23,12 @@ fn is_whitespace(int ch) bool {
 
 // Check if character is a digit (0-9: 48-57)
 fn is_digit(int ch) bool {
-    return ch >= 48 and ch <= 57
+    return ch >= 48 && ch <= 57
 }
 
 // Check if character is a letter (a-z: 97-122, A-Z: 65-90)
 fn is_letter(int ch) bool {
-    return (ch >= 97 and ch <= 122) || (ch >= 65 and ch <= 90)
+    return (ch >= 97 && ch <= 122) || (ch >= 65 && ch <= 90)
 }
 
 // Check if character can start an identifier
@@ -56,7 +56,7 @@ Lexer :: advance(self) {
 
 // Skip whitespace
 Lexer :: skip_whitespace(self) {
-    while self.pos < self.source.len() and is_whitespace(self.peek()) {
+    while self.pos < self.source.len() && is_whitespace(self.peek()) {
         self.advance()
     }
 }
@@ -64,7 +64,7 @@ Lexer :: skip_whitespace(self) {
 // Read an identifier or keyword
 Lexer :: read_ident(self) str {
     int start = self.pos
-    while self.pos < self.source.len() and is_ident_char(self.peek()) {
+    while self.pos < self.source.len() && is_ident_char(self.peek()) {
         self.advance()
     }
     return self.source.slice(start, self.pos)
@@ -73,7 +73,7 @@ Lexer :: read_ident(self) str {
 // Read a number
 Lexer :: read_number(self) int {
     int value = 0
-    while self.pos < self.source.len() and is_digit(self.peek()) {
+    while self.pos < self.source.len() && is_digit(self.peek()) {
         int digit = self.peek() - 48
         value = value * 10 + digit
         self.advance()
@@ -130,7 +130,7 @@ fn main {
 
     // Tokenize and print all tokens
     bool done = false
-    while not done {
+    while !done {
         Token tok = lex.next_token()
         print_token(tok)
         match tok {

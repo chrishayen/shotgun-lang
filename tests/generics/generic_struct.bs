@@ -1,4 +1,4 @@
-// Test: Generic struct definition and usage
+// Test: Generic struct definition && usage
 
 Box<T> :: struct {
     value T
@@ -11,7 +11,7 @@ fn main {
     int n = int_box.value
     str s = str_box.value
 
-    if n == 42 and s == "hello" {
+    if n == 42 && s == "hello" {
         print("generic struct test passed")
     } else {
         print("FAIL: values don't match")

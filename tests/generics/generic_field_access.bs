@@ -17,7 +17,7 @@ fn main {
     int n = p.first
     str s = p.second
 
-    if x == 42 and n == 10 and s == "hello" {
+    if x == 42 && n == 10 && s == "hello" {
         print("generic field access test passed")
     } else {
         print("FAIL: field values incorrect")
