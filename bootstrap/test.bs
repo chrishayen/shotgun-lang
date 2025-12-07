@@ -1,0 +1,64 @@
+// Shotgun Test Framework
+
+TestState :: struct {
+    passed int
+    failed int
+}
+
+fn new_test() TestState {
+    return TestState { passed: 0, failed: 0 }
+}
+
+TestState :: assert_true(self, bool cond) {
+    if cond {
+        self.passed += 1
+    } else {
+        self.failed += 1
+        print("[FAIL] expected true, got false")
+    }
+}
+
+TestState :: assert_false(self, bool cond) {
+    if cond {
+        self.failed += 1
+        print("[FAIL] expected false, got true")
+    } else {
+        self.passed += 1
+    }
+}
+
+TestState :: assert_eq_int(self, int expected, int actual) {
+    if expected == actual {
+        self.passed += 1
+    } else {
+        self.failed += 1
+        print("[FAIL] expected {expected}, got {actual}")
+    }
+}
+
+TestState :: assert_eq_str(self, str expected, str actual) {
+    if expected == actual {
+        self.passed += 1
+    } else {
+        self.failed += 1
+        print("[FAIL] expected '{expected}', got '{actual}'")
+    }
+}
+
+TestState :: assert_eq_bool(self, bool expected, bool actual) {
+    if expected == actual {
+        self.passed += 1
+    } else {
+        self.failed += 1
+        print("[FAIL] expected {expected}, got {actual}")
+    }
+}
+
+TestState :: summary(self) {
+    int total = self.passed + self.failed
+    if self.failed == 0 {
+        print("PASS: {self.passed}/{total} assertions")
+    } else {
+        print("FAIL: {self.passed}/{total} passed, {self.failed} failed")
+    }
+}

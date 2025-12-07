@@ -1,0 +1,54 @@
+// String method tests
+uses: bootstrap.test
+
+fn main {
+    t := new_test()
+
+    // str.len
+    t.assert_eq_int(5, "hello".len())
+    t.assert_eq_int(0, "".len())
+    t.assert_eq_int(11, "hello world".len())
+
+    // str.contains
+    t.assert_true("hello world".contains("world"))
+    t.assert_true("hello world".contains("hello"))
+    t.assert_false("hello world".contains("foo"))
+
+    // str.starts_with
+    t.assert_true("hello world".starts_with("hello"))
+    t.assert_false("hello world".starts_with("world"))
+
+    // str.ends_with
+    t.assert_true("hello world".ends_with("world"))
+    t.assert_false("hello world".ends_with("hello"))
+
+    // str.find
+    t.assert_eq_int(6, "hello world".find("world"))
+    t.assert_eq_int(0, "hello world".find("hello"))
+    t.assert_eq_int((0 - 1), "hello world".find("foo"))
+
+    // str.slice
+    t.assert_eq_str("hello", "hello world".slice(0, 5))
+    t.assert_eq_str("world", "hello world".slice(6, 11))
+
+    // str.trim
+    t.assert_eq_str("hello", "  hello  ".trim())
+    t.assert_eq_str("hello", "hello".trim())
+
+    // str.replace
+    t.assert_eq_str("hello universe", "hello world".replace("world", "universe"))
+    t.assert_eq_str("hello world", "hello world".replace("foo", "bar"))
+
+    // str.to_upper / to_lower
+    t.assert_eq_str("HELLO", "hello".to_upper())
+    t.assert_eq_str("hello", "HELLO".to_lower())
+
+    // str.split
+    str[] parts = "a,b,c".split(",")
+    t.assert_eq_int(3, parts.len())
+    t.assert_eq_str("a", parts[0])
+    t.assert_eq_str("b", parts[1])
+    t.assert_eq_str("c", parts[2])
+
+    t.summary()
+}
