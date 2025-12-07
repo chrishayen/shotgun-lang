@@ -6,8 +6,9 @@ OPAM_ENV = eval $$(opam env --switch=5.4.0) &&
 build:
 	$(OPAM_ENV) cd compiler && dune build
 
-test:
+test: build
 	$(OPAM_ENV) cd compiler && dune test
+	./tests/run_tests.sh
 
 clean:
 	cd compiler && dune clean

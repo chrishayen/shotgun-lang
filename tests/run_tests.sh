@@ -135,7 +135,7 @@ done
 
 echo ""
 echo "--- Bootstrap Tests ---"
-for f in "$SCRIPT_DIR"/bootstrap/*.bs; do
+for f in "$PROJECT_ROOT"/bootstrap/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 

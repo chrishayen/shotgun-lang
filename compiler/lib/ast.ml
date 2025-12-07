@@ -33,6 +33,7 @@ type binop =
   | Add | Sub | Mul | Div | Mod
   | Eq | Neq | Lt | Gt | Lte | Gte
   | And | Or
+  | In  (* array membership: x in [a, b, c] *)
 [@@deriving show, eq]
 
 (* Unary operators *)
@@ -103,6 +104,7 @@ and stmt =
   | SReturn of expr option
   | SIf of expr * stmt list * stmt list option
   | SFor of string * expr * stmt list
+  | SWhile of expr * stmt list  (* condition, body *)
   | SGo of expr
   | SExpr of expr
 [@@deriving show, eq]

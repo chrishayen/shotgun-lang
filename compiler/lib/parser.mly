@@ -66,7 +66,7 @@ let parse_interp_string s =
 
 (* Keywords *)
 %token FN STRUCT VARIANT TRAIT IMPL ERROR
-%token RETURN IF ELSE FOR IN MATCH USING
+%token RETURN IF ELSE FOR WHILE IN MATCH USING
 %token GO CHAN WAIT
 %token AND OR NOT
 %token SELF NONE TRUE FALSE CONST
@@ -83,10 +83,12 @@ let parse_interp_string s =
 %token EQ PLUSEQ MINUSEQ STAREQ SLASHEQ
 %token PLUS MINUS STAR SLASH PERCENT
 %token EQEQ NEQ LT GT LTE GTE  (* LT/GT also used for generic type params *)
+%token OROR  (* || for boolean or *)
 
 %token NEWLINE EOF
 
 (* Precedence - lowest to highest *)
+%left OROR
 %left OR
 %left AND
 %left EQEQ NEQ
@@ -305,6 +307,7 @@ stmt_inner:
   | IF cond = expr then_block = block ELSE else_block = block { SIf (cond, then_block, Some else_block) }
   | IF cond = expr then_block = block ELSE else_if = if_stmt { SIf (cond, then_block, Some [else_if]) }
   | FOR var = IDENT IN iter = expr body = block { SFor (var, iter, body) }
+  | WHILE cond = expr body = block { SWhile (cond, body) }
   | GO e = expr { SGo e }
   | e = expr { SExpr e }
   ;
@@ -358,7 +361,12 @@ pattern_field:
   ;
 
 expr:
+  | e = bool_or_expr { e }
+  ;
+
+bool_or_expr:
   | e = or_expr { e }
+  | l = bool_or_expr OROR r = or_expr { EBinary (Or, l, r) }
   ;
 
 or_expr:
@@ -388,6 +396,7 @@ cmp_expr:
   | l = cmp_expr GT r = add_expr { EBinary (Gt, l, r) }
   | l = cmp_expr LTE r = add_expr { EBinary (Lte, l, r) }
   | l = cmp_expr GTE r = add_expr { EBinary (Gte, l, r) }
+  | l = cmp_expr IN r = add_expr { EBinary (In, l, r) }
   ;
 
 add_expr:

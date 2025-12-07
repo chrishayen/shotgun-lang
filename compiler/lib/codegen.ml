@@ -181,6 +181,7 @@ let c_binop = function
   | Gte -> ">="
   | And -> "&&"
   | Or -> "||"
+  | In -> failwith "In operator requires special handling"
 
 (* Convert assignment operator *)
 let c_assignop = function
@@ -294,6 +295,9 @@ let rec collect_stmt_instantiations = function
   | SFor (_, iter, body) ->
     collect_expr_instantiations iter;
     List.iter collect_stmt_instantiations body
+  | SWhile (cond, body) ->
+    collect_expr_instantiations cond;
+    List.iter collect_stmt_instantiations body
   | SGo e -> collect_expr_instantiations e
 
 (* Collect all instantiations from the program *)
@@ -371,6 +375,27 @@ let rec gen_expr ctx indent expr =
        emit ", ";
        gen_expr ctx indent r;
        emit ") != 0)"
+     | In, _ ->
+       (* Generate inline search: ({ int _in_r = 0; T _in_v = val; arr_t _in_a = arr; for (...) { if (...) { _in_r = 1; break; } } _in_r; }) *)
+       let elem_type = get_type ctx l in
+       let is_str = match elem_type with Some TStr -> true | _ -> false in
+       emit "({ int _in_result = 0; ";
+       (* Declare temp for value *)
+       (match elem_type with
+        | Some t -> emit (c_type t); emit " _in_val = "; gen_expr ctx indent l; emit "; "
+        | None -> emit "int64_t _in_val = "; gen_expr ctx indent l; emit "; ");
+       (* Declare temp for array *)
+       (match get_type ctx r with
+        | Some (TArray t) ->
+          emit "Array_"; emit (c_type_name t); emit "* _in_arr = "; gen_expr ctx indent r; emit "; "
+        | _ -> emit "void* _in_arr = "; gen_expr ctx indent r; emit "; ");
+       emit "for (int64_t _in_i = 0; _in_i < _in_arr->len; _in_i++) { ";
+       if is_str then begin
+         emit "if (strcmp(_in_val, _in_arr->data[_in_i]) == 0) { _in_result = 1; break; } } "
+       end else begin
+         emit "if (_in_val == _in_arr->data[_in_i]) { _in_result = 1; break; } } "
+       end;
+       emit "_in_result; })"
      | _ ->
        emit "(";
        gen_expr ctx indent l;
@@ -742,6 +767,9 @@ and collect_stmt_idents (used, declared) stmt =
   | SFor (var, iter, body_stmts) ->
     let used' = collect_expr_idents used iter in
     List.fold_left collect_stmt_idents (used', var :: declared) body_stmts
+  | SWhile (cond, body_stmts) ->
+    let used' = collect_expr_idents used cond in
+    List.fold_left collect_stmt_idents (used', declared) body_stmts
   | SGo e -> (collect_expr_idents used e, declared)
   | SExpr e -> (collect_expr_idents used e, declared)
 
@@ -766,6 +794,7 @@ and infer_return_from_stmt env locals stmt =
        | Some stmts -> infer_closure_return_type env locals stmts
        | None -> None)
   | SFor (_, _, body) -> infer_closure_return_type env locals body
+  | SWhile (_, body) -> infer_closure_return_type env locals body
   | _ -> None
 
 (* Generate closure expression *)
@@ -1534,6 +1563,13 @@ let rec gen_stmt ctx indent stmt =
     List.iter (gen_stmt ctx (indent + 1)) body;
     emit_indent indent;
     emitln "}"
+  | SWhile (cond, body) ->
+    emit "while (";
+    gen_expr ctx indent cond;
+    emitln ") {";
+    List.iter (gen_stmt ctx (indent + 1)) body;
+    emit_indent indent;
+    emitln "}"
   | SGo e ->
     (* Spawn a goroutine using pthreads *)
     (match e with
@@ -1885,6 +1921,7 @@ let gen_monomorphized_types program =
       List.iter scan_stmt then_stmts;
       (match else_stmts with Some stmts -> List.iter scan_stmt stmts | None -> ())
     | SFor (_, iter, body) -> scan_expr iter; List.iter scan_stmt body
+    | SWhile (cond, body) -> scan_expr cond; List.iter scan_stmt body
     | SGo e -> scan_expr e
   in
   List.iter (function
@@ -2021,6 +2058,7 @@ let gen_monomorphized_methods ?(decl_only=false) ctx program =
       List.iter scan_stmt then_stmts;
       (match else_stmts with Some stmts -> List.iter scan_stmt stmts | None -> ())
     | SFor (_, iter, body) -> scan_expr iter; List.iter scan_stmt body
+    | SWhile (cond, body) -> scan_expr cond; List.iter scan_stmt body
     | SGo e -> scan_expr e
   in
   List.iter (function
@@ -2670,6 +2708,8 @@ let rec scan_stmt_for_go ctx stmt =
     (match get_type ctx iter with
      | Some (TArray t) -> add_local ctx var t
      | _ -> ());
+    List.iter (scan_stmt_for_go ctx) body
+  | SWhile (_, body) ->
     List.iter (scan_stmt_for_go ctx) body
   | _ -> ()
 

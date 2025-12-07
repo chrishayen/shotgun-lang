@@ -477,18 +477,30 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <h3>Logical Operators</h3>
 
-        <p>Use <code>and</code>, <code>or</code>, and <code>not</code>:</p>
+        <p>Use <code>and</code>, <code>||</code>, and <code>not</code>:</p>
 
         <pre><code><span class="kw">if</span> x > <span class="nu">0</span> <span class="kw">and</span> y > <span class="nu">0</span> {
     <span class="fn">print</span>(<span class="st">"both positive"</span>)
 }
 
-<span class="kw">if</span> x == <span class="nu">0</span> <span class="kw">or</span> y == <span class="nu">0</span> {
+<span class="kw">if</span> x == <span class="nu">0</span> || y == <span class="nu">0</span> {
     <span class="fn">print</span>(<span class="st">"at least one zero"</span>)
 }
 
 <span class="kw">if not</span> done {
     <span class="fn">print</span>(<span class="st">"still working"</span>)
+}</code></pre>
+
+        <h3>Membership Operator</h3>
+
+        <p>Use <code>in</code> to check if a value is in an array:</p>
+
+        <pre><code><span class="kw">if</span> name <span class="kw">in</span> [<span class="st">"fn"</span>, <span class="st">"if"</span>, <span class="st">"else"</span>, <span class="st">"return"</span>] {
+    <span class="fn">print</span>(<span class="st">"is a keyword"</span>)
+}
+
+<span class="kw">if</span> x <span class="kw">in</span> [<span class="nu">1</span>, <span class="nu">3</span>, <span class="nu">5</span>, <span class="nu">7</span>, <span class="nu">9</span>] {
+    <span class="fn">print</span>(<span class="st">"x is odd and small"</span>)
 }</code></pre>
 
         <h2>Concurrency</h2>

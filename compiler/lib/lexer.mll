@@ -14,6 +14,7 @@ let keywords = [
   "if", IF;
   "else", ELSE;
   "for", FOR;
+  "while", WHILE;
   "in", IN;
   "match", MATCH;
   "go", GO;
@@ -159,6 +160,7 @@ rule token = parse
   | "*" { STAR }
   | "/" { SLASH }
   | "%" { PERCENT }
+  | "||" { OROR }
 
   | eof { EOF }
   | _ as c { raise (Lexer_error (Printf.sprintf "Unexpected character: %c" c)) }

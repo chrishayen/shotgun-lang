@@ -201,7 +201,7 @@ let rec infer_expr_type env expr =
        (match lt, rt with
         | Some l, Some r when types_equal l r -> Some l
         | _ -> Some TInt)
-     | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> Some TBool)
+     | Eq | Neq | Lt | Gt | Lte | Gte | And | Or | In -> Some TBool)
   | EUnary (Not, _) -> Some TBool
   | ECall (callee, _type_args, _args) ->
     (match callee with
@@ -242,6 +242,7 @@ let rec infer_expr_type env expr =
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt
+        | Some (TArray _) when method_name = "push" -> None  (* void return *)
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->
@@ -320,6 +321,7 @@ and infer_return_type_from_stmt env stmt =
        | Some stmts -> infer_return_type_from_stmts env stmts
        | None -> None)
   | SFor (_, _, body) -> infer_return_type_from_stmts env body
+  | SWhile (_, body) -> infer_return_type_from_stmts env body
   | _ -> None
 
 (* ============================== *)
@@ -410,9 +412,22 @@ let rec check_expr env expr =
     add_error env "'self' used outside of method"
   | EIdent name when not (Hashtbl.mem env.symbols name) && name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file" ->
     add_error env (Printf.sprintf "Undefined variable: %s" name)
-  | EBinary (_, l, r) ->
+  | EBinary (op, l, r) ->
     check_expr env l;
-    check_expr env r
+    check_expr env r;
+    (match op with
+     | In ->
+       (* Right side must be an array, left side must match element type *)
+       (match infer_expr_type env r with
+        | Some (TArray elem_type) ->
+          (match infer_expr_type env l with
+           | Some ltype when not (types_equal ltype elem_type) ->
+             add_error env (Printf.sprintf "'in' operator: left type doesn't match array element type")
+           | _ -> ())
+        | Some _ ->
+          add_error env "'in' operator requires an array on the right side"
+        | None -> ())
+     | _ -> ())
   | EUnary (_, e) ->
     check_expr env e
   | ECall (callee, _type_args, args) ->
@@ -611,6 +626,10 @@ and check_stmt env stmt =
     in
     Hashtbl.replace body_env.symbols var (SVar (var_type, false));
     List.iter (check_stmt body_env) body
+  | SWhile (cond, body) ->
+    check_expr env cond;
+    let body_env = push_scope env in
+    List.iter (check_stmt body_env) body
   | SGo e ->
     check_expr env e
   | SExpr e ->
@@ -665,7 +684,7 @@ let rec get_expr_type env locals expr =
        (match lt, rt with
         | Some l, Some r when types_equal l r -> Some l
         | _ -> Some TInt)
-     | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> Some TBool)
+     | Eq | Neq | Lt | Gt | Lte | Gte | And | Or | In -> Some TBool)
   | EUnary (Not, _) -> Some TBool
   | ECall (callee, _type_args, _) ->
     (match callee with
@@ -705,6 +724,7 @@ let rec get_expr_type env locals expr =
            | _ -> None)
         (* Array built-in methods *)
         | Some (TArray _) when method_name = "len" -> Some TInt
+        | Some (TArray _) when method_name = "push" -> None  (* void return *)
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->
@@ -781,6 +801,7 @@ and infer_return_type_from_stmt_with_locals env locals stmt =
        | Some stmts -> infer_return_type_from_stmts_with_locals env locals stmts
        | None -> None)
   | SFor (_, _, body) -> infer_return_type_from_stmts_with_locals env locals body
+  | SWhile (_, body) -> infer_return_type_from_stmts_with_locals env locals body
   | _ -> None
 
 (* ============================== *)
@@ -799,6 +820,7 @@ let rec collect_return_types env locals = function
         collect_return_types env locals then_stmts @
         (match else_stmts with Some stmts -> collect_return_types env locals stmts | None -> [])
       | SFor (_, _, body) -> collect_return_types env locals body
+      | SWhile (_, body) -> collect_return_types env locals body
       | _ -> []
     in
     current @ collect_return_types env locals rest
