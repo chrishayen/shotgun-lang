@@ -1,0 +1,206 @@
+// AST definitions for the Shotgun self-hosted compiler
+//
+// This mirrors the structure in compiler/lib/ast.ml
+
+// Source location for error reporting
+Location :: struct {
+    line int
+    col int
+    file str
+}
+
+fn dummy_loc() Location {
+    return Location { line: 0, col: 0, file: "" }
+}
+
+Location :: format(self) str {
+    return "{self.file}:{self.line}:{self.col}"
+}
+
+// Types
+Type :: variant {
+    TInt
+    TStr
+    TBool
+    TChar
+    TF32
+    TF64
+    TU32
+    TU64
+    TOptional { inner Type }
+    TArray { elem Type }
+    TChan { elem Type }
+    TUser { name str }
+    TResult { value Type, error_type str }
+    TVoid
+    TParam { name str }
+    TApply { name str, args Type[] }
+    TFunc { params Type[], ret Type? }
+}
+
+// Binary operators
+Binop :: variant {
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Eq
+    Neq
+    Lt
+    Gt
+    Lte
+    Gte
+    And
+    Or
+    In
+}
+
+// Unary operators
+Unop :: variant {
+    Not
+}
+
+// Assignment operators
+Assignop :: variant {
+    Assign
+    AddAssign
+    SubAssign
+    MulAssign
+    DivAssign
+}
+
+// String interpolation parts
+StringPart :: variant {
+    SLiteral { value str }
+    SInterp { expr Expr }
+}
+
+// Field initialization in struct/enum literals
+FieldInit :: struct {
+    name str
+    value Expr
+}
+
+// Pattern binding for variant patterns
+PatternBinding :: struct {
+    field_name str
+    binding_name str
+}
+
+// Or-clause variants (for error handling: expr or return, expr or error)
+OrClause :: variant {
+    OrExpr { expr Expr }
+    OrReturn { expr Expr? }
+    OrError { error_name str, fields FieldInit[] }
+    OrWait { expr Expr }
+}
+
+// Match patterns
+Pattern :: variant {
+    PIdent { name str }
+    PLiteral { expr Expr }
+    PVariant { typ Type?, variant_name str, bindings PatternBinding[] }
+    PWildcard
+    PTuple { patterns Pattern[] }
+}
+
+// Match arm: pattern -> expression
+MatchArm :: struct {
+    pattern Pattern
+    expr Expr
+}
+
+// Function/method parameter
+Param :: variant {
+    PSelf
+    PNamed { typ Type, name str }
+}
+
+// Expressions
+Expr :: variant {
+    EInt { value int }
+    EFloat { value f64 }
+    EString { parts StringPart[] }
+    EBool { value bool }
+    EChar { value char }
+    ENone
+    EIdent { name str }
+    EBinary { op Binop, left Expr, right Expr }
+    EUnary { op Unop, expr Expr }
+    ECall { callee Expr, type_args Type[], args Expr[] }
+    EMember { expr Expr, member str }
+    EIndex { expr Expr, index Expr }
+    EOr { expr Expr, clause OrClause }
+    EStructLit { name str, type_args Type[], fields FieldInit[] }
+    EEnumVariant { enum_name str, type_args Type[], variant_name str, fields FieldInit[] }
+    EArrayLit { elements Expr[] }
+    EChan
+    EParen { expr Expr }
+    EAssign { op Assignop, target Expr, value Expr }
+    EMatch { exprs Expr[], using_type Type?, arms MatchArm[] }
+    EAnonFn { params Param[], ret Type?, body Stmt[], captures str[] }
+}
+
+// Statements
+Stmt :: variant {
+    SVarDecl { typ Type, name str, init Expr }
+    SVarDeclInfer { name str, init Expr }
+    SConstDecl { name str, init Expr }
+    SReturn { expr Expr? }
+    SIf { cond Expr, then_block Stmt[], else_block Stmt[]? }
+    SFor { var str, iter Expr, body Stmt[] }
+    SWhile { cond Expr, body Stmt[] }
+    SGo { expr Expr }
+    SExpr { expr Expr }
+}
+
+// Struct field definition
+Field :: struct {
+    name str
+    typ Type
+}
+
+// Enum variant definition
+EnumVariant :: struct {
+    name str
+    fields Field[]
+}
+
+// Trait method signature
+TraitMethod :: struct {
+    name str
+    params Param[]
+    has_self bool
+    ret Type?
+}
+
+// Impl method definition
+ImplMethod :: struct {
+    name str
+    params Param[]
+    ret Type?
+    body Stmt[]
+}
+
+// Import path: std.io becomes ["std", "io"]
+ImportPath :: struct {
+    parts str[]
+}
+
+// Top-level items
+Item :: variant {
+    IStruct { name str, type_params str[], fields Field[] }
+    IEnum { name str, type_params str[], variants EnumVariant[] }
+    ITrait { name str, methods TraitMethod[] }
+    IImpl { type_name str, trait_name str, methods ImplMethod[] }
+    IMethod { type_name str, method_name str, type_params str[], params Param[], ret Type?, body Stmt[] }
+    IFunction { name str, type_params str[], params Param[], ret Type?, body Stmt[] }
+    IError { name str, fields Field[] }
+    IUses { paths ImportPath[] }
+}
+
+// A program is a list of top-level items
+Program :: struct {
+    items Item[]
+}
