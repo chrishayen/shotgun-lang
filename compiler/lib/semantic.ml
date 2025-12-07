@@ -1,7 +1,20 @@
-(* Semantic analysis for Shotgun compiler *)
+(* Semantic analysis for Shotgun compiler
+ *
+ * Sections:
+ *  - Core types & environment: symbol tables and utilities
+ *  - Type utilities: equality, existence, substitution, generic arity
+ *  - Inference helpers: expression/return type inference
+ *  - Pattern binding & expression checks: binding variables, type checks, arity checks
+ *  - Return checking: validate declared vs observed return types
+ *  - Item checking: structs/enums/traits/impls/functions
+ *  - Analyze entry points
+ *)
 
 open Ast
 
+(* ============================== *)
+(* Core types & environment       *)
+(* ============================== *)
 (* Symbol table entry *)
 type symbol =
   | SVar of typ * bool  (* type, is_const *)
@@ -92,6 +105,10 @@ let register_item env = function
     (* TODO: resolve imports and merge symbols *)
     ()
 
+(* ============================== *)
+(* Type utilities *)
+(* - equality, existence, generic arity, substitution *)
+(* ============================== *)
 (* Type equality check *)
 let rec types_equal t1 t2 =
   match t1, t2 with
@@ -160,6 +177,10 @@ let rec type_exists env typ =
     List.for_all (type_exists env) param_types &&
     (match ret_type with None -> true | Some t -> type_exists env t)
 
+(* ============================== *)
+(* Inference helpers *)
+(* - Expression type inference, function/closure returns *)
+(* ============================== *)
 (* Get type of expression - simplified version *)
 let rec infer_expr_type env expr =
   match expr with
@@ -301,6 +322,10 @@ and infer_return_type_from_stmt env stmt =
   | SFor (_, _, body) -> infer_return_type_from_stmts env body
   | _ -> None
 
+(* ============================== *)
+(* Pattern binding & expression checks *)
+(* - bind match vars, arity/compatibility, statement/expr validation *)
+(* ============================== *)
 (* Extract the base enum name from a type (handles TUser and TApply) *)
 and get_enum_name_from_type = function
   | TUser name -> Some name
@@ -758,6 +783,10 @@ and infer_return_type_from_stmt_with_locals env locals stmt =
   | SFor (_, _, body) -> infer_return_type_from_stmts_with_locals env locals body
   | _ -> None
 
+(* ============================== *)
+(* Return checking *)
+(* - declared vs observed return types *)
+(* ============================== *)
 (* Collect return expression types in a body *)
 let rec collect_return_types env locals = function
   | [] -> []
@@ -822,6 +851,10 @@ let check_method env type_name params ret body =
   List.iter (check_stmt method_env) body;
   check_return_types method_env params ret body
 
+(* ============================== *)
+(* Item checking *)
+(* - structs/enums/traits/impls/functions *)
+(* ============================== *)
 (* Check an item *)
 let check_item env = function
   | IStruct (name, type_params, fields) ->
@@ -873,3 +906,7 @@ let analyze_with_warnings program =
   List.iter (register_item env) program;
   List.iter (check_item env) program;
   (env, List.rev !(env.errors_list))
+
+(* ============================== *)
+(* Analyze entry points           *)
+(* ============================== *)

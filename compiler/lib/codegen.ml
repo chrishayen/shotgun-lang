@@ -1,10 +1,24 @@
-(* C Code Generation for Shotgun compiler *)
+(* C Code Generation for Shotgun compiler
+ *
+ * Sections:
+ *  - State & plumbing: per-invocation buffers, counters, emit helpers
+ *  - Type helpers: C type names, mangling, format specs
+ *  - Instantiation tracking: generic monomorphization
+ *  - Expression/statement generators: expression lowering, match/or, arrays/maps
+ *  - Struct/enum generation: concrete and monomorphized definitions
+ *  - Goroutines/closures: wrappers, closures, typedef prelude
+ *  - Program generation: forward decls, items, combination of buffers
+ *)
 
 open Ast
 
 module StringSet = Set.Make(String)
 
 
+(* ============================== *)
+(* State & plumbing               *)
+(* - per-invocation buffers/counters, emit helpers *)
+(* ============================== *)
 (* Goroutine wrapper tracking *)
 type go_info = {
   go_id: int;
@@ -91,6 +105,10 @@ let rec type_references_name name = function
   | TArray _ -> false  (* Arrays are already pointers *)
   | _ -> false
 
+(* ============================== *)
+(* Type helpers                   *)
+(* - C type names, mangling, format specs *)
+(* ============================== *)
 (* Convert Shotgun type to C type *)
 let rec c_type = function
   | TInt -> "int64_t"
