@@ -128,6 +128,18 @@ for f in "$SCRIPT_DIR"/closures/*.bs; do
 done
 
 echo ""
+echo "--- Array Tests ---"
+for f in "$SCRIPT_DIR"/arrays/*.bs; do
+    [ -f "$f" ] && test_valid "$f"
+done
+
+echo ""
+echo "--- Bootstrap Tests ---"
+for f in "$SCRIPT_DIR"/bootstrap/*.bs; do
+    [ -f "$f" ] && test_valid "$f"
+done
+
+echo ""
 echo "--- Error Tests (should fail) ---"
 for f in "$SCRIPT_DIR"/errors/*.bs; do
     [ -f "$f" ] && test_error "$f"

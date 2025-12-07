@@ -1,0 +1,53 @@
+// Test array.push() and dynamic array operations
+
+fn main() {
+    // Create empty array and push elements
+    int[] nums = []
+    nums.push(1)
+    nums.push(2)
+    nums.push(3)
+
+    print(nums.len())  // 3
+    print(nums[0])     // 1
+    print(nums[1])     // 2
+    print(nums[2])     // 3
+
+    // Push more to trigger reallocation
+    nums.push(4)
+    nums.push(5)
+    nums.push(6)
+    nums.push(7)
+    nums.push(8)
+
+    print(nums.len())  // 8
+    print(nums[7])     // 8
+
+    // String array with push
+    str[] tokens = []
+    tokens.push("fn")
+    tokens.push("main")
+    tokens.push("LBRACE")
+    tokens.push("RBRACE")
+
+    print(tokens.len())  // 4
+    print(tokens[0])     // fn
+    print(tokens[3])     // RBRACE
+
+    // Iterate over pushed array
+    for t in tokens {
+        print(t)
+    }
+
+    // Build array using iteration
+    int[] squares = []
+    int[] range = [1, 2, 3, 4, 5]
+    for i in range {
+        squares.push(i * i)
+    }
+
+    print(squares.len())  // 5
+    print(squares[0])     // 1
+    print(squares[4])     // 25
+
+    print("done")
+}

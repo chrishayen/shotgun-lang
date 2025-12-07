@@ -1,0 +1,48 @@
+// Test while loops
+
+fn main() {
+    // Simple counting
+    int i = 0
+    while i < 5 {
+        print(i)
+        i = i + 1
+    }
+    print("count done")
+
+    // While with early exit condition
+    int j = 10
+    while j > 0 {
+        if j == 5 {
+            print("found five")
+        }
+        j = j - 1
+    }
+    print("countdown done")
+
+    // Build a string character by character
+    str source = "hello"
+    int pos = 0
+    str result = ""
+    while pos < source.len() {
+        int ch = source.at(pos)
+        // Convert to uppercase by subtracting 32 if lowercase
+        if ch >= 97 and ch <= 122 {
+            result = "{result}{source.slice(pos, pos + 1)}"
+        }
+        pos = pos + 1
+    }
+    print(result)
+
+    // Nested while loops
+    int x = 0
+    while x < 3 {
+        int y = 0
+        while y < 2 {
+            print("{x},{y}")
+            y = y + 1
+        }
+        x = x + 1
+    }
+
+    print("done")
+}

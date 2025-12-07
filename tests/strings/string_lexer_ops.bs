@@ -1,0 +1,82 @@
+// Test string operations needed for lexer implementation
+
+fn main() {
+    str source = "fn main x := 42"
+
+    // Character-by-character iteration using at() and len()
+    int len = source.len()
+    print(len)  // 15
+
+    // Get ASCII codes for characters
+    int ch_f = source.at(0)  // 'f' = 102
+    int ch_n = source.at(1)  // 'n' = 110
+    int ch_space = source.at(2)  // ' ' = 32
+    print(ch_f)
+    print(ch_n)
+    print(ch_space)
+
+    // Check for specific characters by ASCII code
+    if ch_f == 102 {
+        print("found f")
+    }
+
+    // Test slice for extracting substrings
+    str keyword = source.slice(0, 2)
+    print(keyword)  // "fn"
+
+    str identifier = source.slice(3, 7)
+    print(identifier)  // "main"
+
+    // Test find for locating substrings
+    int colon_pos = source.find(":=")
+    print(colon_pos)  // 10
+
+    int number_pos = source.find("42")
+    print(number_pos)  // 13
+
+    // Test not found case
+    int missing = source.find("class")
+    print(missing)  // -1
+
+    // Test contains for quick checks
+    if source.contains("fn") {
+        print("has fn")
+    }
+
+    if source.contains(":=") {
+        print("has assignment")
+    }
+
+    // Test character classification helpers
+    // Check if character is a digit (48-57)
+    str digits = "0123456789"
+    int digit_4 = digits.at(4)  // '4' = 52
+    if digit_4 >= 48 and digit_4 <= 57 {
+        print("is digit")
+    }
+
+    // Check if character is a letter (a-z: 97-122, A-Z: 65-90)
+    int lower_a = 97
+    int lower_z = 122
+    int test_char = source.at(0)  // 'f' = 102
+    if test_char >= lower_a and test_char <= lower_z {
+        print("is lowercase")
+    }
+
+    // Test string building via interpolation
+    str prefix = "token"
+    str suffix = "value"
+    str combined = "{prefix}_{suffix}"
+    print(combined)  // token_value
+
+    // Test starts_with and ends_with
+    if source.starts_with("fn") {
+        print("starts with fn")
+    }
+
+    if source.ends_with("42") {
+        print("ends with 42")
+    }
+
+    print("done")
+}

@@ -1,0 +1,23 @@
+// Test 'in' operator for array membership
+
+fn main {
+    // Test with strings
+    str kw = "fn"
+    if kw in ["fn", "if", "else", "return", "while", "for"] {
+        print("fn is a keyword")
+    }
+
+    // Test with integers
+    int x = 5
+    if x in [1, 3, 5, 7, 9] {
+        print("x is odd and small")
+    }
+
+    // Test negative case
+    str other = "hello"
+    if not (other in ["fn", "if", "else"]) {
+        print("hello is not a keyword")
+    }
+
+    print("in operator test complete")
+}
