@@ -640,13 +640,121 @@ and get_pattern_binding_types ctx using_type pat =
   | PTuple pats ->
     List.concat_map (fun p -> get_pattern_binding_types ctx using_type p) pats
 
-(* Generate match expression *)
-and gen_match_expr ctx indent exprs using_type arms =
-  (* For now, generate a simple if-else chain for patterns *)
-  (* TODO: Optimize to switch for single enum match *)
-  let match_id = ctx.match_counter in
-  ctx.match_counter <- ctx.match_counter + 1;
+(* Check if match can be optimized to switch statement *)
+and can_use_switch exprs arms =
+  (* Single expression, all arms are PVariant or PWildcard at the end *)
+  match exprs with
+  | [_] ->
+    let rec check_arms seen_wildcard = function
+      | [] -> true
+      | (PWildcard, _) :: rest ->
+        (* Wildcard must be last *)
+        rest = [] || not (check_arms true rest)
+      | (PVariant _, _) :: rest when not seen_wildcard ->
+        check_arms false rest
+      | _ -> false
+    in
+    check_arms false arms
+  | _ -> false
 
+(* Generate match expression using switch statement *)
+and gen_match_switch ctx indent expr using_type arms match_id =
+  let enum_name = match using_type with
+    | Some t -> get_enum_c_name t
+    | None ->
+      (* Try to get enum name from first variant pattern *)
+      match arms with
+      | (PVariant (Some t, _, _), _) :: _ -> get_enum_c_name t
+      | _ -> "UNKNOWN"
+  in
+
+  (* Generate GCC statement expression: ({ ... result; }) *)
+  emit "({";
+  emitln "";
+
+  (* Store matched value in temp variable *)
+  emit_indent (indent + 1);
+  emit "typeof(";
+  gen_expr ctx indent expr;
+  emit ") _match";
+  emit (string_of_int match_id);
+  emit "_0 = ";
+  gen_expr ctx indent expr;
+  emitln ";";
+
+  (* Declare result variable *)
+  emit_indent (indent + 1);
+  (match arms with
+   | [] -> emit "int _match_result = 0"
+   | (first_pat, first_result) :: _ ->
+     let bindings = get_pattern_binding_types ctx using_type first_pat in
+     List.iter (fun (name, typ) -> add_local ctx name typ) bindings;
+     let result_type = get_type ctx first_result in
+     let c_t = match result_type with
+       | Some t -> c_type t
+       | None -> "int64_t"
+     in
+     emit c_t;
+     emit " _match_result";
+     emit (string_of_int match_id));
+  emitln ";";
+
+  (* Generate switch statement *)
+  emit_indent (indent + 1);
+  emit "switch (_match";
+  emit (string_of_int match_id);
+  emitln "_0.tag) {";
+
+  List.iter (fun (pat, result) ->
+    match pat with
+    | PVariant (_, variant_name, _bindings) ->
+      emit_indent (indent + 1);
+      emit "case ";
+      emit enum_name;
+      emit "_";
+      emit variant_name;
+      emitln ": {";
+      (* Bind pattern variables *)
+      gen_pattern_bindings ctx (indent + 2) match_id [expr] using_type pat;
+      emit_indent (indent + 2);
+      emit "_match_result";
+      emit (string_of_int match_id);
+      emit " = ";
+      gen_expr ctx (indent + 2) result;
+      emitln ";";
+      emit_indent (indent + 2);
+      emitln "break;";
+      emit_indent (indent + 1);
+      emitln "}"
+    | PWildcard ->
+      emit_indent (indent + 1);
+      emitln "default: {";
+      emit_indent (indent + 2);
+      emit "_match_result";
+      emit (string_of_int match_id);
+      emit " = ";
+      gen_expr ctx (indent + 2) result;
+      emitln ";";
+      emit_indent (indent + 2);
+      emitln "break;";
+      emit_indent (indent + 1);
+      emitln "}"
+    | _ -> ()  (* Should not happen if can_use_switch returned true *)
+  ) arms;
+
+  emit_indent (indent + 1);
+  emitln "}";
+
+  (* Return the result *)
+  emit_indent (indent + 1);
+  emit "_match_result";
+  emit (string_of_int match_id);
+  emitln ";";
+  emit_indent indent;
+  emit "})"
+
+(* Generate match expression using if-else chain *)
+and gen_match_ifelse ctx indent exprs using_type arms match_id =
   (* Generate GCC statement expression: ({ ... result; }) *)
   emit "({";
   emitln "";
@@ -713,6 +821,19 @@ and gen_match_expr ctx indent exprs using_type arms =
   emitln ";";
   emit_indent indent;
   emit "})"
+
+(* Generate match expression *)
+and gen_match_expr ctx indent exprs using_type arms =
+  let match_id = ctx.match_counter in
+  ctx.match_counter <- ctx.match_counter + 1;
+
+  (* Use switch optimization when possible *)
+  if can_use_switch exprs arms then
+    match exprs with
+    | [expr] -> gen_match_switch ctx indent expr using_type arms match_id
+    | _ -> gen_match_ifelse ctx indent exprs using_type arms match_id
+  else
+    gen_match_ifelse ctx indent exprs using_type arms match_id
 
 (* Collect all identifiers used in an expression *)
 and collect_expr_idents acc expr =

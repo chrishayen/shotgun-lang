@@ -1,5 +1,6 @@
-uses: std.io
+uses: uses_helper
 
 fn main {
-    print("uses block test")
+    int x = helper_func()
+    print(x)
 }

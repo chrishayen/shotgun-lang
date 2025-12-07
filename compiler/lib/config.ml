@@ -146,6 +146,26 @@ let resolve_import config import_path =
       else
         None
 
+(* Resolve an import path relative to a base directory (no project config needed) *)
+let resolve_import_relative base_dir import_path =
+  match import_path with
+  | [] -> None
+  | _ ->
+    (* Convert import path to file path: foo.bar.baz -> foo/bar/baz.bs *)
+    let rel_path = String.concat "/" import_path ^ ".bs" in
+    let full_path = Filename.concat base_dir rel_path in
+    if Sys.file_exists full_path then
+      Some full_path
+    else begin
+      (* Try mod.bs convention: foo.bar -> foo/bar/mod.bs *)
+      let dir_path = String.concat "/" import_path in
+      let mod_path = Filename.concat (Filename.concat base_dir dir_path) "mod.bs" in
+      if Sys.file_exists mod_path then
+        Some mod_path
+      else
+        None
+    end
+
 (* Get the namespace (last segment) from an import path *)
 let namespace_of_import = function
   | [] -> None

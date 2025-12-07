@@ -45,13 +45,6 @@ let parse_file filename =
 let try_load_config filename =
   Config.load_config filename
 
-(* Run semantic analysis *)
-let check_program ast =
-  match Semantic.analyze ast with
-  | Ok env -> Ok env
-  | Error errs ->
-    Error (String.concat "\n" errs)
-
 (* Generate C code *)
 let emit_c env ast =
   Codegen.generate env ast
@@ -88,23 +81,27 @@ let cmd_check filename =
     prerr_endline e;
     exit 1
   | Ok ast ->
+    let abs_filename = if Filename.is_relative filename then
+      Filename.concat (Sys.getcwd ()) filename
+    else filename in
+    let cache = Resolver.create_cache () in
+    Hashtbl.replace cache.parsed abs_filename ast;
     (* Check for project config for multi-file support *)
     let config = try_load_config filename in
     let warnings = match config with
       | None ->
-        (* Single file mode *)
-        (match check_program ast with
-         | Error e ->
-           prerr_endline e;
-           exit 1
-         | Ok _ -> [])
+        (* No config - use relative import resolution *)
+        let resolve_errors = Resolver.resolve_imports_relative cache abs_filename ast in
+        List.iter (fun e -> prerr_endline e) resolve_errors;
+        if resolve_errors <> [] then exit 1;
+        let (_env, warnings) = Resolver.analyze_with_imports_relative cache abs_filename ast in
+        if List.exists (fun w -> not (String.starts_with ~prefix:"Warning" w)) warnings then begin
+          List.iter prerr_endline warnings;
+          exit 1
+        end;
+        warnings
       | Some cfg ->
-        (* Multi-file mode with imports *)
-        let cache = Resolver.create_cache () in
-        let abs_filename = if Filename.is_relative filename then
-          Filename.concat (Sys.getcwd ()) filename
-        else filename in
-        Hashtbl.replace cache.parsed abs_filename ast;
+        (* Multi-file mode with project config *)
         let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
         List.iter (fun e -> prerr_endline e) resolve_errors;
         if resolve_errors <> [] then exit 1;
@@ -125,20 +122,24 @@ let cmd_emit_c filename =
     prerr_endline e;
     exit 1
   | Ok ast ->
+    let abs_filename = if Filename.is_relative filename then
+      Filename.concat (Sys.getcwd ()) filename
+    else filename in
+    let cache = Resolver.create_cache () in
+    Hashtbl.replace cache.parsed abs_filename ast;
     (* Check for project config for multi-file support *)
     let config = try_load_config filename in
     let (env, warnings, all_items) = match config with
       | None ->
-        (* Single file mode *)
-        let (env, warnings) = Semantic.analyze_with_warnings ast in
-        (env, warnings, ast)
+        (* No config - use relative import resolution *)
+        let resolve_errors = Resolver.resolve_imports_relative cache abs_filename ast in
+        List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
+        if resolve_errors <> [] then exit 1;
+        let (env, warnings) = Resolver.analyze_with_imports_relative cache abs_filename ast in
+        let all_items = Resolver.collect_all_items_relative cache abs_filename ast in
+        (env, warnings, all_items)
       | Some cfg ->
-        (* Multi-file mode with imports *)
-        let cache = Resolver.create_cache () in
-        let abs_filename = if Filename.is_relative filename then
-          Filename.concat (Sys.getcwd ()) filename
-        else filename in
-        Hashtbl.replace cache.parsed abs_filename ast;
+        (* Multi-file mode with project config *)
         let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
         List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
         if resolve_errors <> [] then exit 1;
@@ -157,20 +158,24 @@ let cmd_build filename output_opt =
     prerr_endline e;
     exit 1
   | Ok ast ->
+    let abs_filename = if Filename.is_relative filename then
+      Filename.concat (Sys.getcwd ()) filename
+    else filename in
+    let cache = Resolver.create_cache () in
+    Hashtbl.replace cache.parsed abs_filename ast;
     (* Check for project config for multi-file support *)
     let config = try_load_config filename in
     let (env, warnings, all_items) = match config with
       | None ->
-        (* Single file mode *)
-        let (env, warnings) = Semantic.analyze_with_warnings ast in
-        (env, warnings, ast)
+        (* No config - use relative import resolution *)
+        let resolve_errors = Resolver.resolve_imports_relative cache abs_filename ast in
+        List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
+        if resolve_errors <> [] then exit 1;
+        let (env, warnings) = Resolver.analyze_with_imports_relative cache abs_filename ast in
+        let all_items = Resolver.collect_all_items_relative cache abs_filename ast in
+        (env, warnings, all_items)
       | Some cfg ->
-        (* Multi-file mode with imports *)
-        let cache = Resolver.create_cache () in
-        let abs_filename = if Filename.is_relative filename then
-          Filename.concat (Sys.getcwd ()) filename
-        else filename in
-        Hashtbl.replace cache.parsed abs_filename ast;
+        (* Multi-file mode with project config *)
         let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
         List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
         if resolve_errors <> [] then exit 1;

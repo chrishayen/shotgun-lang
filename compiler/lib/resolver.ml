@@ -99,7 +99,7 @@ let merge_env ~into ~from ~namespace ~errors =
     Hashtbl.replace into.Semantic.methods key value
   ) from.Semantic.methods
 
-(* Resolve and load all imports for a file *)
+(* Resolve and load all imports for a file (with project config) *)
 let rec resolve_imports cache config current_file program =
   let uses = get_uses program in
   let errors = ref [] in
@@ -121,6 +121,36 @@ let rec resolve_imports cache config current_file program =
             Hashtbl.replace cache.parsed resolved_path imported_program;
             (* Recursively resolve imports of the imported file *)
             let sub_errors = resolve_imports cache config resolved_path imported_program in
+            errors := sub_errors @ !errors
+        end
+      end
+  ) uses;
+
+  List.rev !errors
+
+(* Resolve and load all imports for a file (relative resolution, no config) *)
+let rec resolve_imports_relative cache current_file program =
+  let base_dir = Filename.dirname current_file in
+  let uses = get_uses program in
+  let errors = ref [] in
+
+  List.iter (fun import_path ->
+    match Config.resolve_import_relative base_dir import_path with
+    | None ->
+      let path_str = String.concat "." import_path in
+      errors := Printf.sprintf "Cannot resolve import: %s" path_str :: !errors
+    | Some resolved_path ->
+      if not (Hashtbl.mem cache.parsed resolved_path) then begin
+        (* Avoid circular imports *)
+        if resolved_path = current_file then
+          errors := Printf.sprintf "Circular import: %s" resolved_path :: !errors
+        else begin
+          match parse_file resolved_path with
+          | Error e -> errors := e :: !errors
+          | Ok imported_program ->
+            Hashtbl.replace cache.parsed resolved_path imported_program;
+            (* Recursively resolve imports of the imported file *)
+            let sub_errors = resolve_imports_relative cache resolved_path imported_program in
             errors := sub_errors @ !errors
         end
       end
@@ -183,6 +213,76 @@ let collect_all_items cache config program =
 
   List.iter (fun import_path ->
     match Config.resolve_import config import_path with
+    | None -> ()
+    | Some resolved_path ->
+      match Hashtbl.find_opt cache.parsed resolved_path with
+      | None -> ()
+      | Some imported_program ->
+        (* Filter out IUses from imported programs to avoid duplication *)
+        let items = List.filter (function IUses _ -> false | _ -> true) imported_program in
+        imported_items := items @ !imported_items
+  ) uses;
+
+  (* Return imported items first, then main program items (excluding uses) *)
+  let main_items = List.filter (function IUses _ -> false | _ -> true) program in
+  !imported_items @ main_items
+
+(* Analyze a program with its imports (relative resolution, no config) *)
+let analyze_with_imports_relative cache current_file program =
+  let base_dir = Filename.dirname current_file in
+  let uses = get_uses program in
+  let import_errors = ref [] in
+
+  List.iter (fun import_path ->
+    match Config.resolve_import_relative base_dir import_path with
+    | None -> ()  (* Error already reported in resolve_imports_relative *)
+    | Some resolved_path ->
+      if not (Hashtbl.mem cache.envs resolved_path) then begin
+        match Hashtbl.find_opt cache.parsed resolved_path with
+        | None -> ()  (* Not parsed, error reported elsewhere *)
+        | Some imported_program ->
+          let (env, warnings) = Semantic.analyze_with_warnings imported_program in
+          List.iter (fun w ->
+            import_errors := (resolved_path ^ ": " ^ w) :: !import_errors
+          ) warnings;
+          Hashtbl.replace cache.envs resolved_path env
+      end
+  ) uses;
+
+  (* Create env and pre-populate with imported symbols BEFORE analysis *)
+  let main_env = Semantic.create_env () in
+
+  (* Merge imported symbols into main env first *)
+  List.iter (fun import_path ->
+    match Config.resolve_import_relative base_dir import_path with
+    | None -> ()
+    | Some resolved_path ->
+      match Hashtbl.find_opt cache.envs resolved_path with
+      | None -> ()
+      | Some imported_env ->
+        let namespace = match Config.namespace_of_import import_path with
+          | Some ns -> ns
+          | None -> "unknown"
+        in
+        merge_env ~into:main_env ~from:imported_env ~namespace ~errors:import_errors
+  ) uses;
+
+  (* Now register and check the main program items with merged env *)
+  List.iter (Semantic.register_item main_env) program;
+  List.iter (Semantic.check_item main_env) program;
+
+  let main_warnings = List.rev !(main_env.errors_list) in
+
+  (main_env, !import_errors @ main_warnings)
+
+(* Collect all items from a program and its imports (relative resolution, no config) *)
+let collect_all_items_relative cache current_file program =
+  let base_dir = Filename.dirname current_file in
+  let uses = get_uses program in
+  let imported_items = ref [] in
+
+  List.iter (fun import_path ->
+    match Config.resolve_import_relative base_dir import_path with
     | None -> ()
     | Some resolved_path ->
       match Hashtbl.find_opt cache.parsed resolved_path with

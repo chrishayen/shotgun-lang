@@ -102,7 +102,7 @@ let register_item env = function
   | IFunction (name, _type_params, params, ret, _body) ->
     Hashtbl.replace env.symbols name (SFunc (params, ret))
   | IUses _paths ->
-    (* TODO: resolve imports and merge symbols *)
+    (* Import resolution handled by Resolver module *)
     ()
 
 (* ============================== *)
@@ -908,7 +908,8 @@ let check_item env = function
   | IError (_name, _fields) ->
     ()  (* Just a type definition *)
   | IUses _paths ->
-    ()  (* TODO: validate imports exist *)
+    (* Import validation handled by Resolver module *)
+    ()
 
 (* Run semantic analysis on a program *)
 let analyze program =
