@@ -117,6 +117,9 @@ let rec type_exists env typ =
     (* Map<K, V> is a built-in generic type *)
     (name = "Map" || Hashtbl.mem env.structs name || Hashtbl.mem env.enums name) &&
     List.for_all (type_exists env) args
+  | TFunc (param_types, ret_type) ->
+    List.for_all (type_exists env) param_types &&
+    (match ret_type with None -> true | Some t -> type_exists env t)
 
 (* Get type of expression - simplified version *)
 let rec infer_expr_type env expr =
@@ -200,6 +203,44 @@ let rec infer_expr_type env expr =
     (match arms with
      | [] -> None
      | (_, first_result) :: _ -> infer_expr_type env first_result)
+  | EAnonFn (params, ret_type, body, _captures) ->
+    let param_types = List.map fst params in
+    let inferred_ret = match ret_type with
+      | Some t -> Some t
+      | None -> infer_return_type_from_body env params body
+    in
+    Some (TFunc (param_types, inferred_ret))
+
+(* Infer return type from a closure body by finding return statements *)
+and infer_return_type_from_body env params body =
+  (* Create a temporary scope with params for type inference *)
+  let fn_env = push_scope env in
+  List.iter (fun (typ, name) ->
+    Hashtbl.replace fn_env.symbols name (SVar (typ, false))
+  ) params;
+  infer_return_type_from_stmts fn_env body
+
+and infer_return_type_from_stmts env stmts =
+  List.fold_left (fun acc stmt ->
+    match acc with
+    | Some _ -> acc  (* Already found a return type *)
+    | None -> infer_return_type_from_stmt env stmt
+  ) None stmts
+
+and infer_return_type_from_stmt env stmt =
+  match stmt with
+  | SReturn (Some e) -> infer_expr_type env e
+  | SReturn None -> None
+  | SIf (_, then_stmts, else_stmts) ->
+    let then_type = infer_return_type_from_stmts env then_stmts in
+    (match then_type with
+     | Some _ -> then_type
+     | None ->
+       match else_stmts with
+       | Some stmts -> infer_return_type_from_stmts env stmts
+       | None -> None)
+  | SFor (_, _, body) -> infer_return_type_from_stmts env body
+  | _ -> None
 
 (* Extract the base enum name from a type (handles TUser and TApply) *)
 and get_enum_name_from_type = function
@@ -321,15 +362,32 @@ let rec check_expr env expr =
       bind_pattern_vars arm_env pat expr_types using_type;
       check_expr arm_env result_expr
     ) arms
+  | EAnonFn (params, _ret_type, body, _captures) ->
+    (* Create a new scope for the anonymous function *)
+    let fn_env = push_scope env in
+    (* Add parameters to scope *)
+    List.iter (fun (typ, name) ->
+      Hashtbl.replace fn_env.symbols name (SVar (typ, false))
+    ) params;
+    (* Check body statements *)
+    List.iter (check_stmt fn_env) body
   | _ -> ()
 
-(* Check statement *)
-let rec check_stmt env stmt =
+(* Check statement - mutually recursive with check_expr for closures *)
+and check_stmt env stmt =
   match stmt with
   | SVarDecl (typ, name, expr) ->
     if not (type_exists env typ) then
       add_error env (Printf.sprintf "Unknown type in declaration of %s" name);
     check_expr env expr;
+    Hashtbl.replace env.symbols name (SVar (typ, false))
+  | SVarDeclInfer (name, expr) ->
+    check_expr env expr;
+    (* Infer type from expression *)
+    let typ = match infer_expr_type env expr with
+      | Some t -> t
+      | None -> TUser "unknown"  (* fallback *)
+    in
     Hashtbl.replace env.symbols name (SVar (typ, false))
   | SConstDecl (name, expr) ->
     check_expr env expr;
@@ -544,3 +602,40 @@ let rec get_expr_type env locals expr =
     (match arms with
      | [] -> None
      | (_, first_result) :: _ -> get_expr_type env locals first_result)
+  | EAnonFn (params, ret_type, body, _captures) ->
+    let param_types = List.map fst params in
+    let inferred_ret = match ret_type with
+      | Some t -> Some t
+      | None -> infer_return_type_from_body_with_locals env locals params body
+    in
+    Some (TFunc (param_types, inferred_ret))
+
+(* Infer return type from a closure body using locals hashtable *)
+and infer_return_type_from_body_with_locals env locals params body =
+  let fn_locals = Hashtbl.copy locals in
+  List.iter (fun (typ, name) ->
+    Hashtbl.replace fn_locals name typ
+  ) params;
+  infer_return_type_from_stmts_with_locals env fn_locals body
+
+and infer_return_type_from_stmts_with_locals env locals stmts =
+  List.fold_left (fun acc stmt ->
+    match acc with
+    | Some _ -> acc
+    | None -> infer_return_type_from_stmt_with_locals env locals stmt
+  ) None stmts
+
+and infer_return_type_from_stmt_with_locals env locals stmt =
+  match stmt with
+  | SReturn (Some e) -> get_expr_type env locals e
+  | SReturn None -> None
+  | SIf (_, then_stmts, else_stmts) ->
+    let then_type = infer_return_type_from_stmts_with_locals env locals then_stmts in
+    (match then_type with
+     | Some _ -> then_type
+     | None ->
+       match else_stmts with
+       | Some stmts -> infer_return_type_from_stmts_with_locals env locals stmts
+       | None -> None)
+  | SFor (_, _, body) -> infer_return_type_from_stmts_with_locals env locals body
+  | _ -> None

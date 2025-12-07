@@ -122,6 +122,12 @@ for f in "$SCRIPT_DIR"/recursive/*.bs; do
 done
 
 echo ""
+echo "--- Closure Tests ---"
+for f in "$SCRIPT_DIR"/closures/*.bs; do
+    [ -f "$f" ] && test_valid "$f"
+done
+
+echo ""
 echo "--- Error Tests (should fail) ---"
 for f in "$SCRIPT_DIR"/errors/*.bs; do
     [ -f "$f" ] && test_error "$f"

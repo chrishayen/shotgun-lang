@@ -131,6 +131,7 @@ rule token = parse
 
   (* Symbols *)
   | "::" { COLONCOLON }
+  | ":=" { COLONEQ }
   | "->" { ARROW }
   | "?" { QUESTION }
   | "{" { incr_nesting (); LBRACE }

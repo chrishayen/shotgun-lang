@@ -1,0 +1,6 @@
+// Test basic anonymous function (no captures)
+fn main() {
+    doubler := fn(int n) { return n * 2 }
+    result := doubler(5)
+    print(result)
+}

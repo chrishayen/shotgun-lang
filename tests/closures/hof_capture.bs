@@ -1,0 +1,10 @@
+// Test higher-order function with capturing closure
+fn apply(int x, fn(int) int f) int {
+    return f(x)
+}
+
+fn main() {
+    int factor = 10
+    int result = apply(5, fn(int n) { return n * factor })
+    print(result)
+}

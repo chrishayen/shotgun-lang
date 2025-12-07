@@ -42,12 +42,16 @@
 
         <h3>Variables</h3>
 
-        <p>Variables are declared with their type followed by the name and value:</p>
+        <p>Variables can be declared with explicit types or use <code>:=</code> for type inference:</p>
 
-        <pre><code><span class="ty">int</span> x = <span class="nu">5</span>
+        <pre><code><span class="cm">// Explicit type</span>
+<span class="ty">int</span> x = <span class="nu">5</span>
 <span class="ty">str</span> name = <span class="st">"Alice"</span>
-<span class="ty">bool</span> active = <span class="kw">true</span>
-<span class="ty">f64</span> pi = <span class="nu">3.14159</span></code></pre>
+
+<span class="cm">// Type inferred with :=</span>
+y := <span class="nu">10</span>
+greeting := <span class="st">"Hello"</span>
+nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]</code></pre>
 
         <h3>Constants</h3>
 
@@ -227,6 +231,63 @@
         <pre><code><span class="ty">Person</span> p = <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span> }
 <span class="fn">print</span>(p.<span class="fn">greet</span>())     <span class="cm">// "Hello, I'm Alice!"</span>
 <span class="fn">print</span>(p.<span class="fn">is_adult</span>())  <span class="cm">// true</span></code></pre>
+
+        <h2>Closures and Higher-Order Functions</h2>
+
+        <p>Functions can be passed as arguments and returned from other functions. Use the <code>fn</code> keyword to define both function types and anonymous functions.</p>
+
+        <h3>Function Types</h3>
+
+        <p>Declare function types using <code>fn(param_types) return_type</code>:</p>
+
+        <pre><code><span class="cm">// A function that takes an int and returns an int</span>
+<span class="ty">fn</span>(<span class="ty">int</span>) <span class="ty">int</span>
+
+<span class="cm">// A function that takes two strings and returns a bool</span>
+<span class="ty">fn</span>(<span class="ty">str</span>, <span class="ty">str</span>) <span class="ty">bool</span>
+
+<span class="cm">// A function with no return value</span>
+<span class="ty">fn</span>(<span class="ty">int</span>)</code></pre>
+
+        <h3>Anonymous Functions</h3>
+
+        <p>Create inline functions with <code>fn(params) { body }</code>. Return types are inferred automatically:</p>
+
+        <pre><code><span class="cm">// Return type inferred as int from body</span>
+<span class="kw">fn</span>(<span class="ty">int</span> n) { <span class="kw">return</span> n * <span class="nu">2</span> }
+
+<span class="cm">// Explicit return type (optional)</span>
+<span class="kw">fn</span>(<span class="ty">int</span> n) <span class="ty">int</span> { <span class="kw">return</span> n * <span class="nu">2</span> }
+
+<span class="cm">// Void function (no return)</span>
+<span class="kw">fn</span>(<span class="ty">str</span> msg) { <span class="fn">print</span>(msg) }</code></pre>
+
+        <h3>Higher-Order Functions</h3>
+
+        <p>Pass functions as arguments to other functions:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">apply</span>(<span class="ty">int</span> x, <span class="ty">fn</span>(<span class="ty">int</span>) <span class="ty">int</span> f) <span class="ty">int</span> {
+    <span class="kw">return</span> <span class="fn">f</span>(x)
+}
+
+<span class="kw">fn</span> <span class="fn">main</span>() {
+    doubled := <span class="fn">apply</span>(<span class="nu">5</span>, <span class="kw">fn</span>(<span class="ty">int</span> n) { <span class="kw">return</span> n * <span class="nu">2</span> })
+    <span class="fn">print</span>(doubled)  <span class="cm">// 10</span>
+}</code></pre>
+
+        <h3>Variable Capture (Closures)</h3>
+
+        <p>Anonymous functions can capture variables from their enclosing scope:</p>
+
+        <pre><code><span class="kw">fn</span> <span class="fn">main</span>() {
+    factor := <span class="nu">10</span>
+
+    <span class="cm">// This closure captures 'factor' from the outer scope</span>
+    result := <span class="fn">apply</span>(<span class="nu">5</span>, <span class="kw">fn</span>(<span class="ty">int</span> n) { <span class="kw">return</span> n * factor })
+    <span class="fn">print</span>(result)  <span class="cm">// 50</span>
+}</code></pre>
+
+        <p>Captured variables are copied by value when the closure is created.</p>
 
         <h2>Traits</h2>
 

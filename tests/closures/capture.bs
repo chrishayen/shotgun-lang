@@ -1,0 +1,7 @@
+// Test closure with variable capture
+fn main() {
+    multiplier := 3
+    triple := fn(int n) { return n * multiplier }
+    result := triple(5)
+    print(result)
+}

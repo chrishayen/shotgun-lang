@@ -1,0 +1,11 @@
+// Test closure with inferred return type
+fn apply(int x, fn(int) int f) int {
+    return f(x)
+}
+
+fn main() {
+    int multiplier = 5
+    // No return type annotation - should infer int from body
+    int result = apply(10, fn(int n) { return n * multiplier })
+    print(result)
+}

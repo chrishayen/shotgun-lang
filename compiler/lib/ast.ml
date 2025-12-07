@@ -25,6 +25,7 @@ type typ =
   | TVoid
   | TParam of string              (* T - type parameter reference *)
   | TApply of string * typ list   (* List<int>, Option<str> - generic instantiation *)
+  | TFunc of typ list * typ option  (* fn(int, str) bool - function type *)
 [@@deriving show, eq]
 
 (* Binary operators *)
@@ -92,11 +93,12 @@ and expr =
   | EParen of expr
   | EAssign of assignop * expr * expr
   | EMatch of expr list * typ option * (pattern * expr) list  (* match exprs, optional using type, [(pattern, result)] *)
-[@@deriving show, eq]
+  | EAnonFn of (typ * string) list * typ option * stmt list * string list  (* params, return type, body, captured vars *)
 
-(* Statements *)
-type stmt =
+(* Statements - mutually recursive with expr for closures *)
+and stmt =
   | SVarDecl of typ * string * expr
+  | SVarDeclInfer of string * expr  (* name, initializer - type inferred with := *)
   | SConstDecl of string * expr  (* name, initializer - type inferred *)
   | SReturn of expr option
   | SIf of expr * stmt list * stmt list option

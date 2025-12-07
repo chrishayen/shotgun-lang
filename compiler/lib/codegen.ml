@@ -4,10 +4,12 @@ open Ast
 
 (* Buffer for output *)
 let buf = Buffer.create 4096
+let closure_typedefs_buf = Buffer.create 256
 
-let emit s = Buffer.add_string buf s
-let emitln s = Buffer.add_string buf s; Buffer.add_char buf '\n'
-let emit_indent n = for _ = 1 to n do Buffer.add_string buf "    " done
+let current_buf = ref buf
+let emit s = Buffer.add_string !current_buf s
+let emitln s = Buffer.add_string !current_buf s; Buffer.add_char !current_buf '\n'
+let emit_indent n = for _ = 1 to n do Buffer.add_string !current_buf "    " done
 
 (* Goroutine wrapper tracking *)
 type go_info = {
@@ -26,6 +28,30 @@ let reset_go_state () =
 let next_go_id () =
   let id = !go_counter in
   go_counter := id + 1;
+  id
+
+(* Anonymous function/closure tracking *)
+type closure_info = {
+  closure_id: int;
+  closure_params: (typ * string) list;
+  closure_ret: typ option;
+  closure_body: stmt list;
+  closure_captures: (string * typ) list;  (* captured variables with types *)
+}
+
+let closure_counter = ref 0
+let closure_defs : closure_info list ref = ref []
+let fn_ptr_types : (typ list * typ option, unit) Hashtbl.t = Hashtbl.create 16
+
+let reset_closure_state () =
+  closure_counter := 0;
+  closure_defs := [];
+  Hashtbl.clear fn_ptr_types;
+  Buffer.clear closure_typedefs_buf
+
+let next_closure_id () =
+  let id = !closure_counter in
+  closure_counter := id + 1;
   id
 
 (* Check if a type directly references a given type name (for recursive types) *)
@@ -53,6 +79,11 @@ let rec c_type = function
   | TParam name -> name  (* Type parameter - should be substituted before codegen *)
   | TApply ("Map", _) -> "ShotgunMap*"  (* Maps use generic runtime *)
   | TApply (name, args) -> mangle_generic_name name args
+  | TFunc (param_types, ret_type) ->
+    (* For function types, use closure struct type *)
+    let param_names = List.map c_type_name param_types in
+    let ret_name = match ret_type with None -> "void" | Some t -> c_type_name t in
+    "Closure_" ^ String.concat "_" param_names ^ (if param_names = [] then "" else "_") ^ ret_name
 
 (* Convert type to C, using pointers for recursive references to parent_name *)
 and c_type_in_parent parent_name t =
@@ -82,6 +113,10 @@ and c_type_name = function
   | TVoid -> "void"
   | TParam name -> name
   | TApply (name, args) -> mangle_generic_name name args
+  | TFunc (param_types, ret_type) ->
+    let param_names = List.map c_type_name param_types in
+    let ret_name = match ret_type with None -> "void" | Some t -> c_type_name t in
+    "fn_" ^ String.concat "_" param_names ^ "_" ^ ret_name
 
 (* Convert binary operator *)
 let c_binop = function
@@ -202,6 +237,7 @@ let rec collect_stmt_instantiations = function
   | SVarDecl (t, _, e) ->
     collect_type_instantiation t;
     collect_expr_instantiations e
+  | SVarDeclInfer (_, e) -> collect_expr_instantiations e
   | SConstDecl (_, e) -> collect_expr_instantiations e
   | SReturn (Some e) -> collect_expr_instantiations e
   | SReturn None -> ()
@@ -445,6 +481,8 @@ let rec gen_expr ctx indent expr =
        gen_expr ctx indent rhs)
   | EMatch (exprs, using_type, arms) ->
     gen_match_expr ctx indent exprs using_type arms
+  | EAnonFn (params, ret_type, body, captures) ->
+    gen_closure_expr ctx indent params ret_type body captures
 
 (* Get binding types from a pattern, given the using_type for variants *)
 and get_pattern_binding_types ctx using_type pat =
@@ -583,6 +621,157 @@ and gen_match_expr ctx indent exprs using_type arms =
   emitln ";";
   emit_indent indent;
   emit "})"
+
+(* Collect all identifiers used in an expression *)
+and collect_expr_idents acc expr =
+  match expr with
+  | EIdent name -> name :: acc
+  | EBinary (_, l, r) -> collect_expr_idents (collect_expr_idents acc l) r
+  | EUnary (_, e) -> collect_expr_idents acc e
+  | ECall (callee, _, args) ->
+    List.fold_left collect_expr_idents (collect_expr_idents acc callee) args
+  | EMember (obj, _) -> collect_expr_idents acc obj
+  | EIndex (arr, idx) -> collect_expr_idents (collect_expr_idents acc arr) idx
+  | EOr (e, clause) ->
+    let acc' = collect_expr_idents acc e in
+    (match clause with
+     | OrExpr e2 -> collect_expr_idents acc' e2
+     | OrReturn (Some e2) -> collect_expr_idents acc' e2
+     | OrReturn None -> acc'
+     | OrError (_, fields) -> List.fold_left (fun a (_, e2) -> collect_expr_idents a e2) acc' fields
+     | OrWait e2 -> collect_expr_idents acc' e2)
+  | EStructLit (_, _, fields) ->
+    List.fold_left (fun a (_, e) -> collect_expr_idents a e) acc fields
+  | EEnumVariant (_, _, _, fields) ->
+    List.fold_left (fun a (_, e) -> collect_expr_idents a e) acc fields
+  | EArrayLit elems -> List.fold_left collect_expr_idents acc elems
+  | EParen e -> collect_expr_idents acc e
+  | EAssign (_, lhs, rhs) -> collect_expr_idents (collect_expr_idents acc lhs) rhs
+  | EString parts ->
+    List.fold_left (fun a p -> match p with SLiteral _ -> a | SInterp e -> collect_expr_idents a e) acc parts
+  | EMatch (exprs, _, arms) ->
+    let acc' = List.fold_left collect_expr_idents acc exprs in
+    List.fold_left (fun a (_, result) -> collect_expr_idents a result) acc' arms
+  | EAnonFn _ -> acc  (* Don't descend into nested closures *)
+  | _ -> acc
+
+(* Collect all identifiers used in statements, also return locally declared names *)
+and collect_stmt_idents (used, declared) stmt =
+  match stmt with
+  | SVarDecl (_, name, expr) ->
+    (collect_expr_idents used expr, name :: declared)
+  | SVarDeclInfer (name, expr) ->
+    (collect_expr_idents used expr, name :: declared)
+  | SConstDecl (name, expr) ->
+    (collect_expr_idents used expr, name :: declared)
+  | SReturn (Some e) -> (collect_expr_idents used e, declared)
+  | SReturn None -> (used, declared)
+  | SIf (cond, then_stmts, else_stmts) ->
+    let used' = collect_expr_idents used cond in
+    let (used'', declared') = List.fold_left collect_stmt_idents (used', declared) then_stmts in
+    (match else_stmts with
+     | Some stmts -> List.fold_left collect_stmt_idents (used'', declared') stmts
+     | None -> (used'', declared'))
+  | SFor (var, iter, body_stmts) ->
+    let used' = collect_expr_idents used iter in
+    List.fold_left collect_stmt_idents (used', var :: declared) body_stmts
+  | SGo e -> (collect_expr_idents used e, declared)
+  | SExpr e -> (collect_expr_idents used e, declared)
+
+(* Infer return type from closure body by finding return statements *)
+and infer_closure_return_type env locals stmts =
+  List.fold_left (fun acc stmt ->
+    match acc with
+    | Some _ -> acc
+    | None -> infer_return_from_stmt env locals stmt
+  ) None stmts
+
+and infer_return_from_stmt env locals stmt =
+  match stmt with
+  | SReturn (Some e) -> Semantic.get_expr_type env locals e
+  | SReturn None -> None
+  | SIf (_, then_stmts, else_stmts) ->
+    let then_type = infer_closure_return_type env locals then_stmts in
+    (match then_type with
+     | Some _ -> then_type
+     | None ->
+       match else_stmts with
+       | Some stmts -> infer_closure_return_type env locals stmts
+       | None -> None)
+  | SFor (_, _, body) -> infer_closure_return_type env locals body
+  | _ -> None
+
+(* Generate closure expression *)
+and gen_closure_expr ctx _indent params ret_type body _captures =
+  let closure_id = next_closure_id () in
+
+  (* Analyze the closure body to find free variables *)
+  let param_names = List.map snd params in
+  let (used_idents, local_decls) = List.fold_left collect_stmt_idents ([], []) body in
+  let bound_names = param_names @ local_decls in
+  let free_vars = List.filter (fun name ->
+    not (List.mem name bound_names) &&
+    name <> "self" && name <> "print" && name <> "read_file" && name <> "write_file"
+  ) used_idents in
+  (* Remove duplicates *)
+  let free_vars = List.sort_uniq String.compare free_vars in
+
+  (* Determine captured variable types from ctx.locals *)
+  let capture_types = List.filter_map (fun cap_name ->
+    match Hashtbl.find_opt ctx.locals cap_name with
+    | Some t -> Some (cap_name, t)
+    | None -> None
+  ) free_vars in
+
+  (* Infer return type if not provided *)
+  let inferred_ret_type = match ret_type with
+    | Some t -> Some t
+    | None ->
+      (* Create a local scope with params for inference *)
+      let fn_locals = Hashtbl.copy ctx.locals in
+      List.iter (fun (typ, name) -> Hashtbl.replace fn_locals name typ) params;
+      infer_closure_return_type ctx.env fn_locals body
+  in
+
+  (* Register the function pointer type *)
+  let param_types = List.map fst params in
+  Hashtbl.replace fn_ptr_types (param_types, inferred_ret_type) ();
+
+  (* Register closure for later generation *)
+  closure_defs := {
+    closure_id;
+    closure_params = params;
+    closure_ret = inferred_ret_type;
+    closure_body = body;
+    closure_captures = capture_types;
+  } :: !closure_defs;
+
+  (* Always emit closure struct initialization *)
+  emit "(Closure_";
+  let param_names = List.map (fun (t, _) -> c_type_name t) params in
+  let ret_name = match inferred_ret_type with None -> "void" | Some t -> c_type_name t in
+  emit (String.concat "_" param_names);
+  if param_names <> [] then emit "_";
+  emit ret_name;
+  emit "){ .fn = _anon_fn_";
+  emit (string_of_int closure_id);
+  if capture_types = [] then begin
+    (* No captures - env is NULL *)
+    emit ", .env = NULL }"
+  end else begin
+    (* Has captures - create environment struct *)
+    emit ", .env = &(struct _anon_env_";
+    emit (string_of_int closure_id);
+    emit "){";
+    List.iteri (fun i (name, _) ->
+      if i > 0 then emit ", ";
+      emit ".";
+      emit name;
+      emit " = ";
+      emit name
+    ) capture_types;
+    emit "} }"
+  end
 
 (* Get mangled enum name from pattern type or using type *)
 and get_enum_c_name = function
@@ -1011,40 +1200,70 @@ and gen_call ctx indent callee args =
      | _ -> ());
     emit ")"
   | EIdent name ->
-    emit name;
-    emit "(";
-    let first = ref true in
-    List.iter (fun arg ->
-      if not !first then emit ", ";
-      first := false;
-      gen_expr ctx indent arg
-    ) args;
-    (* Pad missing optional params with NULL *)
-    (match get_func_params ctx name with
-     | Some params ->
-       let num_args = List.length args in
-       let named_params = List.filter (fun p -> p <> Ast.PSelf) params in
-       List.iteri (fun i p ->
-         if i >= num_args then begin
-           if not !first then emit ", ";
-           first := false;
-           emit "NULL"
-         end;
-         ignore p
-       ) named_params
-     | None -> ());
-    emit ")"
+    (* Check if this is a closure variable *)
+    (match Hashtbl.find_opt ctx.locals name with
+     | Some (TFunc _) ->
+       (* Call closure: name.fn(name.env, args...) *)
+       emit name;
+       emit ".fn(";
+       emit name;
+       emit ".env";
+       List.iter (fun arg ->
+         emit ", ";
+         gen_expr ctx indent arg
+       ) args;
+       emit ")"
+     | _ ->
+       (* Regular function call *)
+       emit name;
+       emit "(";
+       let first = ref true in
+       List.iter (fun arg ->
+         if not !first then emit ", ";
+         first := false;
+         gen_expr ctx indent arg
+       ) args;
+       (* Pad missing optional params with NULL *)
+       (match get_func_params ctx name with
+        | Some params ->
+          let num_args = List.length args in
+          let named_params = List.filter (fun p -> p <> Ast.PSelf) params in
+          List.iteri (fun i p ->
+            if i >= num_args then begin
+              if not !first then emit ", ";
+              first := false;
+              emit "NULL"
+            end;
+            ignore p
+          ) named_params
+        | None -> ());
+       emit ")")
   | _ ->
-    emit "/* complex call */";
-    gen_expr ctx indent callee;
-    emit "(";
-    let first = ref true in
-    List.iter (fun arg ->
-      if not !first then emit ", ";
-      first := false;
-      gen_expr ctx indent arg
-    ) args;
-    emit ")"
+    (* Check if callee is a closure type *)
+    (match get_type ctx callee with
+     | Some (TFunc _) ->
+       (* Call closure: callee.fn(callee.env, args...) *)
+       emit "(";
+       gen_expr ctx indent callee;
+       emit ").fn((";
+       gen_expr ctx indent callee;
+       emit ").env";
+       List.iter (fun arg ->
+         emit ", ";
+         gen_expr ctx indent arg
+       ) args;
+       emit ")"
+     | _ ->
+       emit "/* complex call */";
+       gen_expr ctx indent callee;
+       emit "(";
+       let first = ref true in
+       List.iter (fun arg ->
+         if not !first then emit ", ";
+         first := false;
+         gen_expr ctx indent arg
+       ) args;
+       emit ")")
 
 (* Generate or expression *)
 and gen_or ctx indent e clause =
@@ -1151,6 +1370,19 @@ let rec gen_stmt ctx indent stmt =
        emit (c_type_name elem_typ);
        emit "()"
      | _ -> gen_expr ctx indent expr);
+    emitln ";"
+  | SVarDeclInfer (name, expr) ->
+    (* Infer type from expression *)
+    let typ = match get_type ctx expr with
+      | Some t -> t
+      | None -> TInt  (* fallback *)
+    in
+    add_local ctx name typ;
+    emit (c_type typ);
+    emit " ";
+    emit name;
+    emit " = ";
+    gen_expr ctx indent expr;
     emitln ";"
   | SConstDecl (name, expr) ->
     (* Infer type from expression *)
@@ -1547,6 +1779,7 @@ let gen_monomorphized_types program =
   in
   let rec scan_stmt = function
     | SVarDecl (t, _, e) -> scan_type t; scan_expr e
+    | SVarDeclInfer (_, e) -> scan_expr e
     | SConstDecl (_, e) -> scan_expr e
     | SReturn (Some e) -> scan_expr e
     | SReturn None -> ()
@@ -1682,6 +1915,7 @@ let gen_monomorphized_methods ?(decl_only=false) ctx program =
   in
   let rec scan_stmt = function
     | SVarDecl (t, _, e) -> scan_type t; scan_expr e
+    | SVarDeclInfer (_, e) -> scan_expr e
     | SConstDecl (_, e) -> scan_expr e
     | SReturn (Some e) -> scan_expr e
     | SReturn None -> ()
@@ -2165,11 +2399,157 @@ let gen_go_wrapper info =
 let gen_go_wrappers () =
   List.iter gen_go_wrapper (List.rev !go_wrappers)
 
+(* Generate closure type definition *)
+let gen_closure_typedef param_types ret_type =
+  let param_names = List.map c_type_name param_types in
+  let ret_name = match ret_type with None -> "void" | Some t -> c_type_name t in
+  let closure_name = "Closure_" ^ String.concat "_" param_names ^ "_" ^ ret_name in
+  let ret_c = match ret_type with None -> "void" | Some t -> c_type t in
+
+  (* Typedef for the closure struct *)
+  emit "typedef struct ";
+  emit closure_name;
+  emitln " {";
+  emit "    ";
+  emit ret_c;
+  emit " (*fn)(void* env";
+  List.iter (fun t ->
+    emit ", ";
+    emit (c_type t)
+  ) param_types;
+  emitln ");";
+  emitln "    void* env;";
+  emit "} ";
+  emit closure_name;
+  emitln ";";
+  emitln ""
+
+(* Generate a single closure function definition *)
+let gen_closure_fn ctx closure_info =
+  let { closure_id; closure_params; closure_ret; closure_body; closure_captures } = closure_info in
+  let ret_c = match closure_ret with None -> "void" | Some t -> c_type t in
+
+  (* Environment struct is already generated in gen_closure_preludes *)
+
+  (* Function signature - always takes void* _env as first param for uniform calling convention *)
+  emit ret_c;
+  emit " _anon_fn_";
+  emit (string_of_int closure_id);
+  emit "(void* _env";
+  List.iter (fun (t, name) ->
+    emit ", ";
+    emit (c_type t);
+    emit " ";
+    emit name
+  ) closure_params;
+  emitln ") {";
+  (* Mark _env as unused if no captures to suppress warning *)
+  if closure_captures = [] then
+    emitln "    (void)_env;";
+
+  (* If has captures, extract from env *)
+  if closure_captures <> [] then begin
+    emit "    _anon_env_";
+    emit (string_of_int closure_id);
+    emitln "* env = _env;";
+    List.iter (fun (name, t) ->
+      emit "    ";
+      emit (c_type t);
+      emit " ";
+      emit name;
+      emit " = env->";
+      emit name;
+      emitln ";"
+    ) closure_captures
+  end;
+
+  (* Generate body *)
+  let fn_ctx = { ctx with locals = Hashtbl.create 16 } in
+  List.iter (fun (t, name) -> Hashtbl.replace fn_ctx.locals name t) closure_params;
+  List.iter (fun (name, t) -> Hashtbl.replace fn_ctx.locals name t) closure_captures;
+  List.iter (gen_stmt fn_ctx 1) closure_body;
+
+  emitln "}";
+  emitln ""
+
+(* Generate all collected closures *)
+let gen_closures ctx =
+  List.iter (gen_closure_fn ctx) (List.rev !closure_defs)
+
+(* Generate function pointer typedef and forward declarations for closures *)
+let gen_closure_preludes () =
+  let old_buf = !current_buf in
+  current_buf := closure_typedefs_buf;
+
+  (* Generate closure struct types *)
+  Hashtbl.iter (fun (param_types, ret_type) () ->
+    let param_names = List.map c_type_name param_types in
+    let ret_name = match ret_type with None -> "void" | Some t -> c_type_name t in
+    let closure_name = "Closure_" ^ String.concat "_" param_names ^ (if param_names = [] then "" else "_") ^ ret_name in
+    let ret_c = match ret_type with None -> "void" | Some t -> c_type t in
+    emit "typedef struct ";
+    emit closure_name;
+    emitln " {";
+    emit "    ";
+    emit ret_c;
+    emit " (*fn)(void*";  (* Always takes env as first arg *)
+    List.iter (fun t ->
+      emit ", ";
+      emit (c_type t)
+    ) param_types;
+    emitln ");";
+    emitln "    void* env;";
+    emit "} ";
+    emit closure_name;
+    emitln ";"
+  ) fn_ptr_types;
+  if Hashtbl.length fn_ptr_types > 0 then emitln "";
+
+  (* Generate environment structs for closures with captures *)
+  List.iter (fun { closure_id; closure_captures; _ } ->
+    if closure_captures <> [] then begin
+      emit "typedef struct _anon_env_";
+      emit (string_of_int closure_id);
+      emitln " {";
+      List.iter (fun (name, t) ->
+        emit "    ";
+        emit (c_type t);
+        emit " ";
+        emit name;
+        emitln ";"
+      ) closure_captures;
+      emit "} _anon_env_";
+      emit (string_of_int closure_id);
+      emitln ";"
+    end
+  ) (List.rev !closure_defs);
+  if List.exists (fun ci -> ci.closure_captures <> []) !closure_defs then emitln "";
+
+  (* Generate forward declarations for anonymous functions *)
+  List.iter (fun { closure_id; closure_params; closure_ret; _ } ->
+    let ret_c = match closure_ret with None -> "void" | Some t -> c_type t in
+    emit ret_c;
+    emit " _anon_fn_";
+    emit (string_of_int closure_id);
+    emit "(void*";  (* Always takes env as first param *)
+    List.iter (fun (t, _name) ->
+      emit ", ";
+      emit (c_type t)
+    ) closure_params;
+    emitln ");"
+  ) (List.rev !closure_defs);
+
+  current_buf := old_buf
+
 (* Scan statements for go calls to collect wrapper info (first pass) *)
 let rec scan_stmt_for_go ctx stmt =
   match stmt with
   | SVarDecl (typ, name, _) ->
     add_local ctx name typ
+  | SVarDeclInfer (name, expr) ->
+    (match get_type ctx expr with
+     | Some t -> add_local ctx name t
+     | None -> ())
   | SConstDecl (name, expr) ->
     (match get_type ctx expr with
      | Some t -> add_local ctx name t
@@ -2260,7 +2640,9 @@ let gen_method_decl type_name method_name params ret =
 (* Generate program *)
 let generate env program =
   Buffer.clear buf;
+  current_buf := buf;
   reset_go_state ();
+  reset_closure_state ();
   let ctx = create_ctx env in
   gen_prelude ();
 
@@ -2359,4 +2741,28 @@ let generate env program =
   (* Generate monomorphized methods for generic types *)
   gen_monomorphized_methods ctx program;
 
-  Buffer.contents buf
+  (* Generate closures at the end - they were collected during codegen *)
+  gen_closures ctx;
+
+  (* Generate closure typedefs and forward declarations into separate buffer *)
+  gen_closure_preludes ();
+
+  (* Combine: main buffer + closure typedefs at the right place *)
+  (* For now, prepend closure typedefs before the forward declarations section *)
+  let main_code = Buffer.contents buf in
+  let typedef_code = Buffer.contents closure_typedefs_buf in
+  if String.length typedef_code > 0 then
+    (* Insert typedefs before "/* Forward declarations */" marker *)
+    let marker = "/* Forward declarations */" in
+    match String.split_on_char '\n' main_code |> List.mapi (fun i line -> (i, line))
+          |> List.find_opt (fun (_, line) -> String.trim line = marker) with
+    | Some (idx, _) ->
+      let lines = String.split_on_char '\n' main_code in
+      let before = List.filteri (fun i _ -> i < idx) lines in
+      let after = List.filteri (fun i _ -> i >= idx) lines in
+      String.concat "\n" before ^ "\n/* Function pointer types */\n" ^ typedef_code ^ "\n" ^ String.concat "\n" after
+    | None ->
+      (* Marker not found, just prepend *)
+      typedef_code ^ main_code
+  else
+    main_code

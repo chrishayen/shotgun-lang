@@ -1,0 +1,12 @@
+// Test := type inference for variable declarations
+fn main() {
+    x := 42
+    name := "hello"
+    flag := true
+    nums := [1, 2, 3]
+
+    print(x)
+    print(name)
+    print(flag)
+    print(nums[0])
+}

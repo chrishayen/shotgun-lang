@@ -1,0 +1,12 @@
+// Test higher-order functions
+fn apply(int x, fn(int) int f) int {
+    return f(x)
+}
+
+fn main() {
+    int result1 = apply(5, fn(int n) { return n * 2 })
+    print(result1)
+
+    int result2 = apply(10, fn(int n) { return n + 1 })
+    print(result2)
+}

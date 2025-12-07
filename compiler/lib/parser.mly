@@ -77,7 +77,7 @@ let parse_interp_string s =
 %token STR INT BOOL F32 F64 U32 U64
 
 (* Symbols *)
-%token COLONCOLON ARROW QUESTION DASH
+%token COLONCOLON COLONEQ ARROW QUESTION DASH
 %token LBRACE RBRACE LPAREN RPAREN LBRACKET RBRACKET
 %token COMMA COLON DOT
 %token EQ PLUSEQ MINUSEQ STAREQ SLASHEQ
@@ -269,6 +269,11 @@ typ:
   | name = TYPE_IDENT LT args = separated_nonempty_list(COMMA, typ) GT LBRACKET RBRACKET { TArray (TApply (name, args)) }
   | name = TYPE_IDENT LT args = separated_nonempty_list(COMMA, typ) GT QUESTION { TOptional (TApply (name, args)) }
   | t = primitive_or_user QUESTION { TOptional t }
+  (* Function type: fn(int, str) bool or fn() for void *)
+  | FN LPAREN RPAREN { TFunc ([], None) }
+  | FN LPAREN RPAREN ret = typ { TFunc ([], Some ret) }
+  | FN LPAREN tlist = separated_nonempty_list(COMMA, typ) RPAREN { TFunc (tlist, None) }
+  | FN LPAREN tlist = separated_nonempty_list(COMMA, typ) RPAREN ret = typ { TFunc (tlist, Some ret) }
   ;
 
 primitive_or_user:
@@ -292,6 +297,7 @@ stmt:
 
 stmt_inner:
   | t = typ name = IDENT EQ e = expr { SVarDecl (t, name, e) }
+  | name = IDENT COLONEQ e = expr { SVarDeclInfer (name, e) }
   | CONST name = IDENT EQ e = expr { SConstDecl (name, e) }
   | RETURN { SReturn None }
   | RETURN e = expr { SReturn (Some e) }
@@ -448,6 +454,13 @@ primary_expr:
   (* Match expression - tuple *)
   | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], None, arms) }
   | MATCH LPAREN e1 = expr COMMA e2 = expr RPAREN USING t = typ LBRACE arms = match_arm_list RBRACE { EMatch ([e1; e2], Some t, arms) }
+  (* Anonymous function: fn(int n) { return n * 2 } - return type inferred, captures filled in by semantic analysis *)
+  | FN LPAREN params = param_list RPAREN body = block
+    { let named_params = List.filter_map (function PSelf -> None | PNamed (t, n) -> Some (t, n)) params in
+      EAnonFn (named_params, None, body, []) }
+  | FN LPAREN params = param_list RPAREN ret = typ body = block
+    { let named_params = List.filter_map (function PSelf -> None | PNamed (t, n) -> Some (t, n)) params in
+      EAnonFn (named_params, Some ret, body, []) }
   ;
 
 (* Match arm list - comma separated *)
