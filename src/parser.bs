@@ -1,0 +1,2203 @@
+// Parser for the Shotgun self-hosted compiler
+//
+// Recursive descent parser that consumes tokens from the lexer
+// and produces an AST.
+
+uses: shotgun.lexer
+uses: shotgun.token
+uses: shotgun.ast
+
+// Parser state
+Parser :: struct {
+    lexer Lexer
+    current LocatedToken
+    previous LocatedToken
+}
+
+// Create a new parser
+fn new_parser(str source, str file) Parser {
+    lexer := new_lexer(source, file)
+    first := lexer.next_token()
+    return Parser {
+        lexer: lexer,
+        current: first,
+        previous: first
+    }
+}
+
+// Check if current token matches a keyword
+Parser :: is_keyword(self, str name) bool {
+    return match self.current.token using Token {
+        TkKeyword { name: n } -> n == name,
+        _ -> false
+    }
+}
+
+// Check if current token is a specific type
+Parser :: is_type_ident(self) bool {
+    return match self.current.token using Token {
+        TkTypeIdent { name: _ } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_ident(self) bool {
+    return match self.current.token using Token {
+        TkIdent { name: _ } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_int(self) bool {
+    return match self.current.token using Token {
+        TkInt { value: _ } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_float(self) bool {
+    return match self.current.token using Token {
+        TkFloat { value: _ } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_string(self) bool {
+    return match self.current.token using Token {
+        TkString { value: _ } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_char(self) bool {
+    return match self.current.token using Token {
+        TkChar { value: _ } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_eof(self) bool {
+    return match self.current.token using Token {
+        TkEof -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_newline(self) bool {
+    return match self.current.token using Token {
+        TkNewline -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lparen(self) bool {
+    return match self.current.token using Token {
+        TkLParen -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_rparen(self) bool {
+    return match self.current.token using Token {
+        TkRParen -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lbrace(self) bool {
+    return match self.current.token using Token {
+        TkLBrace -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_rbrace(self) bool {
+    return match self.current.token using Token {
+        TkRBrace -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lbracket(self) bool {
+    return match self.current.token using Token {
+        TkLBracket -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_rbracket(self) bool {
+    return match self.current.token using Token {
+        TkRBracket -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_comma(self) bool {
+    return match self.current.token using Token {
+        TkComma -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_colon(self) bool {
+    return match self.current.token using Token {
+        TkColon -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_coloncolon(self) bool {
+    return match self.current.token using Token {
+        TkColonColon -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_coloneq(self) bool {
+    return match self.current.token using Token {
+        TkColonEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_dot(self) bool {
+    return match self.current.token using Token {
+        TkDot -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_arrow(self) bool {
+    return match self.current.token using Token {
+        TkArrow -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_question(self) bool {
+    return match self.current.token using Token {
+        TkQuestion -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_underscore(self) bool {
+    return match self.current.token using Token {
+        TkUnderscore -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_eq(self) bool {
+    return match self.current.token using Token {
+        TkEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_plus(self) bool {
+    return match self.current.token using Token {
+        TkPlus -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_minus(self) bool {
+    return match self.current.token using Token {
+        TkMinus -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_star(self) bool {
+    return match self.current.token using Token {
+        TkStar -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_slash(self) bool {
+    return match self.current.token using Token {
+        TkSlash -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_percent(self) bool {
+    return match self.current.token using Token {
+        TkPercent -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_eqeq(self) bool {
+    return match self.current.token using Token {
+        TkEqEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_neq(self) bool {
+    return match self.current.token using Token {
+        TkNeq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lt(self) bool {
+    return match self.current.token using Token {
+        TkLt -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_gt(self) bool {
+    return match self.current.token using Token {
+        TkGt -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lte(self) bool {
+    return match self.current.token using Token {
+        TkLte -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_gte(self) bool {
+    return match self.current.token using Token {
+        TkGte -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_andand(self) bool {
+    return match self.current.token using Token {
+        TkAndAnd -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_oror(self) bool {
+    return match self.current.token using Token {
+        TkOrOr -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_bang(self) bool {
+    return match self.current.token using Token {
+        TkBang -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_pluseq(self) bool {
+    return match self.current.token using Token {
+        TkPlusEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_minuseq(self) bool {
+    return match self.current.token using Token {
+        TkMinusEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_stareq(self) bool {
+    return match self.current.token using Token {
+        TkStarEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_slasheq(self) bool {
+    return match self.current.token using Token {
+        TkSlashEq -> true,
+        _ -> false
+    }
+}
+
+// Advance to next token
+Parser :: advance(self) LocatedToken {
+    self.previous = self.current
+    self.current = self.lexer.next_token()
+    return self.previous
+}
+
+// Skip newlines
+Parser :: skip_newlines(self) {
+    while self.is_newline() {
+        self.advance()
+    }
+}
+
+// Expect a specific keyword, error if not present
+Parser :: expect_keyword(self, str name) bool {
+    if self.is_keyword(name) {
+        self.advance()
+        return true
+    }
+    print("Error: expected keyword '{name}' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_lparen(self) bool {
+    if self.is_lparen() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '(' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_rparen(self) bool {
+    if self.is_rparen() {
+        self.advance()
+        return true
+    }
+    print("Error: expected ')' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_lbrace(self) bool {
+    if self.is_lbrace() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '{' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_rbrace(self) bool {
+    if self.is_rbrace() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '}' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_lbracket(self) bool {
+    if self.is_lbracket() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '[' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_rbracket(self) bool {
+    if self.is_rbracket() {
+        self.advance()
+        return true
+    }
+    print("Error: expected ']' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_colon(self) bool {
+    if self.is_colon() {
+        self.advance()
+        return true
+    }
+    print("Error: expected ':' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_coloncolon(self) bool {
+    if self.is_coloncolon() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '::' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_eq(self) bool {
+    if self.is_eq() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '=' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_arrow(self) bool {
+    if self.is_arrow() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '->' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_gt(self) bool {
+    if self.is_gt() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '>' at {self.current.location.format()}")
+    return false
+}
+
+// Get the name from current ident token
+Parser :: get_ident(self) str {
+    return match self.current.token using Token {
+        TkIdent { name: n } -> n,
+        _ -> ""
+    }
+}
+
+Parser :: get_type_ident(self) str {
+    return match self.current.token using Token {
+        TkTypeIdent { name: n } -> n,
+        _ -> ""
+    }
+}
+
+Parser :: get_int(self) int {
+    return match self.current.token using Token {
+        TkInt { value: v } -> v,
+        _ -> 0
+    }
+}
+
+Parser :: get_float(self) f64 {
+    return match self.current.token using Token {
+        TkFloat { value: v } -> v,
+        _ -> 0.0
+    }
+}
+
+Parser :: get_string(self) str {
+    return match self.current.token using Token {
+        TkString { value: v } -> v,
+        _ -> ""
+    }
+}
+
+Parser :: get_char(self) char {
+    return match self.current.token using Token {
+        TkChar { value: v } -> v,
+        _ -> '\0'
+    }
+}
+
+// Parse a type
+Parser :: parse_type(self) Type {
+    self.skip_newlines()
+
+    // Check for built-in types (keywords)
+    if self.is_keyword("int") {
+        self.advance()
+        return self.parse_type_suffix(Type.TInt{})
+    }
+    if self.is_keyword("str") {
+        self.advance()
+        return self.parse_type_suffix(Type.TStr{})
+    }
+    if self.is_keyword("bool") {
+        self.advance()
+        return self.parse_type_suffix(Type.TBool{})
+    }
+    if self.is_keyword("char") {
+        self.advance()
+        return self.parse_type_suffix(Type.TChar{})
+    }
+    if self.is_keyword("f32") {
+        self.advance()
+        return self.parse_type_suffix(Type.TF32{})
+    }
+    if self.is_keyword("f64") {
+        self.advance()
+        return self.parse_type_suffix(Type.TF64{})
+    }
+    if self.is_keyword("u32") {
+        self.advance()
+        return self.parse_type_suffix(Type.TU32{})
+    }
+    if self.is_keyword("u64") {
+        self.advance()
+        return self.parse_type_suffix(Type.TU64{})
+    }
+    if self.is_keyword("chan") {
+        self.advance()
+        elem := self.parse_type()
+        return Type.TChan { elem: elem }
+    }
+    if self.is_keyword("fn") {
+        return self.parse_fn_type()
+    }
+
+    // User-defined type
+    if self.is_type_ident() {
+        name := self.get_type_ident()
+        self.advance()
+
+        // Check for type arguments <T, U>
+        if self.is_lt() {
+            self.advance()
+            Type[] args = []
+            args.push(self.parse_type())
+            while self.is_comma() {
+                self.advance()
+                args.push(self.parse_type())
+            }
+            self.expect_gt()
+            return self.parse_type_suffix(Type.TApply { name: name, args: args })
+        }
+
+        return self.parse_type_suffix(Type.TUser { name: name })
+    }
+
+    print("Error: expected type at {self.current.location.format()}")
+    return Type.TVoid{}
+}
+
+// Parse type suffixes: [], ?
+Parser :: parse_type_suffix(self, Type base) Type {
+    // Array suffix []
+    if self.is_lbracket() {
+        self.advance()
+        self.expect_rbracket()
+        return self.parse_type_suffix(Type.TArray { elem: base })
+    }
+
+    // Optional suffix ?
+    if self.is_question() {
+        self.advance()
+        return self.parse_type_suffix(Type.TOptional { inner: base })
+    }
+
+    return base
+}
+
+// Parse function type: fn(int, str) bool
+Parser :: parse_fn_type(self) Type {
+    self.expect_keyword("fn")
+    self.expect_lparen()
+
+    Type[] params = []
+    if !self.is_rparen() {
+        params.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            params.push(self.parse_type())
+        }
+    }
+    self.expect_rparen()
+
+    // Optional return type
+    Type? ret = none
+    if !self.is_lbrace() && !self.is_newline() && !self.is_eof() {
+        ret = self.parse_type()
+    }
+
+    return Type.TFunc { params: params, ret: ret }
+}
+
+// Parse a primary expression
+Parser :: parse_primary(self) Expr {
+    self.skip_newlines()
+
+    // Integer literal
+    if self.is_int() {
+        value := self.get_int()
+        self.advance()
+        return Expr.EInt { value: value }
+    }
+
+    // Float literal
+    if self.is_float() {
+        value := self.get_float()
+        self.advance()
+        return Expr.EFloat { value: value }
+    }
+
+    // String literal
+    if self.is_string() {
+        value := self.get_string()
+        self.advance()
+        parts := parse_string_parts(value)
+        return Expr.EString { parts: parts }
+    }
+
+    // Character literal
+    if self.is_char() {
+        value := self.get_char()
+        self.advance()
+        return Expr.EChar { value: value }
+    }
+
+    // Boolean and none
+    if self.is_keyword("true") {
+        self.advance()
+        return Expr.EBool { value: true }
+    }
+    if self.is_keyword("false") {
+        self.advance()
+        return Expr.EBool { value: false }
+    }
+    if self.is_keyword("none") {
+        self.advance()
+        return Expr.ENone{}
+    }
+    if self.is_keyword("self") {
+        self.advance()
+        return Expr.EIdent { name: "self" }
+    }
+
+    // chan()
+    if self.is_keyword("chan") {
+        self.advance()
+        self.expect_lparen()
+        self.expect_rparen()
+        return Expr.EChan{}
+    }
+
+    // match expression
+    if self.is_keyword("match") {
+        return self.parse_match()
+    }
+
+    // Anonymous function: fn(params) { body }
+    if self.is_keyword("fn") {
+        return self.parse_anon_fn()
+    }
+
+    // Identifier
+    if self.is_ident() {
+        name := self.get_ident()
+        self.advance()
+        return Expr.EIdent { name: name }
+    }
+
+    // Type identifier - could be struct literal, enum variant
+    if self.is_type_ident() {
+        return self.parse_type_expr()
+    }
+
+    // Array literal [a, b, c]
+    if self.is_lbracket() {
+        return self.parse_array_literal()
+    }
+
+    // Parenthesized expression
+    if self.is_lparen() {
+        self.advance()
+        expr := self.parse_expr()
+        self.expect_rparen()
+        return Expr.EParen { expr: expr }
+    }
+
+    print("Error: unexpected token in expression at {self.current.location.format()}")
+    return Expr.EInt { value: 0 }
+}
+
+// Parse expressions starting with a type identifier (struct lit, enum variant)
+Parser :: parse_type_expr(self) Expr {
+    name := self.get_type_ident()
+    self.advance()
+
+    // Check for type arguments <T>
+    Type[] type_args = []
+    if self.is_lt() {
+        self.advance()
+        type_args.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            type_args.push(self.parse_type())
+        }
+        self.expect_gt()
+    }
+
+    // Struct literal: Name { ... } or Name<T> { ... }
+    if self.is_lbrace() {
+        self.advance()
+        fields := self.parse_field_inits()
+        self.expect_rbrace()
+        return Expr.EStructLit { name: name, type_args: type_args, fields: fields }
+    }
+
+    // Enum variant: Name.Variant or Name<T>.Variant { ... }
+    if self.is_dot() {
+        self.advance()
+        variant_name := self.get_type_ident()
+        self.advance()
+
+        FieldInit[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_field_inits()
+            self.expect_rbrace()
+        }
+
+        return Expr.EEnumVariant {
+            enum_name: name,
+            type_args: type_args,
+            variant_name: variant_name,
+            fields: fields
+        }
+    }
+
+    // Just a type name used as expression (error case, but handle gracefully)
+    return Expr.EIdent { name: name }
+}
+
+// Parse field initializers: name: expr, name: expr
+Parser :: parse_field_inits(self) FieldInit[] {
+    FieldInit[] fields = []
+    self.skip_newlines()
+
+    if self.is_rbrace() {
+        return fields
+    }
+
+    fields.push(self.parse_field_init())
+    while self.is_comma() {
+        self.advance()
+        self.skip_newlines()
+        if self.is_rbrace() {
+            return fields
+        }
+        fields.push(self.parse_field_init())
+    }
+    self.skip_newlines()
+
+    return fields
+}
+
+Parser :: parse_field_init(self) FieldInit {
+    name := self.get_ident()
+    self.advance()
+    self.expect_colon()
+    value := self.parse_expr()
+    return FieldInit { name: name, value: value }
+}
+
+// Parse array literal [a, b, c]
+Parser :: parse_array_literal(self) Expr {
+    self.expect_lbracket()
+
+    Expr[] elements = []
+    self.skip_newlines()
+
+    if !self.is_rbracket() {
+        elements.push(self.parse_expr())
+        while self.is_comma() {
+            self.advance()
+            self.skip_newlines()
+            if self.is_rbracket() {
+                break
+            }
+            elements.push(self.parse_expr())
+        }
+    }
+    self.skip_newlines()
+    self.expect_rbracket()
+
+    return Expr.EArrayLit { elements: elements }
+}
+
+// Parse postfix expressions (calls, member access, indexing)
+Parser :: parse_postfix(self) Expr {
+    expr := self.parse_primary()
+
+    while true {
+        // Method/field access: expr.name
+        if self.is_dot() {
+            self.advance()
+            member := self.get_ident()
+            self.advance()
+            expr = Expr.EMember { expr: expr, member: member }
+        } else if self.is_lparen() {
+            // Function call: expr(args)
+            self.advance()
+            args := self.parse_args()
+            self.expect_rparen()
+            expr = Expr.ECall { callee: expr, type_args: [], args: args }
+        } else if self.is_coloncolon() {
+            // Generic call: expr::<T>(args)
+            self.advance()
+            if self.is_lt() {
+                self.advance()
+                Type[] type_args = []
+                type_args.push(self.parse_type())
+                while self.is_comma() {
+                    self.advance()
+                    type_args.push(self.parse_type())
+                }
+                self.expect_gt()
+                self.expect_lparen()
+                args := self.parse_args()
+                self.expect_rparen()
+                expr = Expr.ECall { callee: expr, type_args: type_args, args: args }
+            }
+        } else if self.is_lbracket() {
+            // Index: expr[index]
+            self.advance()
+            index := self.parse_expr()
+            self.expect_rbracket()
+            expr = Expr.EIndex { expr: expr, index: index }
+        } else {
+            break
+        }
+    }
+
+    return expr
+}
+
+// Parse argument list
+Parser :: parse_args(self) Expr[] {
+    Expr[] args = []
+    self.skip_newlines()
+
+    if self.is_rparen() {
+        return args
+    }
+
+    args.push(self.parse_expr())
+    while self.is_comma() {
+        self.advance()
+        self.skip_newlines()
+        args.push(self.parse_expr())
+    }
+    self.skip_newlines()
+
+    return args
+}
+
+// Parse unary expressions
+Parser :: parse_unary(self) Expr {
+    if self.is_bang() {
+        self.advance()
+        expr := self.parse_unary()
+        return Expr.EUnary { op: Unop.Not{}, expr: expr }
+    }
+
+    return self.parse_postfix()
+}
+
+// Parse multiplicative expressions
+Parser :: parse_mul(self) Expr {
+    left := self.parse_unary()
+
+    while true {
+        if self.is_star() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mul{}, left: left, right: right }
+        } else if self.is_slash() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Div{}, left: left, right: right }
+        } else if self.is_percent() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mod{}, left: left, right: right }
+        } else {
+            break
+        }
+    }
+
+    return left
+}
+
+// Parse additive expressions
+Parser :: parse_add(self) Expr {
+    left := self.parse_mul()
+
+    while true {
+        if self.is_plus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Add{}, left: left, right: right }
+        } else if self.is_minus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Sub{}, left: left, right: right }
+        } else {
+            break
+        }
+    }
+
+    return left
+}
+
+// Parse comparison expressions
+Parser :: parse_cmp(self) Expr {
+    left := self.parse_add()
+
+    while true {
+        if self.is_eqeq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Eq{}, left: left, right: right }
+        } else if self.is_neq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Neq{}, left: left, right: right }
+        } else if self.is_lt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lt{}, left: left, right: right }
+        } else if self.is_gt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gt{}, left: left, right: right }
+        } else if self.is_lte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lte{}, left: left, right: right }
+        } else if self.is_gte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gte{}, left: left, right: right }
+        } else if self.is_keyword("in") {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.In{}, left: left, right: right }
+        } else {
+            break
+        }
+    }
+
+    return left
+}
+
+// Parse logical AND
+Parser :: parse_and(self) Expr {
+    left := self.parse_cmp()
+
+    while self.is_andand() {
+        self.advance()
+        right := self.parse_cmp()
+        left = Expr.EBinary { op: Binop.And{}, left: left, right: right }
+    }
+
+    return left
+}
+
+// Parse 'or' expressions (for error handling)
+Parser :: parse_or_clause(self) Expr {
+    left := self.parse_and()
+
+    if self.is_keyword("or") {
+        self.advance()
+        clause := self.parse_or_rhs()
+        return Expr.EOr { expr: left, clause: clause }
+    }
+
+    return left
+}
+
+Parser :: parse_or_rhs(self) OrClause {
+    // or return
+    if self.is_keyword("return") {
+        self.advance()
+        if self.is_eof() || self.is_newline() || self.is_rbrace() {
+            return OrClause.OrReturn { expr: none }
+        }
+        expr := self.parse_and()
+        return OrClause.OrReturn { expr: expr }
+    }
+
+    // or error ErrorType { ... }
+    if self.is_keyword("error") {
+        self.advance()
+        error_name := self.get_type_ident()
+        self.advance()
+        FieldInit[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_field_inits()
+            self.expect_rbrace()
+        }
+        return OrClause.OrError { error_name: error_name, fields: fields }
+    }
+
+    // or wait(timeout)
+    if self.is_keyword("wait") {
+        self.advance()
+        self.expect_lparen()
+        expr := self.parse_expr()
+        self.expect_rparen()
+        return OrClause.OrWait { expr: expr }
+    }
+
+    // or default_value
+    expr := self.parse_and()
+    return OrClause.OrExpr { expr: expr }
+}
+
+// Parse logical OR (||)
+Parser :: parse_bool_or(self) Expr {
+    left := self.parse_or_clause()
+
+    while self.is_oror() {
+        self.advance()
+        right := self.parse_or_clause()
+        left = Expr.EBinary { op: Binop.Or{}, left: left, right: right }
+    }
+
+    return left
+}
+
+// Parse assignment expressions
+Parser :: parse_assignment(self) Expr {
+    expr := self.parse_bool_or()
+
+    if self.is_eq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.Assign{}, target: expr, value: value }
+    }
+    if self.is_pluseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.AddAssign{}, target: expr, value: value }
+    }
+    if self.is_minuseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.SubAssign{}, target: expr, value: value }
+    }
+    if self.is_stareq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.MulAssign{}, target: expr, value: value }
+    }
+    if self.is_slasheq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.DivAssign{}, target: expr, value: value }
+    }
+
+    return expr
+}
+
+// Main expression parser
+Parser :: parse_expr(self) Expr {
+    return self.parse_assignment()
+}
+
+// Parse match expression
+Parser :: parse_match(self) Expr {
+    self.expect_keyword("match")
+
+    // Check for tuple match: match (a, b) { ... }
+    Expr[] exprs = []
+    if self.is_lparen() {
+        self.advance()
+        exprs.push(self.parse_expr())
+        while self.is_comma() {
+            self.advance()
+            exprs.push(self.parse_expr())
+        }
+        self.expect_rparen()
+    } else {
+        exprs.push(self.parse_expr())
+    }
+
+    // Optional 'using' clause
+    Type? using_type = none
+    if self.is_keyword("using") {
+        self.advance()
+        using_type = self.parse_type()
+    }
+
+    self.expect_lbrace()
+
+    MatchArm[] arms = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        arms.push(self.parse_match_arm())
+
+        if self.is_comma() {
+            self.advance()
+        }
+        self.skip_newlines()
+    }
+
+    self.expect_rbrace()
+
+    return Expr.EMatch { exprs: exprs, using_type: using_type, arms: arms }
+}
+
+Parser :: parse_match_arm(self) MatchArm {
+    pattern := self.parse_pattern()
+    self.expect_arrow()
+    expr := self.parse_expr()
+    return MatchArm { pattern: pattern, expr: expr }
+}
+
+// Parse pattern
+Parser :: parse_pattern(self) Pattern {
+    // Wildcard
+    if self.is_underscore() {
+        self.advance()
+        return Pattern.PWildcard{}
+    }
+
+    // Tuple pattern: (p1, p2)
+    if self.is_lparen() {
+        self.advance()
+        Pattern[] patterns = []
+        patterns.push(self.parse_pattern())
+        while self.is_comma() {
+            self.advance()
+            patterns.push(self.parse_pattern())
+        }
+        self.expect_rparen()
+        return Pattern.PTuple { patterns: patterns }
+    }
+
+    // Literal patterns
+    if self.is_int() {
+        value := self.get_int()
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EInt { value: value } }
+    }
+    if self.is_char() {
+        value := self.get_char()
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EChar { value: value } }
+    }
+    if self.is_string() {
+        value := self.get_string()
+        self.advance()
+        parts := parse_string_parts(value)
+        return Pattern.PLiteral { expr: Expr.EString { parts: parts } }
+    }
+    if self.is_keyword("true") {
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EBool { value: true } }
+    }
+    if self.is_keyword("false") {
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EBool { value: false } }
+    }
+
+    // Type identifier - variant pattern
+    if self.is_type_ident() {
+        return self.parse_variant_pattern()
+    }
+
+    // Simple identifier binding
+    if self.is_ident() {
+        name := self.get_ident()
+        self.advance()
+        return Pattern.PIdent { name: name }
+    }
+
+    print("Error: unexpected token in pattern at {self.current.location.format()}")
+    return Pattern.PWildcard{}
+}
+
+// Parse variant pattern: Option.Some { value: v } or just Some { value: v }
+Parser :: parse_variant_pattern(self) Pattern {
+    first_name := self.get_type_ident()
+    self.advance()
+
+    // Check for type arguments: Option<int>.Some
+    Type? typ = none
+    if self.is_lt() {
+        self.advance()
+        Type[] args = []
+        args.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            args.push(self.parse_type())
+        }
+        self.expect_gt()
+        typ = Type.TApply { name: first_name, args: args }
+
+        self.expect_dot()
+        variant_name := self.get_type_ident()
+        self.advance()
+
+        bindings := self.parse_pattern_bindings()
+        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
+    }
+
+    // Check for qualified: Enum.Variant
+    if self.is_dot() {
+        self.advance()
+        variant_name := self.get_type_ident()
+        self.advance()
+
+        typ = Type.TUser { name: first_name }
+        bindings := self.parse_pattern_bindings()
+        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
+    }
+
+    // Unqualified variant (with 'using')
+    bindings := self.parse_pattern_bindings()
+    return Pattern.PVariant { typ: none, variant_name: first_name, bindings: bindings }
+}
+
+Parser :: expect_dot(self) bool {
+    if self.is_dot() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '.' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: parse_pattern_bindings(self) PatternBinding[] {
+    PatternBinding[] bindings = []
+
+    if self.is_lbrace() {
+        self.advance()
+        self.skip_newlines()
+
+        if !self.is_rbrace() {
+            bindings.push(self.parse_pattern_binding())
+            while self.is_comma() {
+                self.advance()
+                self.skip_newlines()
+                if self.is_rbrace() {
+                    break
+                }
+                bindings.push(self.parse_pattern_binding())
+            }
+        }
+        self.skip_newlines()
+        self.expect_rbrace()
+    }
+
+    return bindings
+}
+
+Parser :: parse_pattern_binding(self) PatternBinding {
+    field_name := self.get_ident()
+    self.advance()
+    self.expect_colon()
+    binding_name := self.get_ident()
+    self.advance()
+    return PatternBinding { field_name: field_name, binding_name: binding_name }
+}
+
+// Parse anonymous function
+Parser :: parse_anon_fn(self) Expr {
+    self.expect_keyword("fn")
+    self.expect_lparen()
+
+    params := self.parse_params()
+    self.expect_rparen()
+
+    // Optional return type
+    Type? ret = none
+    if !self.is_lbrace() {
+        ret = self.parse_type()
+    }
+
+    body := self.parse_block()
+
+    str[] captures = []
+    return Expr.EAnonFn { params: params, ret: ret, body: body, captures: captures }
+}
+
+// Parse parameter list
+Parser :: parse_params(self) Param[] {
+    Param[] params = []
+
+    if self.is_rparen() {
+        return params
+    }
+
+    params.push(self.parse_param())
+    while self.is_comma() {
+        self.advance()
+        params.push(self.parse_param())
+    }
+
+    return params
+}
+
+Parser :: parse_param(self) Param {
+    if self.is_keyword("self") {
+        self.advance()
+        return Param.PSelf{}
+    }
+
+    typ := self.parse_type()
+    name := self.get_ident()
+    self.advance()
+    return Param.PNamed { typ: typ, name: name }
+}
+
+// Parse a block { stmts }
+Parser :: parse_block(self) Stmt[] {
+    self.expect_lbrace()
+
+    Stmt[] stmts = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        stmts.push(self.parse_stmt())
+        self.skip_newlines()
+    }
+
+    self.expect_rbrace()
+    return stmts
+}
+
+// Parse a statement
+Parser :: parse_stmt(self) Stmt {
+    self.skip_newlines()
+
+    // Variable declaration with type: int x = 5
+    if self.is_keyword("int") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("str") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("bool") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("char") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("f32") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("f64") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("u32") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("u64") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("chan") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+
+    // Type-declared variable: Person p = ...
+    if self.is_type_ident() {
+        return self.parse_type_or_expr_stmt()
+    }
+
+    // Const declaration
+    if self.is_keyword("const") {
+        self.advance()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SConstDecl { name: name, init: init }
+    }
+
+    // Return statement
+    if self.is_keyword("return") {
+        self.advance()
+        if self.is_eof() || self.is_newline() || self.is_rbrace() {
+            return Stmt.SReturn { expr: none }
+        }
+        expr := self.parse_expr()
+        return Stmt.SReturn { expr: expr }
+    }
+
+    // If statement
+    if self.is_keyword("if") {
+        return self.parse_if()
+    }
+
+    // For loop
+    if self.is_keyword("for") {
+        return self.parse_for()
+    }
+
+    // While loop
+    if self.is_keyword("while") {
+        return self.parse_while()
+    }
+
+    // Go statement
+    if self.is_keyword("go") {
+        self.advance()
+        expr := self.parse_expr()
+        return Stmt.SGo { expr: expr }
+    }
+
+    // Variable declaration with inference: x := 5
+    if self.is_ident() {
+        name := self.get_ident()
+        self.advance()
+
+        if self.is_coloneq() {
+            self.advance()
+            init := self.parse_expr()
+            return Stmt.SVarDeclInfer { name: name, init: init }
+        }
+
+        // It's an expression statement
+        expr := Expr.EIdent { name: name }
+        expr = self.continue_postfix(expr)
+        expr = self.continue_expr(expr)
+        return Stmt.SExpr { expr: expr }
+    }
+
+    // Expression statement
+    expr := self.parse_expr()
+    return Stmt.SExpr { expr: expr }
+}
+
+// Handle statements that start with a type identifier
+Parser :: parse_type_or_expr_stmt(self) Stmt {
+    name := self.get_type_ident()
+    self.advance()
+
+    // Check for type arguments
+    Type[] type_args = []
+    if self.is_lt() {
+        self.advance()
+        type_args.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            type_args.push(self.parse_type())
+        }
+        self.expect_gt()
+    }
+
+    // Check for array suffix
+    is_array := false
+    if self.is_lbracket() {
+        self.advance()
+        self.expect_rbracket()
+        is_array = true
+    }
+
+    // If followed by an identifier, it's a declaration
+    if self.is_ident() {
+        var_name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+
+        Type typ = Type.TUser { name: name }
+        if type_args.len() > 0 {
+            typ = Type.TApply { name: name, args: type_args }
+        }
+        if is_array {
+            typ = Type.TArray { elem: typ }
+        }
+
+        return Stmt.SVarDecl { typ: typ, name: var_name, init: init }
+    }
+
+    // Otherwise it's an expression starting with the type
+    Expr expr = Expr.EIdent { name: name }
+
+    if self.is_lbrace() {
+        self.advance()
+        fields := self.parse_field_inits()
+        self.expect_rbrace()
+        expr = Expr.EStructLit { name: name, type_args: type_args, fields: fields }
+    } else if self.is_dot() {
+        self.advance()
+        variant_name := self.get_type_ident()
+        self.advance()
+        FieldInit[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_field_inits()
+            self.expect_rbrace()
+        }
+        expr = Expr.EEnumVariant { enum_name: name, type_args: type_args, variant_name: variant_name, fields: fields }
+    }
+
+    expr = self.continue_postfix(expr)
+    expr = self.continue_expr(expr)
+    return Stmt.SExpr { expr: expr }
+}
+
+// Continue parsing postfix operations on an expression
+Parser :: continue_postfix(self, Expr expr) Expr {
+    while true {
+        if self.is_dot() {
+            self.advance()
+            member := self.get_ident()
+            self.advance()
+            expr = Expr.EMember { expr: expr, member: member }
+        } else if self.is_lparen() {
+            self.advance()
+            args := self.parse_args()
+            self.expect_rparen()
+            expr = Expr.ECall { callee: expr, type_args: [], args: args }
+        } else if self.is_lbracket() {
+            self.advance()
+            index := self.parse_expr()
+            self.expect_rbracket()
+            expr = Expr.EIndex { expr: expr, index: index }
+        } else {
+            break
+        }
+    }
+    return expr
+}
+
+// Continue parsing from an already-parsed expression
+Parser :: continue_expr(self, Expr left) Expr {
+    left = self.continue_mul(left)
+    left = self.continue_add(left)
+    left = self.continue_cmp(left)
+    left = self.continue_and(left)
+    left = self.continue_or_clause(left)
+    left = self.continue_bool_or(left)
+    left = self.continue_assignment(left)
+    return left
+}
+
+Parser :: continue_mul(self, Expr left) Expr {
+    while true {
+        if self.is_star() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mul{}, left: left, right: right }
+        } else if self.is_slash() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Div{}, left: left, right: right }
+        } else if self.is_percent() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mod{}, left: left, right: right }
+        } else {
+            break
+        }
+    }
+    return left
+}
+
+Parser :: continue_add(self, Expr left) Expr {
+    while true {
+        if self.is_plus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Add{}, left: left, right: right }
+        } else if self.is_minus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Sub{}, left: left, right: right }
+        } else {
+            break
+        }
+    }
+    return left
+}
+
+Parser :: continue_cmp(self, Expr left) Expr {
+    while true {
+        if self.is_eqeq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Eq{}, left: left, right: right }
+        } else if self.is_neq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Neq{}, left: left, right: right }
+        } else if self.is_lt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lt{}, left: left, right: right }
+        } else if self.is_gt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gt{}, left: left, right: right }
+        } else if self.is_lte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lte{}, left: left, right: right }
+        } else if self.is_gte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gte{}, left: left, right: right }
+        } else if self.is_keyword("in") {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.In{}, left: left, right: right }
+        } else {
+            break
+        }
+    }
+    return left
+}
+
+Parser :: continue_and(self, Expr left) Expr {
+    while self.is_andand() {
+        self.advance()
+        right := self.parse_cmp()
+        left = Expr.EBinary { op: Binop.And{}, left: left, right: right }
+    }
+    return left
+}
+
+Parser :: continue_or_clause(self, Expr left) Expr {
+    if self.is_keyword("or") {
+        self.advance()
+        clause := self.parse_or_rhs()
+        return Expr.EOr { expr: left, clause: clause }
+    }
+    return left
+}
+
+Parser :: continue_bool_or(self, Expr left) Expr {
+    while self.is_oror() {
+        self.advance()
+        right := self.parse_or_clause()
+        left = Expr.EBinary { op: Binop.Or{}, left: left, right: right }
+    }
+    return left
+}
+
+Parser :: continue_assignment(self, Expr left) Expr {
+    if self.is_eq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.Assign{}, target: left, value: value }
+    }
+    if self.is_pluseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.AddAssign{}, target: left, value: value }
+    }
+    if self.is_minuseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.SubAssign{}, target: left, value: value }
+    }
+    if self.is_stareq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.MulAssign{}, target: left, value: value }
+    }
+    if self.is_slasheq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.DivAssign{}, target: left, value: value }
+    }
+    return left
+}
+
+// Parse if statement
+Parser :: parse_if(self) Stmt {
+    self.expect_keyword("if")
+    cond := self.parse_expr()
+    then_block := self.parse_block()
+
+    Stmt[]? else_block = none
+    if self.is_keyword("else") {
+        self.advance()
+        if self.is_keyword("if") {
+            else_stmt := self.parse_if()
+            Stmt[] wrapped = []
+            wrapped.push(else_stmt)
+            else_block = wrapped
+        } else {
+            else_block = self.parse_block()
+        }
+    }
+
+    return Stmt.SIf { cond: cond, then_block: then_block, else_block: else_block }
+}
+
+// Parse for loop
+Parser :: parse_for(self) Stmt {
+    self.expect_keyword("for")
+    var_name := self.get_ident()
+    self.advance()
+    self.expect_keyword("in")
+    iter := self.parse_expr()
+    body := self.parse_block()
+    return Stmt.SFor { var: var_name, iter: iter, body: body }
+}
+
+// Parse while loop
+Parser :: parse_while(self) Stmt {
+    self.expect_keyword("while")
+    cond := self.parse_expr()
+    body := self.parse_block()
+    return Stmt.SWhile { cond: cond, body: body }
+}
+
+// Parse a complete program
+Parser :: parse_program(self) Program {
+    Item[] items = []
+
+    self.skip_newlines()
+    while !self.is_eof() {
+        items.push(self.parse_item())
+        self.skip_newlines()
+    }
+
+    return Program { items: items }
+}
+
+// Parse a top-level item
+Parser :: parse_item(self) Item {
+    self.skip_newlines()
+
+    // uses: imports
+    if self.is_keyword("uses") {
+        return self.parse_uses()
+    }
+
+    // fn name(...) { ... }
+    if self.is_keyword("fn") {
+        return self.parse_function()
+    }
+
+    // Type :: struct/variant/trait/impl/method/error
+    if self.is_type_ident() {
+        return self.parse_type_item()
+    }
+
+    print("Error: unexpected token at top level: {self.current.location.format()}")
+    self.advance()
+    return Item.IFunction { name: "", type_params: [], params: [], ret: none, body: [] }
+}
+
+// Parse uses statement
+Parser :: parse_uses(self) Item {
+    self.expect_keyword("uses")
+    self.expect_colon()
+
+    ImportPath[] paths = []
+
+    if self.is_newline() {
+        self.skip_newlines()
+        while self.is_minus() {
+            self.advance()
+            paths.push(self.parse_import_path())
+            self.skip_newlines()
+        }
+    } else {
+        paths.push(self.parse_import_path())
+        while self.is_comma() {
+            self.advance()
+            paths.push(self.parse_import_path())
+        }
+    }
+
+    return Item.IUses { paths: paths }
+}
+
+Parser :: parse_import_path(self) ImportPath {
+    str[] parts = []
+    parts.push(self.get_ident())
+    self.advance()
+
+    while self.is_dot() {
+        self.advance()
+        parts.push(self.get_ident())
+        self.advance()
+    }
+
+    return ImportPath { parts: parts }
+}
+
+// Parse function definition
+Parser :: parse_function(self) Item {
+    self.expect_keyword("fn")
+    name := self.get_ident()
+    self.advance()
+
+    // Optional type parameters
+    str[] type_params = []
+    if self.is_lt() {
+        self.advance()
+        type_params.push(self.get_type_ident())
+        self.advance()
+        while self.is_comma() {
+            self.advance()
+            type_params.push(self.get_type_ident())
+            self.advance()
+        }
+        self.expect_gt()
+    }
+
+    // Parameters (optional for main)
+    Param[] params = []
+    if self.is_lparen() {
+        self.advance()
+        params = self.parse_params()
+        self.expect_rparen()
+    }
+
+    // Optional return type
+    Type? ret = none
+    if !self.is_lbrace() {
+        ret = self.parse_type()
+        if self.is_keyword("or") {
+            self.advance()
+            if self.is_keyword("error") {
+                self.advance()
+            }
+        }
+    }
+
+    body := self.parse_block()
+
+    return Item.IFunction { name: name, type_params: type_params, params: params, ret: ret, body: body }
+}
+
+// Parse type-prefixed item
+Parser :: parse_type_item(self) Item {
+    type_name := self.get_type_ident()
+    self.advance()
+
+    // Check for type parameters before ::
+    str[] type_params = []
+    if self.is_lt() {
+        self.advance()
+        type_params.push(self.get_type_ident())
+        self.advance()
+        while self.is_comma() {
+            self.advance()
+            type_params.push(self.get_type_ident())
+            self.advance()
+        }
+        self.expect_gt()
+    }
+
+    self.expect_coloncolon()
+
+    // struct
+    if self.is_keyword("struct") {
+        self.advance()
+        self.expect_lbrace()
+        fields := self.parse_fields()
+        self.expect_rbrace()
+        return Item.IStruct { name: type_name, type_params: type_params, fields: fields }
+    }
+
+    // variant
+    if self.is_keyword("variant") {
+        self.advance()
+        self.expect_lbrace()
+        variants := self.parse_enum_variants()
+        self.expect_rbrace()
+        return Item.IEnum { name: type_name, type_params: type_params, variants: variants }
+    }
+
+    // trait
+    if self.is_keyword("trait") {
+        self.advance()
+        self.expect_lbrace()
+        methods := self.parse_trait_methods()
+        self.expect_rbrace()
+        return Item.ITrait { name: type_name, methods: methods }
+    }
+
+    // impl Trait
+    if self.is_keyword("impl") {
+        self.advance()
+        trait_name := self.get_type_ident()
+        self.advance()
+        self.expect_lbrace()
+        methods := self.parse_impl_methods()
+        self.expect_rbrace()
+        return Item.IImpl { type_name: type_name, trait_name: trait_name, methods: methods }
+    }
+
+    // error
+    if self.is_keyword("error") {
+        self.advance()
+        self.expect_lbrace()
+        fields := self.parse_fields()
+        self.expect_rbrace()
+        return Item.IError { name: type_name, fields: fields }
+    }
+
+    // method: Type :: method_name(params) ret { body }
+    method_name := self.get_ident()
+    self.advance()
+
+    // Check for type params on method
+    str[] method_type_params = []
+    if self.is_lt() {
+        self.advance()
+        method_type_params.push(self.get_type_ident())
+        self.advance()
+        while self.is_comma() {
+            self.advance()
+            method_type_params.push(self.get_type_ident())
+            self.advance()
+        }
+        self.expect_gt()
+    }
+
+    self.expect_lparen()
+    params := self.parse_params()
+    self.expect_rparen()
+
+    Type? ret = none
+    if !self.is_lbrace() {
+        ret = self.parse_type()
+    }
+
+    body := self.parse_block()
+
+    str[] all_params = []
+    for p in type_params {
+        all_params.push(p)
+    }
+    for p in method_type_params {
+        all_params.push(p)
+    }
+
+    return Item.IMethod {
+        type_name: type_name,
+        method_name: method_name,
+        type_params: all_params,
+        params: params,
+        ret: ret,
+        body: body
+    }
+}
+
+// Parse struct fields
+Parser :: parse_fields(self) Field[] {
+    Field[] fields = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_ident()
+        self.advance()
+        typ := self.parse_type()
+        fields.push(Field { name: name, typ: typ })
+        self.skip_newlines()
+    }
+
+    return fields
+}
+
+// Parse enum variants
+Parser :: parse_enum_variants(self) EnumVariant[] {
+    EnumVariant[] variants = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_type_ident()
+        self.advance()
+
+        Field[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_fields()
+            self.expect_rbrace()
+        }
+
+        variants.push(EnumVariant { name: name, fields: fields })
+        self.skip_newlines()
+    }
+
+    return variants
+}
+
+// Parse trait method signatures
+Parser :: parse_trait_methods(self) TraitMethod[] {
+    TraitMethod[] methods = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_ident()
+        self.advance()
+        self.expect_lparen()
+        params := self.parse_params()
+        self.expect_rparen()
+
+        Type? ret = none
+        if !self.is_newline() && !self.is_rbrace() {
+            ret = self.parse_type()
+        }
+
+        has_self := false
+        for p in params {
+            is_self := match p using Param {
+                PSelf -> true,
+                _ -> false
+            }
+            if is_self {
+                has_self = true
+            }
+        }
+
+        methods.push(TraitMethod { name: name, params: params, has_self: has_self, ret: ret })
+        self.skip_newlines()
+    }
+
+    return methods
+}
+
+// Parse impl method definitions
+Parser :: parse_impl_methods(self) ImplMethod[] {
+    ImplMethod[] methods = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_ident()
+        self.advance()
+        self.expect_lparen()
+        params := self.parse_params()
+        self.expect_rparen()
+
+        Type? ret = none
+        if !self.is_lbrace() {
+            ret = self.parse_type()
+        }
+
+        body := self.parse_block()
+
+        methods.push(ImplMethod { name: name, params: params, ret: ret, body: body })
+        self.skip_newlines()
+    }
+
+    return methods
+}
+
+// Helper: parse string interpolation parts
+fn parse_string_parts(str s) StringPart[] {
+    StringPart[] parts = []
+    current := ""
+    i := 0
+
+    while i < s.len() {
+        ch := s.at(i)
+
+        if ch == 92 {  // backslash
+            if i + 1 < s.len() {
+                next := s.at(i + 1)
+                if next == 110 {
+                    current = current + "\n"
+                    i = i + 2
+                } else if next == 114 {
+                    current = current + "\r"
+                    i = i + 2
+                } else if next == 116 {
+                    current = current + "\t"
+                    i = i + 2
+                } else if next == 92 {
+                    current = current + "\\"
+                    i = i + 2
+                } else if next == 34 {
+                    current = current + "\""
+                    i = i + 2
+                } else if next == 123 {
+                    current = current + "{"
+                    i = i + 2
+                } else {
+                    current = current + chr(ch).to_string()
+                    i = i + 1
+                }
+            } else {
+                current = current + chr(ch).to_string()
+                i = i + 1
+            }
+        } else if ch == 123 {  // {
+            if current.len() > 0 {
+                parts.push(StringPart.SLiteral { value: current })
+                current = ""
+            }
+
+            i = i + 1
+            interp := ""
+            depth := 1
+            while i < s.len() && depth > 0 {
+                c := s.at(i)
+                if c == 123 {
+                    depth = depth + 1
+                } else if c == 125 {
+                    depth = depth - 1
+                }
+                if depth > 0 {
+                    interp = interp + chr(c).to_string()
+                }
+                i = i + 1
+            }
+
+            parts.push(StringPart.SInterp { expr: parse_interp_expr(interp) })
+        } else {
+            current = current + chr(ch).to_string()
+            i = i + 1
+        }
+    }
+
+    if current.len() > 0 {
+        parts.push(StringPart.SLiteral { value: current })
+    }
+
+    return parts
+}
+
+// Parse a simple interpolation expression
+fn parse_interp_expr(str s) Expr {
+    parts := s.split(".")
+    if parts.len() == 0 {
+        return Expr.EIdent { name: s }
+    }
+
+    Expr result = Expr.EIdent { name: parts[0] }
+    i := 1
+    while i < parts.len() {
+        result = Expr.EMember { expr: result, member: parts[i] }
+        i = i + 1
+    }
+
+    return result
+}

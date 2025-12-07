@@ -34,27 +34,27 @@ Lexer :: is_eof(self) bool {
     return self.pos >= self.source.len()
 }
 
-// Peek at current character without advancing (returns 0 at EOF)
-Lexer :: peek(self) int {
+// Peek at current character without advancing (returns \0 at EOF)
+Lexer :: peek(self) char {
     if self.is_eof() {
-        return 0
+        return '\0'
     }
     return self.source.at(self.pos)
 }
 
 // Peek at next character (one ahead)
-Lexer :: peek_next(self) int {
+Lexer :: peek_next(self) char {
     if self.pos + 1 >= self.source.len() {
-        return 0
+        return '\0'
     }
     return self.source.at(self.pos + 1)
 }
 
 // Advance position by one character
-Lexer :: advance(self) int {
+Lexer :: advance(self) char {
     ch := self.peek()
     self.pos = self.pos + 1
-    if ch == 10 {  // newline
+    if ch == '\n' {
         self.line = self.line + 1
         self.col = 1
     } else {
@@ -73,49 +73,49 @@ Lexer :: make_token(self, Token tok) LocatedToken {
     return LocatedToken { token: tok, location: self.location() }
 }
 
-// Check if character is whitespace (space=32, tab=9)
-fn is_whitespace(int ch) bool {
-    return ch == 32 || ch == 9
+// Check if character is whitespace
+fn is_whitespace(char ch) bool {
+    return ch == ' ' || ch == '\t'
 }
 
 // Check if character is newline
-fn is_newline(int ch) bool {
-    return ch == 10 || ch == 13
+fn is_newline(char ch) bool {
+    return ch == '\n' || ch == '\r'
 }
 
-// Check if character is a digit (0-9: 48-57)
-fn is_digit(int ch) bool {
-    return ch >= 48 && ch <= 57
+// Check if character is a digit
+fn is_digit(char ch) bool {
+    return ch >= '0' && ch <= '9'
 }
 
-// Check if character is a lowercase letter (a-z: 97-122)
-fn is_lower(int ch) bool {
-    return ch >= 97 && ch <= 122
+// Check if character is a lowercase letter
+fn is_lower(char ch) bool {
+    return ch >= 'a' && ch <= 'z'
 }
 
-// Check if character is an uppercase letter (A-Z: 65-90)
-fn is_upper(int ch) bool {
-    return ch >= 65 && ch <= 90
+// Check if character is an uppercase letter
+fn is_upper(char ch) bool {
+    return ch >= 'A' && ch <= 'Z'
 }
 
 // Check if character is a letter
-fn is_letter(int ch) bool {
+fn is_letter(char ch) bool {
     return is_lower(ch) || is_upper(ch)
 }
 
 // Check if character can start an identifier (lowercase or underscore)
-fn is_ident_start(int ch) bool {
-    return is_lower(ch) || ch == 95
+fn is_ident_start(char ch) bool {
+    return is_lower(ch) || ch == '_'
 }
 
 // Check if character can start a type identifier (uppercase)
-fn is_type_start(int ch) bool {
+fn is_type_start(char ch) bool {
     return is_upper(ch)
 }
 
 // Check if character can be in an identifier
-fn is_ident_char(int ch) bool {
-    return is_letter(ch) || is_digit(ch) || ch == 95
+fn is_ident_char(char ch) bool {
+    return is_letter(ch) || is_digit(ch) || ch == '_'
 }
 
 // Skip whitespace (but not newlines)
@@ -158,7 +158,7 @@ Lexer :: read_number(self) Token {
     }
 
     // Check for float
-    if self.peek() == 46 && is_digit(self.peek_next()) {  // '.'
+    if self.peek() == '.' && is_digit(self.peek_next()) {
         self.advance()  // consume the dot
         while !self.is_eof() && is_digit(self.peek()) {
             self.advance()
@@ -176,48 +176,48 @@ Lexer :: read_string(self) Token {
     self.advance()  // consume opening quote
     result := ""
 
-    while !self.is_eof() && self.peek() != 34 {  // not closing quote
+    while !self.is_eof() && self.peek() != '"' {
         ch := self.peek()
 
-        if ch == 92 {  // backslash - escape sequence
+        if ch == '\\' {
             self.advance()
             next := self.peek()
-            if next == 110 {  // \n
+            if next == 'n' {
                 result = result + "\n"
                 self.advance()
-            } else if next == 114 {  // \r
+            } else if next == 'r' {
                 result = result + "\r"
                 self.advance()
-            } else if next == 116 {  // \t
+            } else if next == 't' {
                 result = result + "\t"
                 self.advance()
-            } else if next == 92 {  // \\
+            } else if next == '\\' {
                 result = result + "\\"
                 self.advance()
-            } else if next == 34 {  // \"
+            } else if next == '"' {
                 result = result + "\""
                 self.advance()
-            } else if next == 123 {  // \{ - escaped brace
+            } else if next == '{' {
                 result = result + "\\" + "\{"
                 self.advance()
             } else {
                 // Unknown escape, keep as-is
                 result = result + "\\"
             }
-        } else if ch == 123 {  // { - start of interpolation
+        } else if ch == '{' {
             // Read until matching }
             result = result + "\{"
             self.advance()
             depth := 1
             while !self.is_eof() && depth > 0 {
                 c := self.peek()
-                if c == 123 {
+                if c == '{' {
                     depth = depth + 1
-                } else if c == 125 {
+                } else if c == '}' {
                     depth = depth - 1
                 }
                 if depth > 0 {
-                    result = result + char_to_str(c)
+                    result = result + c.to_string()
                     self.advance()
                 }
             }
@@ -226,7 +226,7 @@ Lexer :: read_string(self) Token {
                 self.advance()  // consume closing }
             }
         } else {
-            result = result + char_to_str(ch)
+            result = result + ch.to_string()
             self.advance()
         }
     }
@@ -249,35 +249,34 @@ Lexer :: read_char(self) Token {
     ch := self.peek()
     result_char := '\0'
 
-    if ch == 92 {  // backslash - escape sequence
+    if ch == '\\' {
         self.advance()
         next := self.peek()
-        if next == 110 {  // \n
+        if next == 'n' {
             result_char = '\n'
-        } else if next == 114 {  // \r
+        } else if next == 'r' {
             result_char = '\r'
-        } else if next == 116 {  // \t
+        } else if next == 't' {
             result_char = '\t'
-        } else if next == 92 {  // \\
+        } else if next == '\\' {
             result_char = '\\'
-        } else if next == 39 {  // \'
+        } else if next == '\'' {
             result_char = '\''
-        } else if next == 48 {  // \0
+        } else if next == '0' {
             result_char = '\0'
         } else {
             return Token.TkError { msg: "unknown escape sequence in character literal" }
         }
         self.advance()
-    } else if ch == 39 {  // empty char literal ''
+    } else if ch == '\'' {
         return Token.TkError { msg: "empty character literal" }
     } else {
-        // Regular character - convert int to char
-        result_char = chr(ch)
+        result_char = ch
         self.advance()
     }
 
     // Expect closing quote
-    if self.peek() != 39 {
+    if self.peek() != '\'' {
         return Token.TkError { msg: "unterminated character literal" }
     }
     self.advance()  // consume closing quote
@@ -295,7 +294,7 @@ Lexer :: next_token(self) LocatedToken {
         loc := self.location()
         self.advance()
         // Skip \r\n as single newline
-        if self.peek() == 10 {
+        if self.peek() == '\n' {
             self.advance()
         }
         // Only emit newline token if not inside brackets/parens/braces
@@ -311,7 +310,7 @@ Lexer :: next_token(self) LocatedToken {
     }
 
     // Check for line comment
-    if self.peek() == 47 && self.peek_next() == 47 {  // //
+    if self.peek() == '/' && self.peek_next() == '/' {
         self.skip_line_comment()
         return self.next_token()
     }
@@ -344,13 +343,13 @@ Lexer :: next_token(self) LocatedToken {
     }
 
     // Strings
-    if ch == 34 {  // "
+    if ch == '"' {
         tok := self.read_string()
         return LocatedToken { token: tok, location: loc }
     }
 
     // Character literals
-    if ch == 39 {  // '
+    if ch == '\'' {
         tok := self.read_char()
         return LocatedToken { token: tok, location: loc }
     }
@@ -361,96 +360,96 @@ Lexer :: next_token(self) LocatedToken {
     // Two-character operators
     next := self.peek()
 
-    if ch == 58 {  // :
-        if next == 58 {  // ::
+    if ch == ':' {
+        if next == ':' {
             self.advance()
             return LocatedToken { token: Token.TkColonColon{}, location: loc }
         }
-        if next == 61 {  // :=
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkColonEq{}, location: loc }
         }
         return LocatedToken { token: Token.TkColon{}, location: loc }
     }
 
-    if ch == 45 {  // -
-        if next == 62 {  // ->
+    if ch == '-' {
+        if next == '>' {
             self.advance()
             return LocatedToken { token: Token.TkArrow{}, location: loc }
         }
-        if next == 61 {  // -=
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkMinusEq{}, location: loc }
         }
         return LocatedToken { token: Token.TkMinus{}, location: loc }
     }
 
-    if ch == 61 {  // =
-        if next == 61 {  // ==
+    if ch == '=' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkEqEq{}, location: loc }
         }
         return LocatedToken { token: Token.TkEq{}, location: loc }
     }
 
-    if ch == 33 {  // !
-        if next == 61 {  // !=
+    if ch == '!' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkNeq{}, location: loc }
         }
         return LocatedToken { token: Token.TkBang{}, location: loc }
     }
 
-    if ch == 60 {  // <
-        if next == 61 {  // <=
+    if ch == '<' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkLte{}, location: loc }
         }
         return LocatedToken { token: Token.TkLt{}, location: loc }
     }
 
-    if ch == 62 {  // >
-        if next == 61 {  // >=
+    if ch == '>' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkGte{}, location: loc }
         }
         return LocatedToken { token: Token.TkGt{}, location: loc }
     }
 
-    if ch == 43 {  // +
-        if next == 61 {  // +=
+    if ch == '+' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkPlusEq{}, location: loc }
         }
         return LocatedToken { token: Token.TkPlus{}, location: loc }
     }
 
-    if ch == 42 {  // *
-        if next == 61 {  // *=
+    if ch == '*' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkStarEq{}, location: loc }
         }
         return LocatedToken { token: Token.TkStar{}, location: loc }
     }
 
-    if ch == 47 {  // /
-        if next == 61 {  // /=
+    if ch == '/' {
+        if next == '=' {
             self.advance()
             return LocatedToken { token: Token.TkSlashEq{}, location: loc }
         }
         return LocatedToken { token: Token.TkSlash{}, location: loc }
     }
 
-    if ch == 38 {  // &
-        if next == 38 {  // &&
+    if ch == '&' {
+        if next == '&' {
             self.advance()
             return LocatedToken { token: Token.TkAndAnd{}, location: loc }
         }
         return LocatedToken { token: Token.TkError { msg: "unexpected '&'" }, location: loc }
     }
 
-    if ch == 124 {  // |
-        if next == 124 {  // ||
+    if ch == '|' {
+        if next == '|' {
             self.advance()
             return LocatedToken { token: Token.TkOrOr{}, location: loc }
         }
@@ -458,42 +457,42 @@ Lexer :: next_token(self) LocatedToken {
     }
 
     // Single-character tokens with nesting tracking
-    if ch == 40 {  // (
+    if ch == '(' {
         self.nesting = self.nesting + 1
         return LocatedToken { token: Token.TkLParen{}, location: loc }
     }
-    if ch == 41 {  // )
+    if ch == ')' {
         self.nesting = self.nesting - 1
         return LocatedToken { token: Token.TkRParen{}, location: loc }
     }
-    if ch == 123 {  // {
+    if ch == '{' {
         self.nesting = self.nesting + 1
         return LocatedToken { token: Token.TkLBrace{}, location: loc }
     }
-    if ch == 125 {  // }
+    if ch == '}' {
         self.nesting = self.nesting - 1
         return LocatedToken { token: Token.TkRBrace{}, location: loc }
     }
-    if ch == 91 {  // [
+    if ch == '[' {
         self.nesting = self.nesting + 1
         return LocatedToken { token: Token.TkLBracket{}, location: loc }
     }
-    if ch == 93 {  // ]
+    if ch == ']' {
         self.nesting = self.nesting - 1
         return LocatedToken { token: Token.TkRBracket{}, location: loc }
     }
 
     // Other single-character tokens
-    if ch == 44 {  // ,
+    if ch == ',' {
         return LocatedToken { token: Token.TkComma{}, location: loc }
     }
-    if ch == 46 {  // .
+    if ch == '.' {
         return LocatedToken { token: Token.TkDot{}, location: loc }
     }
-    if ch == 37 {  // %
+    if ch == '%' {
         return LocatedToken { token: Token.TkPercent{}, location: loc }
     }
-    if ch == 63 {  // ?
+    if ch == '?' {
         return LocatedToken { token: Token.TkQuestion{}, location: loc }
     }
 
@@ -504,19 +503,14 @@ Lexer :: next_token(self) LocatedToken {
     }
 }
 
-// Helper: convert ASCII code to single-char string
-fn char_to_str(int ch) str {
-    return chr(ch).to_string()
-}
-
 // Parse integer from string
 fn parse_int(str s) int {
     result := 0
     i := 0
     while i < s.len() {
         ch := s.at(i)
-        if ch >= 48 && ch <= 57 {
-            result = result * 10 + (ch - 48)
+        if ch >= '0' && ch <= '9' {
+            result = result * 10 + (ord(ch) - ord('0'))
         }
         i = i + 1
     }

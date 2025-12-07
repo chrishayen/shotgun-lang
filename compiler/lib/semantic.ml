@@ -244,7 +244,8 @@ let rec infer_expr_type env expr =
         (* String built-in methods *)
         | Some TStr ->
           (match method_name with
-           | "len" | "at" | "find" -> Some TInt
+           | "len" | "find" -> Some TInt
+           | "at" -> Some TChar
            | "contains" | "starts_with" | "ends_with" -> Some TBool
            | "slice" | "trim" | "replace" | "to_upper" | "to_lower" -> Some TStr
            | "split" -> Some (TArray TStr)
@@ -734,7 +735,8 @@ let rec get_expr_type env locals expr =
         (* String built-in methods *)
         | Some TStr ->
           (match method_name with
-           | "len" | "at" | "find" -> Some TInt
+           | "len" | "find" -> Some TInt
+           | "at" -> Some TChar
            | "contains" | "starts_with" | "ends_with" -> Some TBool
            | "slice" | "trim" | "replace" | "to_upper" | "to_lower" -> Some TStr
            | "split" -> Some (TArray TStr)

@@ -1297,7 +1297,7 @@ and gen_call ctx indent callee args =
      | "at" ->
        (match get_type ctx obj with
         | Some TStr ->
-          emit "(int64_t)(";
+          emit "(char)(";
           gen_expr ctx indent obj;
           emit ")[";
           (match args with [arg] -> gen_expr ctx indent arg | _ -> ());
