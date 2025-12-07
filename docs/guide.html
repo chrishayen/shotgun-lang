@@ -96,13 +96,13 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 
         <p>Create instances with named fields:</p>
 
-        <pre><code><span class="ty">Person</span> alice = <span class="ty">Person</span> {
+        <pre><code>alice := <span class="ty">Person</span> {
     name: <span class="st">"Alice"</span>,
     age: <span class="nu">30</span>,
     email: <span class="st">"alice@example.com"</span>,
 }
 
-<span class="ty">Person</span> bob = <span class="ty">Person</span> {
+bob := <span class="ty">Person</span> {
     name: <span class="st">"Bob"</span>,
     age: <span class="nu">25</span>,
 }</code></pre>
@@ -123,8 +123,8 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 
         <p>Create variant values using dot notation:</p>
 
-        <pre><code><span class="ty">Option</span> x = <span class="ty">Option</span>.<span class="ty">None</span>
-<span class="ty">Option</span> y = <span class="ty">Option</span>.<span class="ty">Some</span> { value: <span class="nu">42</span> }</code></pre>
+        <pre><code>x := <span class="ty">Option</span>.<span class="ty">None</span>
+y := <span class="ty">Option</span>.<span class="ty">Some</span> { value: <span class="nu">42</span> }</code></pre>
 
         <p>Variants are useful for representing mutually exclusive states:</p>
 
@@ -157,9 +157,9 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 
         <p>Recursive variant fields are automatically heap-allocated as pointers:</p>
 
-        <pre><code><span class="ty">Expr</span> a = <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">1</span> }
-<span class="ty">Expr</span> b = <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">2</span> }
-<span class="ty">Expr</span> add = <span class="ty">Expr</span>.<span class="ty">Binary</span> { left: a, right: b }</code></pre>
+        <pre><code>a := <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">1</span> }
+b := <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">2</span> }
+add := <span class="ty">Expr</span>.<span class="ty">Binary</span> { left: a, right: b }</code></pre>
 
         <h2>Generics</h2>
 
@@ -176,11 +176,11 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 
         <p>Use generics with concrete types:</p>
 
-        <pre><code><span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; int_box = <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">42</span> }
-<span class="ty">Box</span>&lt;<span class="ty">str</span>&gt; str_box = <span class="ty">Box</span>&lt;<span class="ty">str</span>&gt; { value: <span class="st">"hello"</span> }
+        <pre><code>int_box := <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">42</span> }
+str_box := <span class="ty">Box</span>&lt;<span class="ty">str</span>&gt; { value: <span class="st">"hello"</span> }
 
-<span class="ty">Option</span>&lt;<span class="ty">int</span>&gt; maybe = <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">100</span> }
-<span class="ty">Option</span>&lt;<span class="ty">str</span>&gt; nothing = <span class="ty">Option</span>&lt;<span class="ty">str</span>&gt;.<span class="ty">None</span></code></pre>
+maybe := <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">100</span> }
+nothing := <span class="ty">Option</span>&lt;<span class="ty">str</span>&gt;.<span class="ty">None</span></code></pre>
 
         <h3>Multiple Type Parameters</h3>
 
@@ -196,16 +196,16 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
     <span class="ty">Err</span> { err <span class="ty">E</span> }
 }
 
-<span class="ty">Pair</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt; p = <span class="ty">Pair</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt; { first: <span class="nu">42</span>, second: <span class="st">"hello"</span> }
-<span class="ty">Result</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt; ok = <span class="ty">Result</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt;.<span class="ty">Ok</span> { value: <span class="nu">100</span> }</code></pre>
+p := <span class="ty">Pair</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt; { first: <span class="nu">42</span>, second: <span class="st">"hello"</span> }
+ok := <span class="ty">Result</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt;.<span class="ty">Ok</span> { value: <span class="nu">100</span> }</code></pre>
 
         <h3>Pattern Matching on Generic Variants</h3>
 
         <p>Use the <code>using</code> clause with the concrete type:</p>
 
-        <pre><code><span class="ty">Option</span>&lt;<span class="ty">int</span>&gt; maybe = <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">42</span> }
+        <pre><code>maybe := <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">42</span> }
 
-<span class="ty">int</span> result = <span class="kw">match</span> maybe <span class="kw">using</span> <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt; {
+result := <span class="kw">match</span> maybe <span class="kw">using</span> <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt; {
     <span class="ty">Some</span> { value: v } -> v,
     <span class="ty">None</span> -> <span class="nu">0</span>
 }</code></pre>
@@ -228,7 +228,7 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 
         <p>Call methods on instances:</p>
 
-        <pre><code><span class="ty">Person</span> p = <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span> }
+        <pre><code>p := <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span> }
 <span class="fn">print</span>(p.<span class="fn">greet</span>())     <span class="cm">// "Hello, I'm Alice!"</span>
 <span class="fn">print</span>(p.<span class="fn">is_adult</span>())  <span class="cm">// true</span></code></pre>
 
@@ -249,7 +249,7 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 }
 
 <span class="kw">fn</span> <span class="fn">main</span> {
-    <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; b = <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">10</span> }
+    b := <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">10</span> }
     <span class="fn">print</span>(b.<span class="fn">get</span>())        <span class="cm">// 10</span>
     <span class="fn">print</span>(b.<span class="fn">add</span>(<span class="nu">32</span>))      <span class="cm">// 42</span>
 }</code></pre>
@@ -335,21 +335,21 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
 
         <p>Use <code>?</code> suffix to mark a type as optional:</p>
 
-        <pre><code><span class="ty">str?</span> maybe_name = <span class="kw">none</span>
-<span class="ty">str?</span> actual_name = <span class="st">"Alice"</span></code></pre>
+        <pre><code>maybe_name := <span class="kw">none</span> <span class="kw">as</span> <span class="ty">str?</span>
+actual_name := <span class="st">"Alice"</span></code></pre>
 
         <h3>The <code>or</code> operator</h3>
 
         <p>Handle optionals cleanly with <code>or</code>:</p>
 
         <pre><code><span class="cm">// Provide a default value</span>
-<span class="ty">str</span> name = maybe_name <span class="kw">or</span> <span class="st">"Unknown"</span>
+name := maybe_name <span class="kw">or</span> <span class="st">"Unknown"</span>
 
 <span class="cm">// Return early if none</span>
-<span class="ty">str</span> name = maybe_name <span class="kw">or return</span>
+name := maybe_name <span class="kw">or return</span>
 
 <span class="cm">// Return a specific value if none</span>
-<span class="ty">str</span> name = maybe_name <span class="kw">or return</span> <span class="st">"default"</span></code></pre>
+name := maybe_name <span class="kw">or return</span> <span class="st">"default"</span></code></pre>
 
         <h3>Truthiness</h3>
 
@@ -375,35 +375,35 @@ nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">
         <p>Functions can return a value or an error:</p>
 
         <pre><code><span class="kw">fn</span> <span class="fn">read_config</span>(<span class="ty">str</span> path) <span class="ty">Config</span> <span class="kw">or</span> <span class="ty">Error</span> {
-    <span class="ty">str</span> contents = <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
-    <span class="ty">Config</span> cfg = <span class="fn">parse</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> { line: <span class="nu">1</span>, message: <span class="st">"invalid"</span> }
+    contents := <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
+    cfg := <span class="fn">parse</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> { line: <span class="nu">1</span>, message: <span class="st">"invalid"</span> }
     <span class="kw">return</span> cfg
 }</code></pre>
 
         <p>Handle errors with <code>or</code>:</p>
 
-        <pre><code><span class="ty">Config</span> cfg = <span class="fn">read_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or error</span> <span class="ty">StartupError</span> {}
-<span class="ty">Config</span> cfg = <span class="fn">read_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or return</span></code></pre>
+        <pre><code>cfg := <span class="fn">read_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or error</span> <span class="ty">StartupError</span> {}
+cfg := <span class="fn">read_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or return</span></code></pre>
 
         <h2>Arrays</h2>
 
         <p>Arrays use the <code>[]</code> suffix:</p>
 
-        <pre><code><span class="ty">int[]</span> numbers = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>, <span class="nu">4</span>, <span class="nu">5</span>]
-<span class="ty">str[]</span> names = [<span class="st">"Alice"</span>, <span class="st">"Bob"</span>, <span class="st">"Charlie"</span>]
-<span class="ty">Person[]</span> people = []</code></pre>
+        <pre><code>numbers := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>, <span class="nu">4</span>, <span class="nu">5</span>]
+names := [<span class="st">"Alice"</span>, <span class="st">"Bob"</span>, <span class="st">"Charlie"</span>]
+<span class="ty">Person[]</span> people = []  <span class="cm">// empty arrays need explicit type</span></code></pre>
 
         <p>Access elements by index:</p>
 
-        <pre><code><span class="ty">int</span> first = numbers[<span class="nu">0</span>]
-<span class="ty">str</span> name = names[<span class="nu">1</span>]</code></pre>
+        <pre><code>first := numbers[<span class="nu">0</span>]
+name := names[<span class="nu">1</span>]</code></pre>
 
         <h3>Array Methods</h3>
 
-        <pre><code><span class="ty">int[]</span> items = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
+        <pre><code>items := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
 
 <span class="cm">// Get length</span>
-<span class="ty">int</span> count = items.<span class="fn">len</span>()  <span class="cm">// 3</span>
+count := items.<span class="fn">len</span>()  <span class="cm">// 3</span>
 
 <span class="cm">// Append an element</span>
 items.<span class="fn">push</span>(<span class="nu">4</span>)  <span class="cm">// items is now [1, 2, 3, 4]</span></code></pre>
@@ -412,14 +412,14 @@ items.<span class="fn">push</span>(<span class="nu">4</span>)  <span class="cm">
 
         <p>Maps are key-value collections using <code>Map&lt;K, V&gt;</code> syntax:</p>
 
-        <pre><code><span class="ty">Map</span>&lt;<span class="ty">str</span>, <span class="ty">int</span>&gt; counts = <span class="ty">Map</span>&lt;<span class="ty">str</span>, <span class="ty">int</span>&gt;{}
+        <pre><code>counts := <span class="ty">Map</span>&lt;<span class="ty">str</span>, <span class="ty">int</span>&gt;{}
 
 <span class="cm">// Set values using index syntax</span>
 counts[<span class="st">"foo"</span>] = <span class="nu">1</span>
 counts[<span class="st">"bar"</span>] = <span class="nu">2</span>
 
 <span class="cm">// Get values</span>
-<span class="ty">int</span> foo_count = counts[<span class="st">"foo"</span>]</code></pre>
+foo_count := counts[<span class="st">"foo"</span>]</code></pre>
 
         <h3>Map Methods</h3>
 
@@ -429,7 +429,7 @@ counts[<span class="st">"bar"</span>] = <span class="nu">2</span>
 }
 
 <span class="cm">// Get number of entries</span>
-<span class="ty">int</span> size = counts.<span class="fn">len</span>()
+size := counts.<span class="fn">len</span>()
 
 <span class="cm">// Delete a key</span>
 counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre>
@@ -452,7 +452,7 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <p>Iterate over collections:</p>
 
-        <pre><code><span class="ty">int[]</span> nums = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
+        <pre><code>nums := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
 
 <span class="kw">for</span> n <span class="kw">in</span> nums {
     <span class="fn">print</span>(n)
@@ -466,7 +466,7 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <p>Loop while a condition is true:</p>
 
-        <pre><code><span class="ty">int</span> count = <span class="nu">0</span>
+        <pre><code>count := <span class="nu">0</span>
 <span class="kw">while</span> count < <span class="nu">10</span> {
     <span class="fn">print</span>(count)
     count += <span class="nu">1</span>
@@ -476,7 +476,7 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <p>Match is an expression that returns a value. Use it with literals:</p>
 
-        <pre><code><span class="ty">str</span> msg = <span class="kw">match</span> status {
+        <pre><code>msg := <span class="kw">match</span> status {
     <span class="nu">200</span> -> <span class="st">"OK"</span>,
     <span class="nu">404</span> -> <span class="st">"Not found"</span>,
     <span class="nu">500</span> -> <span class="st">"Server error"</span>,
@@ -570,24 +570,24 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 }
 
 <span class="kw">fn</span> <span class="fn">main</span> {
-    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+    results := <span class="fn">chan</span>() <span class="kw">as</span> <span class="ty">chan int</span>
 
     <span class="kw">go</span> <span class="fn">producer</span>(results)
 
-    <span class="ty">int</span> value = results.<span class="fn">recv</span>()  <span class="cm">// blocking receive</span>
+    value := results.<span class="fn">recv</span>()  <span class="cm">// blocking receive</span>
     <span class="fn">print</span>(value)  <span class="cm">// 42</span>
 }</code></pre>
 
         <p>Non-blocking receive with fallback:</p>
 
-        <pre><code><span class="ty">int</span> value = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>)</code></pre>
+        <pre><code>value := results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>)</code></pre>
 
         <h2>String Interpolation</h2>
 
         <p>Strings interpolate expressions by default:</p>
 
-        <pre><code><span class="ty">str</span> name = <span class="st">"Alice"</span>
-<span class="ty">int</span> age = <span class="nu">30</span>
+        <pre><code>name := <span class="st">"Alice"</span>
+age := <span class="nu">30</span>
 
 <span class="fn">print</span>(<span class="st">"Hello, {name}!"</span>)
 <span class="fn">print</span>(<span class="st">"{name} is {age} years old"</span>)
@@ -603,44 +603,44 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <h3>Length and Character Access</h3>
 
-        <pre><code><span class="ty">str</span> s = <span class="st">"hello"</span>
-<span class="ty">int</span> length = s.<span class="fn">len</span>()      <span class="cm">// 5</span>
-<span class="ty">int</span> ch = s.<span class="fn">at</span>(<span class="nu">0</span>)          <span class="cm">// 104 (ASCII code for 'h')</span></code></pre>
+        <pre><code>s := <span class="st">"hello"</span>
+length := s.<span class="fn">len</span>()      <span class="cm">// 5</span>
+ch := s.<span class="fn">at</span>(<span class="nu">0</span>)          <span class="cm">// 104 (ASCII code for 'h')</span></code></pre>
 
         <h3>Searching</h3>
 
-        <pre><code><span class="ty">str</span> s = <span class="st">"hello world"</span>
+        <pre><code>s := <span class="st">"hello world"</span>
 
-<span class="ty">bool</span> has = s.<span class="fn">contains</span>(<span class="st">"world"</span>)     <span class="cm">// true</span>
-<span class="ty">int</span> pos = s.<span class="fn">find</span>(<span class="st">"world"</span>)          <span class="cm">// 6 (position, or -1 if not found)</span>
+has := s.<span class="fn">contains</span>(<span class="st">"world"</span>)     <span class="cm">// true</span>
+pos := s.<span class="fn">find</span>(<span class="st">"world"</span>)          <span class="cm">// 6 (position, or -1 if not found)</span>
 
-<span class="ty">bool</span> starts = s.<span class="fn">starts_with</span>(<span class="st">"hello"</span>)  <span class="cm">// true</span>
-<span class="ty">bool</span> ends = s.<span class="fn">ends_with</span>(<span class="st">"world"</span>)      <span class="cm">// true</span></code></pre>
+starts := s.<span class="fn">starts_with</span>(<span class="st">"hello"</span>)  <span class="cm">// true</span>
+ends := s.<span class="fn">ends_with</span>(<span class="st">"world"</span>)      <span class="cm">// true</span></code></pre>
 
         <h3>Slicing and Splitting</h3>
 
-        <pre><code><span class="ty">str</span> s = <span class="st">"hello world"</span>
-<span class="ty">str</span> sub = s.<span class="fn">slice</span>(<span class="nu">0</span>, <span class="nu">5</span>)    <span class="cm">// "hello"</span>
-<span class="ty">str</span> sub2 = s.<span class="fn">slice</span>(<span class="nu">6</span>, <span class="nu">11</span>)  <span class="cm">// "world"</span>
+        <pre><code>s := <span class="st">"hello world"</span>
+sub := s.<span class="fn">slice</span>(<span class="nu">0</span>, <span class="nu">5</span>)    <span class="cm">// "hello"</span>
+sub2 := s.<span class="fn">slice</span>(<span class="nu">6</span>, <span class="nu">11</span>)  <span class="cm">// "world"</span>
 
-<span class="ty">str</span> csv = <span class="st">"a,b,c"</span>
-<span class="ty">str[]</span> parts = csv.<span class="fn">split</span>(<span class="st">","</span>)  <span class="cm">// ["a", "b", "c"]</span></code></pre>
+csv := <span class="st">"a,b,c"</span>
+parts := csv.<span class="fn">split</span>(<span class="st">","</span>)  <span class="cm">// ["a", "b", "c"]</span></code></pre>
 
         <h3>Transformation</h3>
 
-        <pre><code><span class="ty">str</span> s = <span class="st">"  Hello World  "</span>
+        <pre><code>s := <span class="st">"  Hello World  "</span>
 
-<span class="ty">str</span> trimmed = s.<span class="fn">trim</span>()           <span class="cm">// "Hello World"</span>
-<span class="ty">str</span> upper = s.<span class="fn">to_upper</span>()         <span class="cm">// "  HELLO WORLD  "</span>
-<span class="ty">str</span> lower = s.<span class="fn">to_lower</span>()         <span class="cm">// "  hello world  "</span>
-<span class="ty">str</span> replaced = s.<span class="fn">replace</span>(<span class="st">"World"</span>, <span class="st">"Shotgun"</span>)  <span class="cm">// "  Hello Shotgun  "</span></code></pre>
+trimmed := s.<span class="fn">trim</span>()           <span class="cm">// "Hello World"</span>
+upper := s.<span class="fn">to_upper</span>()         <span class="cm">// "  HELLO WORLD  "</span>
+lower := s.<span class="fn">to_lower</span>()         <span class="cm">// "  hello world  "</span>
+replaced := s.<span class="fn">replace</span>(<span class="st">"World"</span>, <span class="st">"Shotgun"</span>)  <span class="cm">// "  Hello Shotgun  "</span></code></pre>
 
         <h2>File I/O</h2>
 
         <p>Read and write files with built-in functions:</p>
 
         <pre><code><span class="cm">// Read entire file contents</span>
-<span class="ty">str</span> content = <span class="fn">read_file</span>(<span class="st">"input.txt"</span>)
+content := <span class="fn">read_file</span>(<span class="st">"input.txt"</span>)
 
 <span class="cm">// Write to a file</span>
 <span class="fn">write_file</span>(<span class="st">"output.txt"</span>, <span class="st">"Hello, World!"</span>)</code></pre>
@@ -702,7 +702,7 @@ x /= <span class="nu">2</span>   <span class="cm">// divide and assign</span></c
         <pre><code><span class="kw">uses:</span> myapp.helpers.string_utils
 
 <span class="kw">fn</span> <span class="fn">main</span> {
-    <span class="ty">str</span> result = string_utils.<span class="fn">uppercase</span>(<span class="st">"hello"</span>)
+    result := string_utils.<span class="fn">uppercase</span>(<span class="st">"hello"</span>)
 }</code></pre>
 
         <h3>File Resolution</h3>
@@ -734,8 +734,8 @@ x /= <span class="nu">2</span>   <span class="cm">// divide and assign</span></c
         </ul>
 
         <pre><code><span class="kw">fn</span> <span class="fn">handle_request</span>(<span class="ty">Request</span> req) <span class="ty">Response</span> {
-    <span class="ty">Person</span> p = <span class="ty">Person</span> { ... }  <span class="cm">// arena, freed when function returns</span>
-    <span class="ty">int</span> x = <span class="nu">5</span>                    <span class="cm">// stack</span>
+    p := <span class="ty">Person</span> { ... }  <span class="cm">// arena, freed when function returns</span>
+    x := <span class="nu">5</span>                    <span class="cm">// stack</span>
     <span class="kw">return</span> <span class="fn">build_response</span>(p)
 }</code></pre>
 

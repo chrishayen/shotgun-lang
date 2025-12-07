@@ -62,21 +62,21 @@
 }
 
 <span class="kw">fn</span> <span class="fn">run_concurrent</span> {
-    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+    results := <span class="fn">chan</span>() <span class="kw">as</span> <span class="ty">chan int</span>
 
     <span class="cm">// Launch two goroutines</span>
     <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
     <span class="kw">go</span> <span class="fn">fetch_data</span>(results)
 
-    <span class="ty">int</span> a = results.<span class="fn">recv</span>()               <span class="cm">// blocking receive</span>
-    <span class="ty">int</span> b = results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>)  <span class="cm">// with timeout</span>
+    a := results.<span class="fn">recv</span>()               <span class="cm">// blocking receive</span>
+    b := results.<span class="fn">recv</span>() <span class="kw">or wait</span>(<span class="nu">100</span>)  <span class="cm">// with timeout</span>
 
     <span class="fn">print</span>(<span class="st">"got {a} and {b}"</span>)
 }
 
 <span class="kw">fn</span> <span class="fn">main</span> {
     <span class="cm">// Create an array of people</span>
-    <span class="ty">Person[]</span> people = [
+    people := [
         <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span>, email: <span class="st">"alice@example.com"</span> },
         <span class="ty">Person</span> { name: <span class="st">"Bob"</span>, age: <span class="nu">25</span> },
     ]
@@ -101,13 +101,13 @@
 }
 
 <span class="kw">fn</span> <span class="fn">process_user</span>(<span class="ty">str</span> id) {
-    <span class="ty">User?</span> maybe_user = <span class="fn">find_user</span>(id)
+    maybe_user := <span class="fn">find_user</span>(id)
 
     <span class="cm">// Option 1: Provide a default</span>
-    <span class="ty">User</span> user = maybe_user <span class="kw">or</span> <span class="ty">User</span> { name: <span class="st">"Guest"</span> }
+    user := maybe_user <span class="kw">or</span> <span class="ty">User</span> { name: <span class="st">"Guest"</span> }
 
     <span class="cm">// Option 2: Early return if none</span>
-    <span class="ty">User</span> user = maybe_user <span class="kw">or return</span>
+    user := maybe_user <span class="kw">or return</span>
 
     <span class="cm">// Option 3: Check truthiness</span>
     <span class="kw">if</span> maybe_user {
@@ -131,9 +131,9 @@
 
 <span class="cm">// Function that can fail</span>
 <span class="kw">fn</span> <span class="fn">load_config</span>(<span class="ty">str</span> path) <span class="ty">Config</span> <span class="kw">or</span> <span class="ty">Error</span> {
-    <span class="ty">str</span> contents = <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
+    contents := <span class="fn">read_file</span>(path) <span class="kw">or error</span> <span class="ty">FileNotFound</span> { path: path }
 
-    <span class="ty">Config</span> cfg = <span class="fn">parse_config</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> {
+    cfg := <span class="fn">parse_config</span>(contents) <span class="kw">or error</span> <span class="ty">ParseError</span> {
         line: <span class="nu">1</span>,
         message: <span class="st">"Invalid config format"</span>,
     }
@@ -143,7 +143,7 @@
 
 <span class="kw">fn</span> <span class="fn">main</span> {
     <span class="cm">// Handle the error</span>
-    <span class="ty">Config</span> cfg = <span class="fn">load_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or</span> {
+    cfg := <span class="fn">load_config</span>(<span class="st">"app.conf"</span>) <span class="kw">or</span> {
         <span class="fn">print</span>(<span class="st">"Failed to load config, using defaults"</span>)
         <span class="kw">return</span>
     }
@@ -157,13 +157,13 @@
 
         <pre><code><span class="kw">fn</span> <span class="fn">process_item</span>(<span class="ty">int</span> id, <span class="ty">chan int</span> out) {
     <span class="cm">// Simulate work</span>
-    <span class="ty">int</span> result = id * <span class="nu">2</span>
+    result := id * <span class="nu">2</span>
     out.<span class="fn">send</span>(result)
 }
 
 <span class="kw">fn</span> <span class="fn">main</span> {
-    <span class="ty">int[]</span> items = [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>, <span class="nu">4</span>, <span class="nu">5</span>]
-    <span class="ty">chan int</span> results = <span class="fn">chan</span>()
+    items := [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>, <span class="nu">4</span>, <span class="nu">5</span>]
+    results := <span class="fn">chan</span>() <span class="kw">as</span> <span class="ty">chan int</span>
 
     <span class="cm">// Launch workers</span>
     <span class="kw">for</span> item <span class="kw">in</span> items {
@@ -171,9 +171,9 @@
     }
 
     <span class="cm">// Collect results</span>
-    <span class="ty">int</span> total = <span class="nu">0</span>
+    total := <span class="nu">0</span>
     <span class="kw">for</span> _ <span class="kw">in</span> items {
-        <span class="ty">int</span> r = results.<span class="fn">recv</span>()
+        r := results.<span class="fn">recv</span>()
         total += r
     }
 
@@ -199,7 +199,7 @@
 }
 
 <span class="kw">fn</span> <span class="fn">main</span> {
-    <span class="ty">Person</span> p = <span class="ty">Person</span> { first: <span class="st">"Alice"</span>, last: <span class="st">"Smith"</span>, age: <span class="nu">30</span> }
+    p := <span class="ty">Person</span> { first: <span class="st">"Alice"</span>, last: <span class="st">"Smith"</span>, age: <span class="nu">30</span> }
 
     <span class="fn">print</span>(p.<span class="fn">bio</span>())
     <span class="cm">// Output: Alice Smith is 30 years old</span>
@@ -214,8 +214,8 @@
         <p>Build arrays dynamically with loops:</p>
 
         <pre><code><span class="kw">fn</span> <span class="fn">main</span> {
-    <span class="ty">int[]</span> squares = []
-    <span class="ty">int</span> i = <span class="nu">1</span>
+    <span class="ty">int[]</span> squares = []  <span class="cm">// empty arrays need explicit type</span>
+    i := <span class="nu">1</span>
 
     <span class="kw">while</span> i <= <span class="nu">5</span> {
         squares.<span class="fn">push</span>(i * i)
