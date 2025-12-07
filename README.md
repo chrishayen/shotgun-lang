@@ -66,7 +66,6 @@ shotgun emit-c file.bs          # output generated C code
 
 ## Contact
 
-- X: [@shotgundotdev](https://x.com/shotgundotdev)
 - Email: chris@shotgun.dev
 
 ## License
