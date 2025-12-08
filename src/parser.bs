@@ -488,6 +488,15 @@ Parser :: get_char(self) char {
 }
 
 // Parse a type
+// Examples:
+//   int, str, bool, char, f32, f64, u32, u64
+//   Person, Option, Map
+//   Option<int>, Map<str, Person>
+//   int[], str[], Person[]
+//   int?, str?, Person?
+//   int[]?, Option<int>[]
+//   chan int
+//   fn(int, str) bool
 Parser :: parse_type(self) Type {
     self.skip_newlines()
 
@@ -559,6 +568,11 @@ Parser :: parse_type(self) Type {
 }
 
 // Parse type suffixes: [], ?
+// Examples:
+//   int[]      (array of int)
+//   Person?    (optional Person)
+//   str[]?     (optional array of str)
+//   int[][]    (array of array of int)
 Parser :: parse_type_suffix(self, Type base) Type {
     // Array suffix []
     if self.is_lbracket() {
@@ -576,7 +590,12 @@ Parser :: parse_type_suffix(self, Type base) Type {
     return base
 }
 
-// Parse function type: fn(int, str) bool
+// Parse function type
+// Examples:
+//   fn() int
+//   fn(int) bool
+//   fn(int, str) Person
+//   fn(int x, str y)        (void return)
 Parser :: parse_fn_type(self) Type {
     self.expect_keyword("fn")
     self.expect_lparen()
@@ -600,7 +619,18 @@ Parser :: parse_fn_type(self) Type {
     return Type.TFunc { params: params, ret: ret }
 }
 
-// Parse a primary expression
+// Parse a primary expression (literals, identifiers, grouped expressions)
+// Examples:
+//   42, 3.14, "hello", 'c'
+//   true, false, none
+//   self, name, count
+//   chan()
+//   match x { ... }
+//   fn(int x) { return x * 2 }
+//   Person { name: "Chris" }
+//   Option.Some { value: 5 }
+//   [1, 2, 3]
+//   (a + b)
 Parser :: parse_primary(self) Expr {
     self.skip_newlines()
 
@@ -698,7 +728,12 @@ Parser :: parse_primary(self) Expr {
     return Expr.EInt { value: 0 }
 }
 
-// Parse expressions starting with a type identifier (struct lit, enum variant)
+// Parse expressions starting with a type identifier (struct literal, enum variant)
+// Examples:
+//   Person { name: "Chris", age: 30 }
+//   Option<int>.Some { value: 5 }
+//   Result.Ok { value: data }
+//   Node<T> { left: l, right: r }
 Parser :: parse_type_expr(self) Expr {
     name := self.get_type_ident()
     self.advance()
@@ -748,7 +783,11 @@ Parser :: parse_type_expr(self) Expr {
     return Expr.EIdent { name: name }
 }
 
-// Parse field initializers: name: expr, name: expr
+// Parse field initializers (comma-separated list of name: expr)
+// Examples:
+//   name: "Chris", age: 30
+//   value: x + 1
+//   left: node1, right: node2, data: 42
 Parser :: parse_field_inits(self) FieldInit[] {
     FieldInit[] fields = []
     self.skip_newlines()
@@ -771,6 +810,11 @@ Parser :: parse_field_inits(self) FieldInit[] {
     return fields
 }
 
+// Parse a single field initializer
+// Examples:
+//   name: "Chris"
+//   age: 30
+//   value: x + y
 Parser :: parse_field_init(self) FieldInit {
     name := self.get_ident()
     self.advance()
@@ -779,7 +823,13 @@ Parser :: parse_field_init(self) FieldInit {
     return FieldInit { name: name, value: value }
 }
 
-// Parse array literal [a, b, c]
+// Parse array literal
+// Examples:
+//   []
+//   [1, 2, 3]
+//   ["a", "b", "c"]
+//   [x, y, z]
+//   [1, 2, 3,]   (trailing comma allowed)
 Parser :: parse_array_literal(self) Expr {
     self.expect_lbracket()
 
@@ -804,6 +854,14 @@ Parser :: parse_array_literal(self) Expr {
 }
 
 // Parse postfix expressions (calls, member access, indexing)
+// Examples:
+//   obj.field
+//   obj.method()
+//   func(a, b, c)
+//   arr[0]
+//   arr[i + 1]
+//   map.get::<str>("key")
+//   obj.field.method()[0]
 Parser :: parse_postfix(self) Expr {
     expr := self.parse_primary()
 
@@ -861,7 +919,12 @@ Parser :: parse_postfix(self) Expr {
     return expr
 }
 
-// Parse argument list
+// Parse argument list (comma-separated expressions)
+// Examples:
+//   ()           -> empty
+//   (a)          -> [a]
+//   (a, b, c)    -> [a, b, c]
+//   (x + 1, "hi")
 Parser :: parse_args(self) Expr[] {
     Expr[] args = []
     self.skip_newlines()
@@ -882,6 +945,10 @@ Parser :: parse_args(self) Expr[] {
 }
 
 // Parse unary expressions
+// Examples:
+//   !flag
+//   !done
+//   !!value
 Parser :: parse_unary(self) Expr {
     if self.is_bang() {
         self.advance()
@@ -892,7 +959,13 @@ Parser :: parse_unary(self) Expr {
     return self.parse_postfix()
 }
 
-// Parse multiplicative expressions
+// Parse multiplicative expressions (highest precedence binary ops)
+// Examples:
+//   a * b
+//   x / y
+//   n % 2
+//   a * b * c
+//   x / y % z
 Parser :: parse_mul(self) Expr {
     left := self.parse_unary()
 
@@ -922,6 +995,11 @@ Parser :: parse_mul(self) Expr {
 }
 
 // Parse additive expressions
+// Examples:
+//   a + b
+//   x - y
+//   a + b - c
+//   x + y * z   (mul binds tighter)
 Parser :: parse_add(self) Expr {
     left := self.parse_mul()
 
@@ -945,6 +1023,14 @@ Parser :: parse_add(self) Expr {
 }
 
 // Parse comparison expressions
+// Examples:
+//   a == b
+//   x != y
+//   n < 10
+//   n > 0
+//   n <= max
+//   n >= min
+//   key in map
 Parser :: parse_cmp(self) Expr {
     left := self.parse_add()
 
@@ -997,7 +1083,11 @@ Parser :: parse_cmp(self) Expr {
     return left
 }
 
-// Parse logical AND
+// Parse logical AND expressions
+// Examples:
+//   a && b
+//   x > 0 && x < 10
+//   done && valid && ready
 Parser :: parse_and(self) Expr {
     left := self.parse_cmp()
 
@@ -1010,7 +1100,12 @@ Parser :: parse_and(self) Expr {
     return left
 }
 
-// Parse 'or' expressions (for error handling)
+// Parse 'or' expressions (error handling / default values)
+// Examples:
+//   result or 0
+//   value or return
+//   data or error NotFound {}
+//   channel.recv() or wait(1000)
 Parser :: parse_or_clause(self) Expr {
     left := self.parse_and()
 
@@ -1023,6 +1118,14 @@ Parser :: parse_or_clause(self) Expr {
     return left
 }
 
+// Parse the right-hand side of an 'or' expression
+// Examples:
+//   or return
+//   or return x
+//   or error NotFound { path: p }
+//   or wait(1000)
+//   or 0
+//   or "default"
 Parser :: parse_or_rhs(self) OrClause {
     // or return
     if self.is_keyword("return") {
@@ -1062,7 +1165,11 @@ Parser :: parse_or_rhs(self) OrClause {
     return OrClause.OrExpr { expr: expr }
 }
 
-// Parse logical OR (||)
+// Parse logical OR expressions (||)
+// Examples:
+//   a || b
+//   done || timeout
+//   x == 0 || y == 0 || z == 0
 Parser :: parse_bool_or(self) Expr {
     left := self.parse_or_clause()
 
@@ -1076,6 +1183,14 @@ Parser :: parse_bool_or(self) Expr {
 }
 
 // Parse assignment expressions
+// Examples:
+//   x = 5
+//   count += 1
+//   total -= n
+//   product *= 2
+//   ratio /= divisor
+//   arr[i] = value
+//   obj.field = newValue
 Parser :: parse_assignment(self) Expr {
     expr := self.parse_bool_or()
 
@@ -1108,12 +1223,18 @@ Parser :: parse_assignment(self) Expr {
     return expr
 }
 
-// Main expression parser
+// Main expression parser entry point
+// Handles all expression types with correct precedence
 Parser :: parse_expr(self) Expr {
     return self.parse_assignment()
 }
 
 // Parse match expression
+// Examples:
+//   match x { 0 -> "zero", 1 -> "one", _ -> "other" }
+//   match opt using Option { Some { value: v } -> v, None -> 0 }
+//   match (a, b) { (0, 0) -> "origin", (x, y) -> "point" }
+//   match ch { 'a' -> 1, 'b' -> 2, _ -> 0 }
 Parser :: parse_match(self) Expr {
     self.expect_keyword("match")
 
@@ -1157,6 +1278,12 @@ Parser :: parse_match(self) Expr {
     return Expr.EMatch { exprs: exprs, using_type: using_type, arms: arms }
 }
 
+// Parse a single match arm (pattern -> expression)
+// Examples:
+//   0 -> "zero"
+//   Some { value: v } -> v
+//   (x, y) -> x + y
+//   _ -> default_value
 Parser :: parse_match_arm(self) MatchArm {
     pattern := self.parse_pattern()
     self.expect_arrow()
@@ -1164,7 +1291,15 @@ Parser :: parse_match_arm(self) MatchArm {
     return MatchArm { pattern: pattern, expr: expr }
 }
 
-// Parse pattern
+// Parse a pattern (used in match arms)
+// Examples:
+//   _                           (wildcard)
+//   x                           (binding)
+//   42, "hello", 'c'            (literals)
+//   true, false
+//   (a, b)                      (tuple pattern)
+//   Some { value: v }           (variant pattern)
+//   Option.None                 (qualified variant)
 Parser :: parse_pattern(self) Pattern {
     // Wildcard
     if self.is_underscore() {
@@ -1227,7 +1362,13 @@ Parser :: parse_pattern(self) Pattern {
     return Pattern.PWildcard{}
 }
 
-// Parse variant pattern: Option.Some { value: v } or just Some { value: v }
+// Parse variant pattern
+// Examples:
+//   Some { value: v }           (with 'using' type inference)
+//   None                        (no fields)
+//   Option.Some { value: v }    (qualified)
+//   Option<int>.Some { value: v }  (with type args)
+//   Result.Ok { value: data }
 Parser :: parse_variant_pattern(self) Pattern {
     first_name := self.get_type_ident()
     self.advance()
@@ -1278,6 +1419,11 @@ Parser :: expect_dot(self) bool {
     return false
 }
 
+// Parse pattern bindings (field destructuring in variant patterns)
+// Examples:
+//   { value: v }
+//   { name: n, age: a }
+//   { left: l, right: r, data: d }
 Parser :: parse_pattern_bindings(self) PatternBinding[] {
     PatternBinding[] bindings = []
 
@@ -1303,6 +1449,11 @@ Parser :: parse_pattern_bindings(self) PatternBinding[] {
     return bindings
 }
 
+// Parse a single pattern binding (field_name: binding_name)
+// Examples:
+//   value: v
+//   name: n
+//   left: leftNode
 Parser :: parse_pattern_binding(self) PatternBinding {
     field_name := self.get_ident()
     self.advance()
@@ -1313,6 +1464,11 @@ Parser :: parse_pattern_binding(self) PatternBinding {
 }
 
 // Parse anonymous function
+// Examples:
+//   fn(int x) int { return x * 2 }
+//   fn(str s) { print(s) }
+//   fn() bool { return true }
+//   fn(int a, int b) int { return a + b }
 Parser :: parse_anon_fn(self) Expr {
     self.expect_keyword("fn")
     self.expect_lparen()
@@ -1332,7 +1488,14 @@ Parser :: parse_anon_fn(self) Expr {
     return Expr.EAnonFn { params: params, ret: ret, body: body, captures: captures }
 }
 
-// Parse parameter list
+// Parse parameter list (comma-separated)
+// Examples:
+//   ()
+//   (self)
+//   (int x)
+//   (int x, str y)
+//   (self, int n)
+//   (Type a, Type b, Type c)
 Parser :: parse_params(self) Param[] {
     Param[] params = []
 
@@ -1349,6 +1512,13 @@ Parser :: parse_params(self) Param[] {
     return params
 }
 
+// Parse a single parameter
+// Examples:
+//   self
+//   int x
+//   str name
+//   Person[] people
+//   Option<int> maybe
 Parser :: parse_param(self) Param {
     if self.is_keyword("self") {
         self.advance()
@@ -1361,7 +1531,11 @@ Parser :: parse_param(self) Param {
     return Param.PNamed { typ: typ, name: name }
 }
 
-// Parse a block { stmts }
+// Parse a block of statements
+// Examples:
+//   { }
+//   { return 0 }
+//   { x := 5\n y := 10\n return x + y }
 Parser :: parse_block(self) StmtList {
     self.expect_lbrace()
 
@@ -1378,6 +1552,17 @@ Parser :: parse_block(self) StmtList {
 }
 
 // Parse a statement
+// Examples:
+//   int x = 5                   (typed declaration)
+//   x := 5                      (inferred declaration)
+//   const MAX = 100             (constant)
+//   return x
+//   return
+//   if cond { ... }
+//   for i in items { ... }
+//   while cond { ... }
+//   go func()
+//   expr                        (expression statement)
 Parser :: parse_stmt(self) Stmt {
     self.skip_newlines()
 
@@ -1526,6 +1711,12 @@ Parser :: parse_stmt(self) Stmt {
 }
 
 // Handle statements that start with a type identifier
+// Disambiguates between declaration and expression
+// Examples:
+//   Person p = Person { ... }   (declaration)
+//   Person[] items = []         (array declaration)
+//   Person { name: "x" }        (expression - struct literal)
+//   Option.Some { value: 5 }    (expression - variant)
 Parser :: parse_type_or_expr_stmt(self) Stmt {
     name := self.get_type_ident()
     self.advance()
@@ -1594,7 +1785,8 @@ Parser :: parse_type_or_expr_stmt(self) Stmt {
     return Stmt.SExpr { expr: expr }
 }
 
-// Continue parsing postfix operations on an expression
+// Continue parsing postfix operations on an already-parsed expression
+// Used when disambiguating statements that start with type identifiers
 Parser :: continue_postfix(self, Expr expr) Expr {
     while true {
         if self.is_dot() {
@@ -1623,7 +1815,8 @@ Parser :: continue_postfix(self, Expr expr) Expr {
     return expr
 }
 
-// Continue parsing from an already-parsed expression
+// Continue parsing binary operators from an already-parsed left operand
+// Applies all precedence levels in order
 Parser :: continue_expr(self, Expr left) Expr {
     left = self.continue_mul(left)
     left = self.continue_add(left)
@@ -1635,6 +1828,7 @@ Parser :: continue_expr(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing * / % operators
 Parser :: continue_mul(self, Expr left) Expr {
     while true {
         if self.is_star() {
@@ -1660,6 +1854,7 @@ Parser :: continue_mul(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing + - operators
 Parser :: continue_add(self, Expr left) Expr {
     while true {
         if self.is_plus() {
@@ -1679,6 +1874,7 @@ Parser :: continue_add(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing comparison operators (== != < > <= >= in)
 Parser :: continue_cmp(self, Expr left) Expr {
     while true {
         if self.is_eqeq() {
@@ -1728,6 +1924,7 @@ Parser :: continue_cmp(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing && operator
 Parser :: continue_and(self, Expr left) Expr {
     while self.is_andand() {
         self.advance()
@@ -1737,6 +1934,7 @@ Parser :: continue_and(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing 'or' clause for error handling
 Parser :: continue_or_clause(self, Expr left) Expr {
     if self.is_keyword("or") {
         self.advance()
@@ -1746,6 +1944,7 @@ Parser :: continue_or_clause(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing || operator
 Parser :: continue_bool_or(self, Expr left) Expr {
     while self.is_oror() {
         self.advance()
@@ -1755,6 +1954,7 @@ Parser :: continue_bool_or(self, Expr left) Expr {
     return left
 }
 
+// Continue parsing assignment operators (= += -= *= /=)
 Parser :: continue_assignment(self, Expr left) Expr {
     if self.is_eq() {
         self.advance()
@@ -1785,6 +1985,10 @@ Parser :: continue_assignment(self, Expr left) Expr {
 }
 
 // Parse if statement
+// Examples:
+//   if cond { ... }
+//   if cond { ... } else { ... }
+//   if a { ... } else if b { ... } else { ... }
 Parser :: parse_if(self) Stmt {
     self.expect_keyword("if")
     cond := self.parse_expr()
@@ -1807,6 +2011,10 @@ Parser :: parse_if(self) Stmt {
 }
 
 // Parse for loop
+// Examples:
+//   for i in items { ... }
+//   for x in 0..10 { ... }
+//   for c in "hello" { ... }
 Parser :: parse_for(self) Stmt {
     self.expect_keyword("for")
     var_name := self.get_ident()
@@ -1818,6 +2026,10 @@ Parser :: parse_for(self) Stmt {
 }
 
 // Parse while loop
+// Examples:
+//   while cond { ... }
+//   while true { ... break }
+//   while i < 10 { i += 1 }
 Parser :: parse_while(self) Stmt {
     self.expect_keyword("while")
     cond := self.parse_expr()
@@ -1825,7 +2037,8 @@ Parser :: parse_while(self) Stmt {
     return Stmt.SWhile { cond: cond, body: body }
 }
 
-// Parse a complete program
+// Parse a complete program (entry point for parsing a source file)
+// A program is a sequence of top-level items
 Parser :: parse_program(self) Program {
     Item[] items = []
 
@@ -1839,6 +2052,16 @@ Parser :: parse_program(self) Program {
 }
 
 // Parse a top-level item
+// Examples:
+//   uses: foo.bar
+//   fn main { ... }
+//   fn add(int a, int b) int { ... }
+//   Person :: struct { ... }
+//   Option<T> :: variant { ... }
+//   Printable :: trait { ... }
+//   Person :: impl Display { ... }
+//   Person :: name(self) str { ... }
+//   NotFound :: error { ... }
 Parser :: parse_item(self) Item {
     self.skip_newlines()
 
@@ -1862,7 +2085,13 @@ Parser :: parse_item(self) Item {
     return Item.IFunction { name: "", type_params: [], params: [], ret: none, body: [] }
 }
 
-// Parse uses statement
+// Parse uses statement (imports)
+// Examples:
+//   uses: foo.bar
+//   uses: foo.bar, baz.qux
+//   uses:
+//     - foo.bar
+//     - baz.qux
 Parser :: parse_uses(self) Item {
     self.expect_keyword("uses")
     self.expect_colon()
@@ -1887,6 +2116,11 @@ Parser :: parse_uses(self) Item {
     return Item.IUses { paths: paths }
 }
 
+// Parse an import path (dot-separated identifiers)
+// Examples:
+//   std.io
+//   foo.bar.baz
+//   shotgun.lexer
 Parser :: parse_import_path(self) ImportPath {
     str[] parts = []
     parts.push(self.get_ident())
@@ -1902,6 +2136,11 @@ Parser :: parse_import_path(self) ImportPath {
 }
 
 // Parse function definition
+// Examples:
+//   fn main { ... }
+//   fn add(int a, int b) int { return a + b }
+//   fn identity<T>(T x) T { return x }
+//   fn read_file(str path) str or error { ... }
 Parser :: parse_function(self) Item {
     self.expect_keyword("fn")
     name := self.get_ident()
@@ -1946,7 +2185,15 @@ Parser :: parse_function(self) Item {
     return Item.IFunction { name: name, type_params: type_params, params: params, ret: ret, body: body }
 }
 
-// Parse type-prefixed item
+// Parse type-prefixed item (struct, variant, trait, impl, method, error)
+// Examples:
+//   Person :: struct { name str\n age int }
+//   Option<T> :: variant { Some { value T }\n None }
+//   Display :: trait { show(self) str }
+//   Person :: impl Display { show(self) str { ... } }
+//   Person :: greet(self) { ... }
+//   Person<T> :: get<U>(self, U key) T { ... }
+//   NotFound :: error { path str }
 Parser :: parse_type_item(self) Item {
     type_name := self.get_type_ident()
     self.advance()
@@ -2061,7 +2308,12 @@ Parser :: parse_type_item(self) Item {
     }
 }
 
-// Parse struct fields
+// Parse struct/error fields (name followed by type, newline separated)
+// Examples:
+//   name str
+//   age int
+//   items Person[]
+//   data Option<T>
 Parser :: parse_fields(self) Field[] {
     Field[] fields = []
     self.skip_newlines()
@@ -2077,7 +2329,14 @@ Parser :: parse_fields(self) Field[] {
     return fields
 }
 
-// Parse enum variants
+// Parse enum/variant variants
+// Examples:
+//   None
+//   Some { value T }
+//   Ok { value T }
+//   Err { error E }
+//   Leaf { data int }
+//   Node { left Node\n right Node }
 Parser :: parse_enum_variants(self) EnumVariant[] {
     EnumVariant[] variants = []
     self.skip_newlines()
@@ -2100,7 +2359,12 @@ Parser :: parse_enum_variants(self) EnumVariant[] {
     return variants
 }
 
-// Parse trait method signatures
+// Parse trait method signatures (declarations without bodies)
+// Examples:
+//   len(self) int
+//   push(self, T item)
+//   compare(self, Self other) int
+//   default_value() T
 Parser :: parse_trait_methods(self) TraitMethod[] {
     TraitMethod[] methods = []
     self.skip_newlines()
@@ -2135,7 +2399,11 @@ Parser :: parse_trait_methods(self) TraitMethod[] {
     return methods
 }
 
-// Parse impl method definitions
+// Parse impl method definitions (with bodies)
+// Examples:
+//   len(self) int { return self.count }
+//   show(self) str { return "Person" }
+//   push(self, T item) { self.items.push(item) }
 Parser :: parse_impl_methods(self) ImplMethod[] {
     ImplMethod[] methods = []
     self.skip_newlines()
@@ -2161,7 +2429,12 @@ Parser :: parse_impl_methods(self) ImplMethod[] {
     return methods
 }
 
-// Helper: parse string interpolation parts
+// Parse string interpolation parts from a raw string value
+// Splits string into literal parts and interpolation expressions
+// Examples:
+//   "hello"           -> [SLiteral("hello")]
+//   "hi {name}"       -> [SLiteral("hi "), SInterp(name)]
+//   "{a} + {b} = {c}" -> [SInterp(a), SLiteral(" + "), SInterp(b), ...]
 fn parse_string_parts(str s) StringPart[] {
     StringPart[] parts = []
     current := ""
@@ -2249,7 +2522,11 @@ fn parse_string_parts(str s) StringPart[] {
     return parts
 }
 
-// Parse a simple interpolation expression
+// Parse a simple interpolation expression (identifier or member access)
+// Examples:
+//   name        -> EIdent("name")
+//   obj.field   -> EMember(EIdent("obj"), "field")
+//   a.b.c       -> EMember(EMember(EIdent("a"), "b"), "c")
 fn parse_interp_expr(str s) Expr {
     parts := s.split(".")
     if parts.len() == 0 {
