@@ -14,292 +14,47 @@ Parser :: is_keyword(self, str name) bool {
 }
 
 // Check if current token is a specific type
-Parser :: is_type_ident(self) bool {
-    return match self.current.token using Token {
-        TkTypeIdent { name: n } -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_ident(self) bool {
-    return match self.current.token using Token {
-        TkIdent { name: n } -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_int(self) bool {
-    return match self.current.token using Token {
-        TkInt { value: v } -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_float(self) bool {
-    return match self.current.token using Token {
-        TkFloat { value: v } -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_string(self) bool {
-    return match self.current.token using Token {
-        TkString { value: v } -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_char(self) bool {
-    return match self.current.token using Token {
-        TkChar { value: v } -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_eof(self) bool {
-    return match self.current.token using Token {
-        TkEof -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_newline(self) bool {
-    return match self.current.token using Token {
-        TkNewline -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_lparen(self) bool {
-    return match self.current.token using Token {
-        TkLParen -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_rparen(self) bool {
-    return match self.current.token using Token {
-        TkRParen -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_lbrace(self) bool {
-    return match self.current.token using Token {
-        TkLBrace -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_rbrace(self) bool {
-    return match self.current.token using Token {
-        TkRBrace -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_lbracket(self) bool {
-    return match self.current.token using Token {
-        TkLBracket -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_rbracket(self) bool {
-    return match self.current.token using Token {
-        TkRBracket -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_comma(self) bool {
-    return match self.current.token using Token {
-        TkComma -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_colon(self) bool {
-    return match self.current.token using Token {
-        TkColon -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_coloncolon(self) bool {
-    return match self.current.token using Token {
-        TkColonColon -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_coloneq(self) bool {
-    return match self.current.token using Token {
-        TkColonEq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_dot(self) bool {
-    return match self.current.token using Token {
-        TkDot -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_arrow(self) bool {
-    return match self.current.token using Token {
-        TkArrow -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_question(self) bool {
-    return match self.current.token using Token {
-        TkQuestion -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_underscore(self) bool {
-    return match self.current.token using Token {
-        TkUnderscore -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_eq(self) bool {
-    return match self.current.token using Token {
-        TkEq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_plus(self) bool {
-    return match self.current.token using Token {
-        TkPlus -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_minus(self) bool {
-    return match self.current.token using Token {
-        TkMinus -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_star(self) bool {
-    return match self.current.token using Token {
-        TkStar -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_slash(self) bool {
-    return match self.current.token using Token {
-        TkSlash -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_percent(self) bool {
-    return match self.current.token using Token {
-        TkPercent -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_eqeq(self) bool {
-    return match self.current.token using Token {
-        TkEqEq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_neq(self) bool {
-    return match self.current.token using Token {
-        TkNeq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_lt(self) bool {
-    return match self.current.token using Token {
-        TkLt -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_gt(self) bool {
-    return match self.current.token using Token {
-        TkGt -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_lte(self) bool {
-    return match self.current.token using Token {
-        TkLte -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_gte(self) bool {
-    return match self.current.token using Token {
-        TkGte -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_andand(self) bool {
-    return match self.current.token using Token {
-        TkAndAnd -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_oror(self) bool {
-    return match self.current.token using Token {
-        TkOrOr -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_bang(self) bool {
-    return match self.current.token using Token {
-        TkBang -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_pluseq(self) bool {
-    return match self.current.token using Token {
-        TkPlusEq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_minuseq(self) bool {
-    return match self.current.token using Token {
-        TkMinusEq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_stareq(self) bool {
-    return match self.current.token using Token {
-        TkStarEq -> true,
-        _ -> false
-    }
-}
-
-Parser :: is_slasheq(self) bool {
-    return match self.current.token using Token {
-        TkSlashEq -> true,
-        _ -> false
-    }
-}
+Parser :: is_type_ident(self) bool { return self.current.token is TkTypeIdent }
+Parser :: is_ident(self) bool { return self.current.token is TkIdent }
+Parser :: is_int(self) bool { return self.current.token is TkInt }
+Parser :: is_float(self) bool { return self.current.token is TkFloat }
+Parser :: is_string(self) bool { return self.current.token is TkString }
+Parser :: is_char(self) bool { return self.current.token is TkChar }
+Parser :: is_eof(self) bool { return self.current.token is TkEof }
+Parser :: is_newline(self) bool { return self.current.token is TkNewline }
+Parser :: is_lparen(self) bool { return self.current.token is TkLParen }
+Parser :: is_rparen(self) bool { return self.current.token is TkRParen }
+Parser :: is_lbrace(self) bool { return self.current.token is TkLBrace }
+Parser :: is_rbrace(self) bool { return self.current.token is TkRBrace }
+Parser :: is_lbracket(self) bool { return self.current.token is TkLBracket }
+Parser :: is_rbracket(self) bool { return self.current.token is TkRBracket }
+Parser :: is_comma(self) bool { return self.current.token is TkComma }
+Parser :: is_colon(self) bool { return self.current.token is TkColon }
+Parser :: is_coloncolon(self) bool { return self.current.token is TkColonColon }
+Parser :: is_coloneq(self) bool { return self.current.token is TkColonEq }
+Parser :: is_dot(self) bool { return self.current.token is TkDot }
+Parser :: is_arrow(self) bool { return self.current.token is TkArrow }
+Parser :: is_question(self) bool { return self.current.token is TkQuestion }
+Parser :: is_underscore(self) bool { return self.current.token is TkUnderscore }
+Parser :: is_eq(self) bool { return self.current.token is TkEq }
+Parser :: is_plus(self) bool { return self.current.token is TkPlus }
+Parser :: is_minus(self) bool { return self.current.token is TkMinus }
+Parser :: is_star(self) bool { return self.current.token is TkStar }
+Parser :: is_slash(self) bool { return self.current.token is TkSlash }
+Parser :: is_percent(self) bool { return self.current.token is TkPercent }
+Parser :: is_eqeq(self) bool { return self.current.token is TkEqEq }
+Parser :: is_neq(self) bool { return self.current.token is TkNeq }
+Parser :: is_lt(self) bool { return self.current.token is TkLt }
+Parser :: is_gt(self) bool { return self.current.token is TkGt }
+Parser :: is_lte(self) bool { return self.current.token is TkLte }
+Parser :: is_gte(self) bool { return self.current.token is TkGte }
+Parser :: is_andand(self) bool { return self.current.token is TkAndAnd }
+Parser :: is_oror(self) bool { return self.current.token is TkOrOr }
+Parser :: is_bang(self) bool { return self.current.token is TkBang }
+Parser :: is_pluseq(self) bool { return self.current.token is TkPlusEq }
+Parser :: is_minuseq(self) bool { return self.current.token is TkMinusEq }
+Parser :: is_stareq(self) bool { return self.current.token is TkStarEq }
+Parser :: is_slasheq(self) bool { return self.current.token is TkSlashEq }
 
 // Expect a specific keyword, error if not present
 Parser :: expect_keyword(self, str name) bool {

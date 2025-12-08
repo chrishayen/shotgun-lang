@@ -454,6 +454,24 @@ let rec gen_expr ctx indent expr =
     gen_match_expr ctx indent exprs using_type arms
   | EAnonFn (params, ret_type, body, captures) ->
     gen_closure_expr ctx indent params ret_type body captures
+  | EIs (e, type_opt, variant_name) ->
+    (* Generate: (expr.tag == EnumName_VariantName) *)
+    let enum_name = match type_opt with
+      | Some t -> get_enum_c_name t
+      | None ->
+        (* Infer from expression type *)
+        (match get_type ctx e with
+         | Some (TUser t) -> t
+         | Some (TApply (t, args)) -> mangle_generic_name t args
+         | _ -> "UNKNOWN")
+    in
+    emit "(";
+    gen_expr ctx indent e;
+    emit ".tag == ";
+    emit enum_name;
+    emit "_";
+    emit variant_name;
+    emit ")"
 
 and gen_member ctx indent obj field =
   gen_expr ctx indent obj;

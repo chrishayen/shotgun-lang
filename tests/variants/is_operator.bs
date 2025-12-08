@@ -1,0 +1,66 @@
+// Test the 'is' operator for variant tag checking
+
+Option :: variant {
+    Some { value int }
+    None
+}
+
+Color :: variant {
+    Red
+    Green
+    Blue
+}
+
+fn main {
+    // Test bare variant name (type inferred from expression)
+    opt := Option.Some { value: 42 }
+    if opt is Some {
+        print("opt is Some: pass")
+    } else {
+        print("opt is Some: FAIL")
+    }
+
+    // Test negative case
+    if opt is None {
+        print("opt is None: FAIL")
+    } else {
+        print("opt is not None: pass")
+    }
+
+    // Test with None value
+    none_opt := Option.None
+    if none_opt is None {
+        print("none_opt is None: pass")
+    } else {
+        print("none_opt is None: FAIL")
+    }
+
+    // Test qualified variant name (explicit type)
+    if opt is Option.Some {
+        print("opt is Option.Some: pass")
+    } else {
+        print("opt is Option.Some: FAIL")
+    }
+
+    // Test unit variants (no fields)
+    c := Color.Green
+    if c is Green {
+        print("c is Green: pass")
+    } else {
+        print("c is Green: FAIL")
+    }
+
+    if c is Red {
+        print("c is Red: FAIL")
+    } else {
+        print("c is not Red: pass")
+    }
+
+    // Test in boolean expression
+    result := opt is Some
+    if result {
+        print("boolean result: pass")
+    } else {
+        print("boolean result: FAIL")
+    }
+}

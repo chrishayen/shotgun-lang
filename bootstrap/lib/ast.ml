@@ -97,6 +97,7 @@ and expr =
   | EAssign of assignop * expr * expr
   | EMatch of expr list * typ option * (pattern * expr) list  (* match exprs, optional using type, [(pattern, result)] *)
   | EAnonFn of (typ * string) list * typ option * stmt list * string list  (* params, return type, body, captured vars *)
+  | EIs of expr * typ option * string  (* expr is Variant - expr, optional type qualifier, variant name *)
 
 (* Statements - mutually recursive with expr for closures *)
 and stmt =

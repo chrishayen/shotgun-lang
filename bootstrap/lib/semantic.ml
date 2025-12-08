@@ -306,6 +306,7 @@ let rec infer_expr_type env expr =
       | None -> infer_return_type_from_body env params body
     in
     Some (TFunc (param_types, inferred_ret))
+  | EIs (_, _, _) -> Some TBool
 
 (* Infer return type from a closure body by finding return statements *)
 and infer_return_type_from_body env params body =
@@ -585,6 +586,28 @@ let rec check_expr env expr =
     ) params;
     (* Check body statements *)
     List.iter (check_stmt fn_env) body
+  | EIs (e, type_opt, variant_name) ->
+    check_expr env e;
+    (* Determine enum type - either from explicit type or inferred from expression *)
+    let enum_type = match type_opt with
+      | Some (TUser t) -> Some t
+      | Some (TApply (t, _)) -> Some t
+      | Some _ -> None
+      | None ->
+        (* Infer from expression type *)
+        (match infer_expr_type env e with
+         | Some (TUser t) -> Some t
+         | Some (TApply (t, _)) -> Some t
+         | _ -> None)
+    in
+    (match enum_type with
+     | None -> add_error env "'is' operator requires a variant type"
+     | Some t ->
+       (match Hashtbl.find_opt env.enums t with
+        | None -> add_error env (Printf.sprintf "'is' operator: unknown variant type '%s'" t)
+        | Some variants ->
+          if not (List.exists (fun v -> v.variant_name = variant_name) variants) then
+            add_error env (Printf.sprintf "Unknown variant '%s' in type '%s'" variant_name t)))
   | _ -> ()
 
 (* Check statement - mutually recursive with check_expr for closures *)
@@ -798,6 +821,7 @@ let rec get_expr_type env locals expr =
       | None -> infer_return_type_from_body_with_locals env locals params body
     in
     Some (TFunc (param_types, inferred_ret))
+  | EIs (_, _, _) -> Some TBool
 
 (* Infer return type from a closure body using locals hashtable *)
 and infer_return_type_from_body_with_locals env locals params body =

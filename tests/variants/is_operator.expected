@@ -1,0 +1,7 @@
+opt is Some: pass
+opt is not None: pass
+none_opt is None: pass
+opt is Option.Some: pass
+c is Green: pass
+c is not Red: pass
+boolean result: pass

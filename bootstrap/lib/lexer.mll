@@ -18,6 +18,7 @@ let keywords = [
   "for", FOR;
   "while", WHILE;
   "in", IN;
+  "is", IS;
   "match", MATCH;
   "go", GO;
   "chan", CHAN;

@@ -67,7 +67,7 @@ let parse_interp_string s =
 
 (* Keywords *)
 %token FN STRUCT VARIANT TRAIT IMPL ERROR
-%token RETURN BREAK CONTINUE IF ELSE FOR WHILE IN MATCH USING
+%token RETURN BREAK CONTINUE IF ELSE FOR WHILE IN IS MATCH USING
 %token GO CHAN WAIT
 %token OR
 %token ANDAND BANG  (* && and ! *)
@@ -404,6 +404,8 @@ cmp_expr:
   | l = cmp_expr LTE r = add_expr { EBinary (Lte, l, r) }
   | l = cmp_expr GTE r = add_expr { EBinary (Gte, l, r) }
   | l = cmp_expr IN r = add_expr { EBinary (In, l, r) }
+  | l = cmp_expr IS t = TYPE_IDENT DOT v = TYPE_IDENT { EIs (l, Some (TUser t), v) }
+  | l = cmp_expr IS v = TYPE_IDENT { EIs (l, None, v) }
   ;
 
 add_expr:

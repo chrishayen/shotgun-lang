@@ -146,6 +146,29 @@ y := <span class="ty">Option</span>.<span class="ty">Some</span> { value: <span 
 
         <p>Unlike structs (which have all fields at once), a variant is exactly one of its cases at any time. This makes invalid states unrepresentable.</p>
 
+        <h3>Checking Variant Tags with <code>is</code></h3>
+
+        <p>Use the <code>is</code> operator to check which variant case a value holds:</p>
+
+        <pre><code>opt := <span class="ty">Option</span>.<span class="ty">Some</span> { value: <span class="nu">42</span> }
+
+<span class="cm">// Type is inferred from the expression</span>
+<span class="kw">if</span> opt <span class="kw">is</span> <span class="ty">Some</span> {
+    <span class="fn">print</span>(<span class="st">"has a value"</span>)
+}
+
+<span class="cm">// Explicit type when needed</span>
+<span class="kw">if</span> opt <span class="kw">is</span> <span class="ty">Option</span>.<span class="ty">None</span> {
+    <span class="fn">print</span>(<span class="st">"no value"</span>)
+}</code></pre>
+
+        <p>The <code>is</code> operator returns a <code>bool</code>, so it can be used in any boolean context:</p>
+
+        <pre><code>has_value := opt <span class="kw">is</span> <span class="ty">Some</span>
+is_empty := opt <span class="kw">is</span> <span class="ty">None</span></code></pre>
+
+        <p>Note: <code>is</code> only checks the variant tag. To extract data from a variant, use <code>match</code>.</p>
+
         <h2>Recursive Types</h2>
 
         <p>Types can reference themselves, useful for tree structures and ASTs:</p>

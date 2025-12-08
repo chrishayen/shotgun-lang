@@ -351,11 +351,7 @@ Parser :: parse_trait_methods(self) TraitMethod[] {
 
         has_self := false
         for p in params {
-            is_self := match p using Param {
-                PSelf -> true,
-                _ -> false
-            }
-            if is_self {
+            if p is PSelf {
                 has_self = true
             }
         }
