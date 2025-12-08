@@ -1,30 +1,21 @@
 // Main entry point for the self-hosted Shotgun compiler
 //
-// For now, this is just a test driver for the lexer.
+// Parser test driver - reads a file and prints the parsed AST.
 
-uses: shotgun.lexer
-uses: shotgun.token
+uses: shotgun.parser
+uses: shotgun.ast
 
 fn main() {
-    source := "fn main x := 42 + 3"
-    lexer := new_lexer(source, "test.bs")
+    // Default test file, or could be changed to read from args
+    filename := "tests/basic/hello.bs"
 
-    print("Lexing: {source}")
+    source := read_file(filename) or return
+
+    print("Parsing: {filename}")
     print("---")
 
-    done := false
-    while !done {
-        tok := lexer.next_token()
-        s := token_str(tok.token)
-        print("{tok.location.line}:{tok.location.col} {s}")
+    parser := new_parser(source, filename)
+    program := parser.parse_program()
 
-        // Check if EOF
-        is_eof := match tok.token using Token {
-            TkEof -> true,
-            _ -> false
-        }
-        if is_eof {
-            done = true
-        }
-    }
+    print(program.show())
 }

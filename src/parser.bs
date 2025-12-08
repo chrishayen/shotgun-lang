@@ -36,42 +36,42 @@ Parser :: is_keyword(self, str name) bool {
 // Check if current token is a specific type
 Parser :: is_type_ident(self) bool {
     return match self.current.token using Token {
-        TkTypeIdent { name: _ } -> true,
+        TkTypeIdent { name: n } -> true,
         _ -> false
     }
 }
 
 Parser :: is_ident(self) bool {
     return match self.current.token using Token {
-        TkIdent { name: _ } -> true,
+        TkIdent { name: n } -> true,
         _ -> false
     }
 }
 
 Parser :: is_int(self) bool {
     return match self.current.token using Token {
-        TkInt { value: _ } -> true,
+        TkInt { value: v } -> true,
         _ -> false
     }
 }
 
 Parser :: is_float(self) bool {
     return match self.current.token using Token {
-        TkFloat { value: _ } -> true,
+        TkFloat { value: v } -> true,
         _ -> false
     }
 }
 
 Parser :: is_string(self) bool {
     return match self.current.token using Token {
-        TkString { value: _ } -> true,
+        TkString { value: v } -> true,
         _ -> false
     }
 }
 
 Parser :: is_char(self) bool {
     return match self.current.token using Token {
-        TkChar { value: _ } -> true,
+        TkChar { value: v } -> true,
         _ -> false
     }
 }
@@ -368,7 +368,7 @@ Parser :: expect_lbrace(self) bool {
         self.advance()
         return true
     }
-    print("Error: expected '{' at {self.current.location.format()}")
+    print("Error: expected '\{' at {self.current.location.format()}")
     return false
 }
 
@@ -377,7 +377,7 @@ Parser :: expect_rbrace(self) bool {
         self.advance()
         return true
     }
-    print("Error: expected '}' at {self.current.location.format()}")
+    print("Error: expected '\}' at {self.current.location.format()}")
     return false
 }
 
@@ -1362,7 +1362,7 @@ Parser :: parse_param(self) Param {
 }
 
 // Parse a block { stmts }
-Parser :: parse_block(self) Stmt[] {
+Parser :: parse_block(self) StmtList {
     self.expect_lbrace()
 
     Stmt[] stmts = []
@@ -1374,7 +1374,7 @@ Parser :: parse_block(self) Stmt[] {
     }
 
     self.expect_rbrace()
-    return stmts
+    return StmtList { items: stmts }
 }
 
 // Parse a statement
@@ -1790,14 +1790,14 @@ Parser :: parse_if(self) Stmt {
     cond := self.parse_expr()
     then_block := self.parse_block()
 
-    Stmt[]? else_block = none
+    StmtList? else_block = none
     if self.is_keyword("else") {
         self.advance()
         if self.is_keyword("if") {
             else_stmt := self.parse_if()
             Stmt[] wrapped = []
             wrapped.push(else_stmt)
-            else_block = wrapped
+            else_block = StmtList { items: wrapped }
         } else {
             else_block = self.parse_block()
         }
@@ -2203,7 +2203,7 @@ fn parse_string_parts(str s) StringPart[] {
                 continue
             }
             if next == '{' {
-                current = current + "{"
+                current = current + "\{"
                 i = i + 2
                 continue
             }

@@ -1,6 +1,4 @@
 // AST definitions for the Shotgun self-hosted compiler
-//
-// This mirrors the structure in compiler/lib/ast.ml
 
 // Source location for error reporting
 Location :: struct {
@@ -13,9 +11,23 @@ fn dummy_loc() Location {
     return Location { line: 0, col: 0, file: "" }
 }
 
-Location :: format(self) str {
-    return "{self.file}:{self.line}:{self.col}"
-}
+// Wrapper structs for arrays (arrays in variant fields aren't supported)
+TypeList :: struct { items Type[] }
+StringList :: struct { items str[] }
+StringPartList :: struct { items StringPart[] }
+FieldInitList :: struct { items FieldInit[] }
+PatternBindingList :: struct { items PatternBinding[] }
+PatternList :: struct { items Pattern[] }
+MatchArmList :: struct { items MatchArm[] }
+ParamList :: struct { items Param[] }
+ExprList :: struct { items Expr[] }
+StmtList :: struct { items Stmt[] }
+FieldList :: struct { items Field[] }
+EnumVariantList :: struct { items EnumVariant[] }
+TraitMethodList :: struct { items TraitMethod[] }
+ImplMethodList :: struct { items ImplMethod[] }
+ImportPathList :: struct { items ImportPath[] }
+ItemList :: struct { items Item[] }
 
 // Types
 Type :: variant {
@@ -31,11 +43,20 @@ Type :: variant {
     TArray { elem Type }
     TChan { elem Type }
     TUser { name str }
-    TResult { value Type, error_type str }
+    TResult {
+        value Type
+        err_type str
+    }
     TVoid
     TParam { name str }
-    TApply { name str, args Type[] }
-    TFunc { params Type[], ret Type? }
+    TApply {
+        name str
+        args TypeList
+    }
+    TFunc {
+        params TypeList
+        ret Type?
+    }
 }
 
 // Binary operators
@@ -88,11 +109,14 @@ PatternBinding :: struct {
     binding_name str
 }
 
-// Or-clause variants (for error handling: expr or return, expr or error)
+// Or-clause variants
 OrClause :: variant {
     OrExpr { expr Expr }
     OrReturn { expr Expr? }
-    OrError { error_name str, fields FieldInit[] }
+    OrError {
+        err_name str
+        fields FieldInitList
+    }
     OrWait { expr Expr }
 }
 
@@ -100,12 +124,16 @@ OrClause :: variant {
 Pattern :: variant {
     PIdent { name str }
     PLiteral { expr Expr }
-    PVariant { typ Type?, variant_name str, bindings PatternBinding[] }
+    PVariant {
+        typ Type?
+        variant_name str
+        bindings PatternBindingList
+    }
     PWildcard
-    PTuple { patterns Pattern[] }
+    PTuple { patterns PatternList }
 }
 
-// Match arm: pattern -> expression
+// Match arm
 MatchArm :: struct {
     pattern Pattern
     expr Expr
@@ -114,43 +142,109 @@ MatchArm :: struct {
 // Function/method parameter
 Param :: variant {
     PSelf
-    PNamed { typ Type, name str }
+    PNamed {
+        typ Type
+        name str
+    }
 }
 
 // Expressions
 Expr :: variant {
     EInt { value int }
     EFloat { value f64 }
-    EString { parts StringPart[] }
+    EString { parts StringPartList }
     EBool { value bool }
     EChar { value char }
     ENone
     EIdent { name str }
-    EBinary { op Binop, left Expr, right Expr }
-    EUnary { op Unop, expr Expr }
-    ECall { callee Expr, type_args Type[], args Expr[] }
-    EMember { expr Expr, member str }
-    EIndex { expr Expr, index Expr }
-    EOr { expr Expr, clause OrClause }
-    EStructLit { name str, type_args Type[], fields FieldInit[] }
-    EEnumVariant { enum_name str, type_args Type[], variant_name str, fields FieldInit[] }
-    EArrayLit { elements Expr[] }
+    EBinary {
+        op Binop
+        left Expr
+        right Expr
+    }
+    EUnary {
+        op Unop
+        expr Expr
+    }
+    ECall {
+        callee Expr
+        type_args TypeList
+        args ExprList
+    }
+    EMember {
+        expr Expr
+        member str
+    }
+    EIndex {
+        expr Expr
+        index Expr
+    }
+    EOr {
+        expr Expr
+        clause OrClause
+    }
+    EStructLit {
+        name str
+        type_args TypeList
+        fields FieldInitList
+    }
+    EEnumVariant {
+        enum_name str
+        type_args TypeList
+        variant_name str
+        fields FieldInitList
+    }
+    EArrayLit { elements ExprList }
     EChan
     EParen { expr Expr }
-    EAssign { op Assignop, target Expr, value Expr }
-    EMatch { exprs Expr[], using_type Type?, arms MatchArm[] }
-    EAnonFn { params Param[], ret Type?, body Stmt[], captures str[] }
+    EAssign {
+        op Assignop
+        target Expr
+        value Expr
+    }
+    EMatch {
+        exprs ExprList
+        using_type Type?
+        arms MatchArmList
+    }
+    EAnonFn {
+        params ParamList
+        ret Type?
+        body StmtList
+        captures StringList
+    }
 }
 
 // Statements
 Stmt :: variant {
-    SVarDecl { typ Type, name str, init Expr }
-    SVarDeclInfer { name str, init Expr }
-    SConstDecl { name str, init Expr }
+    SVarDecl {
+        typ Type
+        name str
+        init Expr
+    }
+    SVarDeclInfer {
+        name str
+        init Expr
+    }
+    SConstDecl {
+        name str
+        init Expr
+    }
     SReturn { expr Expr? }
-    SIf { cond Expr, then_block Stmt[], else_block Stmt[]? }
-    SFor { var str, iter Expr, body Stmt[] }
-    SWhile { cond Expr, body Stmt[] }
+    SIf {
+        cond Expr
+        then_block StmtList
+        else_block StmtList?
+    }
+    SFor {
+        var str
+        iter Expr
+        body StmtList
+    }
+    SWhile {
+        cond Expr
+        body StmtList
+    }
     SGo { expr Expr }
     SExpr { expr Expr }
 }
@@ -164,13 +258,13 @@ Field :: struct {
 // Enum variant definition
 EnumVariant :: struct {
     name str
-    fields Field[]
+    fields FieldList
 }
 
 // Trait method signature
 TraitMethod :: struct {
     name str
-    params Param[]
+    params ParamList
     has_self bool
     ret Type?
 }
@@ -178,29 +272,66 @@ TraitMethod :: struct {
 // Impl method definition
 ImplMethod :: struct {
     name str
-    params Param[]
+    params ParamList
     ret Type?
-    body Stmt[]
+    body StmtList
 }
 
-// Import path: std.io becomes ["std", "io"]
+// Import path
 ImportPath :: struct {
-    parts str[]
+    parts StringList
 }
 
 // Top-level items
 Item :: variant {
-    IStruct { name str, type_params str[], fields Field[] }
-    IEnum { name str, type_params str[], variants EnumVariant[] }
-    ITrait { name str, methods TraitMethod[] }
-    IImpl { type_name str, trait_name str, methods ImplMethod[] }
-    IMethod { type_name str, method_name str, type_params str[], params Param[], ret Type?, body Stmt[] }
-    IFunction { name str, type_params str[], params Param[], ret Type?, body Stmt[] }
-    IError { name str, fields Field[] }
-    IUses { paths ImportPath[] }
+    IStruct {
+        name str
+        type_params StringList
+        fields FieldList
+    }
+    IEnum {
+        name str
+        type_params StringList
+        variants EnumVariantList
+    }
+    ITrait {
+        name str
+        methods TraitMethodList
+    }
+    IImpl {
+        type_name str
+        trait_name str
+        methods ImplMethodList
+    }
+    IMethod {
+        type_name str
+        method_name str
+        type_params StringList
+        params ParamList
+        ret Type?
+        body StmtList
+    }
+    IFunction {
+        name str
+        type_params StringList
+        params ParamList
+        ret Type?
+        body StmtList
+    }
+    IError {
+        name str
+        fields FieldList
+    }
+    IUses { paths ImportPathList }
 }
 
 // A program is a list of top-level items
 Program :: struct {
-    items Item[]
+    items ItemList
+}
+
+// Simple show method - just print item count for now
+Program :: show(self) str {
+    count := self.items.items.len()
+    return "Program with items"
 }

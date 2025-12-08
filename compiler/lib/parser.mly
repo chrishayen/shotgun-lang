@@ -67,7 +67,7 @@ let parse_interp_string s =
 
 (* Keywords *)
 %token FN STRUCT VARIANT TRAIT IMPL ERROR
-%token RETURN IF ELSE FOR WHILE IN MATCH USING
+%token RETURN BREAK CONTINUE IF ELSE FOR WHILE IN MATCH USING
 %token GO CHAN WAIT
 %token OR
 %token ANDAND BANG  (* && and ! *)
@@ -307,6 +307,8 @@ stmt_inner:
   | CONST name = IDENT EQ e = expr { SConstDecl (name, e) }
   | RETURN { SReturn None }
   | RETURN e = expr { SReturn (Some e) }
+  | BREAK { SBreak }
+  | CONTINUE { SContinue }
   | IF cond = expr then_block = block { SIf (cond, then_block, None) }
   | IF cond = expr then_block = block ELSE else_block = block { SIf (cond, then_block, Some else_block) }
   | IF cond = expr then_block = block ELSE else_if = if_stmt { SIf (cond, then_block, Some [else_if]) }

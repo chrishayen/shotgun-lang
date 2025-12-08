@@ -104,6 +104,8 @@ and stmt =
   | SVarDeclInfer of string * expr  (* name, initializer - type inferred with := *)
   | SConstDecl of string * expr  (* name, initializer - type inferred *)
   | SReturn of expr option
+  | SBreak
+  | SContinue
   | SIf of expr * stmt list * stmt list option
   | SFor of string * expr * stmt list
   | SWhile of expr * stmt list  (* condition, body *)

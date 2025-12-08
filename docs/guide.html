@@ -482,6 +482,25 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
     count += <span class="nu">1</span>
 }</code></pre>
 
+        <h3>Break and Continue</h3>
+
+        <p>Use <code>break</code> to exit a loop early:</p>
+
+        <pre><code><span class="kw">for</span> n <span class="kw">in</span> nums {
+    <span class="kw">if</span> n == target {
+        <span class="kw">break</span>
+    }
+}</code></pre>
+
+        <p>Use <code>continue</code> to skip to the next iteration:</p>
+
+        <pre><code><span class="kw">for</span> n <span class="kw">in</span> nums {
+    <span class="kw">if</span> n < <span class="nu">0</span> {
+        <span class="kw">continue</span>
+    }
+    <span class="fn">process</span>(n)
+}</code></pre>
+
         <h3>Match Expressions</h3>
 
         <p>Match is an expression that returns a value. Use it with literals:</p>

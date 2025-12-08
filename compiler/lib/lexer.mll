@@ -11,6 +11,8 @@ let keywords = [
   "impl", IMPL;
   "error", ERROR;
   "return", RETURN;
+  "break", BREAK;
+  "continue", CONTINUE;
   "if", IF;
   "else", ELSE;
   "for", FOR;

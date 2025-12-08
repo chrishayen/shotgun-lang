@@ -1,0 +1,46 @@
+// Test break and continue statements
+
+fn main() {
+    // Test break
+    int[] nums = [1, 2, 3, 4, 5]
+    sum := 0
+    for n in nums {
+        if n == 4 {
+            break
+        }
+        sum = sum + n
+    }
+    print("break sum: {sum}")  // Should be 6 (1+2+3)
+
+    // Test continue
+    sum2 := 0
+    for n in nums {
+        if n == 3 {
+            continue
+        }
+        sum2 = sum2 + n
+    }
+    print("continue sum: {sum2}")  // Should be 12 (1+2+4+5)
+
+    // Test break in while
+    i := 0
+    while true {
+        i = i + 1
+        if i >= 3 {
+            break
+        }
+    }
+    print("while break: {i}")  // Should be 3
+
+    // Test continue in while
+    j := 0
+    count := 0
+    while j < 5 {
+        j = j + 1
+        if j == 3 {
+            continue
+        }
+        count = count + 1
+    }
+    print("while continue: {count}")  // Should be 4 (1,2,4,5)
+}

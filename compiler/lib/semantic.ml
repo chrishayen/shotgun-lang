@@ -618,6 +618,8 @@ and check_stmt env stmt =
   | SReturn (Some e) ->
     check_expr env e
   | SReturn None -> ()
+  | SBreak -> ()
+  | SContinue -> ()
   | SIf (cond, then_stmts, else_stmts) ->
     check_expr env cond;
     let then_env = push_scope env in

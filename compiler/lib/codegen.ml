@@ -290,6 +290,8 @@ let rec collect_stmt_instantiations = function
   | SConstDecl (_, e) -> collect_expr_instantiations e
   | SReturn (Some e) -> collect_expr_instantiations e
   | SReturn None -> ()
+  | SBreak -> ()
+  | SContinue -> ()
   | SExpr e -> collect_expr_instantiations e
   | SIf (cond, then_stmts, else_stmts) ->
     collect_expr_instantiations cond;
@@ -889,6 +891,8 @@ and collect_stmt_idents (used, declared) stmt =
     (collect_expr_idents used expr, name :: declared)
   | SReturn (Some e) -> (collect_expr_idents used e, declared)
   | SReturn None -> (used, declared)
+  | SBreak -> (used, declared)
+  | SContinue -> (used, declared)
   | SIf (cond, then_stmts, else_stmts) ->
     let used' = collect_expr_idents used cond in
     let (used'', declared') = List.fold_left collect_stmt_idents (used', declared) then_stmts in
@@ -1701,6 +1705,10 @@ let rec gen_stmt ctx indent stmt =
     emit "return ";
     gen_expr ctx indent e;
     emitln ";"
+  | SBreak ->
+    emitln "break;"
+  | SContinue ->
+    emitln "continue;"
   | SIf (cond, then_stmts, else_stmts) ->
     emit "if (";
     gen_expr ctx indent cond;
@@ -2087,6 +2095,8 @@ let gen_monomorphized_types program =
     | SConstDecl (_, e) -> scan_expr e
     | SReturn (Some e) -> scan_expr e
     | SReturn None -> ()
+    | SBreak -> ()
+    | SContinue -> ()
     | SExpr e -> scan_expr e
     | SIf (cond, then_stmts, else_stmts) ->
       scan_expr cond;
@@ -2224,6 +2234,8 @@ let gen_monomorphized_methods ?(decl_only=false) ctx program =
     | SConstDecl (_, e) -> scan_expr e
     | SReturn (Some e) -> scan_expr e
     | SReturn None -> ()
+    | SBreak -> ()
+    | SContinue -> ()
     | SExpr e -> scan_expr e
     | SIf (cond, then_stmts, else_stmts) ->
       scan_expr cond;
