@@ -315,6 +315,7 @@ module.exports = grammar({
       $.identifier,
       $.number,
       $.string,
+      $.char,
       $.bool_literal,
       $.none_literal,
       $.paren_expression,
@@ -425,5 +426,18 @@ module.exports = grammar({
     bool_literal: $ => choice('true', 'false'),
 
     none_literal: $ => 'none',
+
+    char: $ => seq(
+      "'",
+      choice(
+        $.char_content,
+        $.char_escape_sequence,
+      ),
+      "'",
+    ),
+
+    char_content: $ => /[^'\\]/,
+
+    char_escape_sequence: $ => /\\[\\nrt'0]/,
   }
 });

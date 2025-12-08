@@ -69,6 +69,9 @@
 (escape_sequence) @constant.character.escape
 (interpolation) @embedded
 (none_literal) @constant.builtin
+(char) @string.special
+(char_content) @string.special
+(char_escape_sequence) @constant.character.escape
 
 "Error" @type
 

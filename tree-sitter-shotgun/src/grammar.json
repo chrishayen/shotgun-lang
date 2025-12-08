@@ -1281,6 +1281,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "char"
+        },
+        {
+          "type": "SYMBOL",
           "name": "bool_literal"
         },
         {
@@ -1977,6 +1981,40 @@
     "none_literal": {
       "type": "STRING",
       "value": "none"
+    },
+    "char": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "'"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "char_content"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "char_escape_sequence"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "'"
+        }
+      ]
+    },
+    "char_content": {
+      "type": "PATTERN",
+      "value": "[^'\\\\]"
+    },
+    "char_escape_sequence": {
+      "type": "PATTERN",
+      "value": "\\\\[\\\\nrt'0]"
     }
   },
   "extras": [
