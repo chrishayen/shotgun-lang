@@ -814,14 +814,20 @@ Parser :: parse_postfix(self) Expr {
             member := self.get_ident()
             self.advance()
             expr = Expr.EMember { expr: expr, member: member }
-        } else if self.is_lparen() {
-            // Function call: expr(args)
+            continue
+        }
+
+        // Function call: expr(args)
+        if self.is_lparen() {
             self.advance()
             args := self.parse_args()
             self.expect_rparen()
             expr = Expr.ECall { callee: expr, type_args: [], args: args }
-        } else if self.is_coloncolon() {
-            // Generic call: expr::<T>(args)
+            continue
+        }
+
+        // Generic call: expr::<T>(args)
+        if self.is_coloncolon() {
             self.advance()
             if self.is_lt() {
                 self.advance()
@@ -837,15 +843,19 @@ Parser :: parse_postfix(self) Expr {
                 self.expect_rparen()
                 expr = Expr.ECall { callee: expr, type_args: type_args, args: args }
             }
-        } else if self.is_lbracket() {
-            // Index: expr[index]
+            continue
+        }
+
+        // Index: expr[index]
+        if self.is_lbracket() {
             self.advance()
             index := self.parse_expr()
             self.expect_rbracket()
             expr = Expr.EIndex { expr: expr, index: index }
-        } else {
-            break
+            continue
         }
+
+        break
     }
 
     return expr
@@ -891,17 +901,21 @@ Parser :: parse_mul(self) Expr {
             self.advance()
             right := self.parse_unary()
             left = Expr.EBinary { op: Binop.Mul{}, left: left, right: right }
-        } else if self.is_slash() {
+            continue
+        }
+        if self.is_slash() {
             self.advance()
             right := self.parse_unary()
             left = Expr.EBinary { op: Binop.Div{}, left: left, right: right }
-        } else if self.is_percent() {
+            continue
+        }
+        if self.is_percent() {
             self.advance()
             right := self.parse_unary()
             left = Expr.EBinary { op: Binop.Mod{}, left: left, right: right }
-        } else {
-            break
+            continue
         }
+        break
     }
 
     return left
@@ -916,13 +930,15 @@ Parser :: parse_add(self) Expr {
             self.advance()
             right := self.parse_mul()
             left = Expr.EBinary { op: Binop.Add{}, left: left, right: right }
-        } else if self.is_minus() {
+            continue
+        }
+        if self.is_minus() {
             self.advance()
             right := self.parse_mul()
             left = Expr.EBinary { op: Binop.Sub{}, left: left, right: right }
-        } else {
-            break
+            continue
         }
+        break
     }
 
     return left
@@ -937,33 +953,45 @@ Parser :: parse_cmp(self) Expr {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Eq{}, left: left, right: right }
-        } else if self.is_neq() {
+            continue
+        }
+        if self.is_neq() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Neq{}, left: left, right: right }
-        } else if self.is_lt() {
+            continue
+        }
+        if self.is_lt() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Lt{}, left: left, right: right }
-        } else if self.is_gt() {
+            continue
+        }
+        if self.is_gt() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Gt{}, left: left, right: right }
-        } else if self.is_lte() {
+            continue
+        }
+        if self.is_lte() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Lte{}, left: left, right: right }
-        } else if self.is_gte() {
+            continue
+        }
+        if self.is_gte() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Gte{}, left: left, right: right }
-        } else if self.is_keyword("in") {
+            continue
+        }
+        if self.is_keyword("in") {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.In{}, left: left, right: right }
-        } else {
-            break
+            continue
         }
+        break
     }
 
     return left
@@ -1574,19 +1602,23 @@ Parser :: continue_postfix(self, Expr expr) Expr {
             member := self.get_ident()
             self.advance()
             expr = Expr.EMember { expr: expr, member: member }
-        } else if self.is_lparen() {
+            continue
+        }
+        if self.is_lparen() {
             self.advance()
             args := self.parse_args()
             self.expect_rparen()
             expr = Expr.ECall { callee: expr, type_args: [], args: args }
-        } else if self.is_lbracket() {
+            continue
+        }
+        if self.is_lbracket() {
             self.advance()
             index := self.parse_expr()
             self.expect_rbracket()
             expr = Expr.EIndex { expr: expr, index: index }
-        } else {
-            break
+            continue
         }
+        break
     }
     return expr
 }
@@ -1609,17 +1641,21 @@ Parser :: continue_mul(self, Expr left) Expr {
             self.advance()
             right := self.parse_unary()
             left = Expr.EBinary { op: Binop.Mul{}, left: left, right: right }
-        } else if self.is_slash() {
+            continue
+        }
+        if self.is_slash() {
             self.advance()
             right := self.parse_unary()
             left = Expr.EBinary { op: Binop.Div{}, left: left, right: right }
-        } else if self.is_percent() {
+            continue
+        }
+        if self.is_percent() {
             self.advance()
             right := self.parse_unary()
             left = Expr.EBinary { op: Binop.Mod{}, left: left, right: right }
-        } else {
-            break
+            continue
         }
+        break
     }
     return left
 }
@@ -1630,13 +1666,15 @@ Parser :: continue_add(self, Expr left) Expr {
             self.advance()
             right := self.parse_mul()
             left = Expr.EBinary { op: Binop.Add{}, left: left, right: right }
-        } else if self.is_minus() {
+            continue
+        }
+        if self.is_minus() {
             self.advance()
             right := self.parse_mul()
             left = Expr.EBinary { op: Binop.Sub{}, left: left, right: right }
-        } else {
-            break
+            continue
         }
+        break
     }
     return left
 }
@@ -1647,33 +1685,45 @@ Parser :: continue_cmp(self, Expr left) Expr {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Eq{}, left: left, right: right }
-        } else if self.is_neq() {
+            continue
+        }
+        if self.is_neq() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Neq{}, left: left, right: right }
-        } else if self.is_lt() {
+            continue
+        }
+        if self.is_lt() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Lt{}, left: left, right: right }
-        } else if self.is_gt() {
+            continue
+        }
+        if self.is_gt() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Gt{}, left: left, right: right }
-        } else if self.is_lte() {
+            continue
+        }
+        if self.is_lte() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Lte{}, left: left, right: right }
-        } else if self.is_gte() {
+            continue
+        }
+        if self.is_gte() {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.Gte{}, left: left, right: right }
-        } else if self.is_keyword("in") {
+            continue
+        }
+        if self.is_keyword("in") {
             self.advance()
             right := self.parse_add()
             left = Expr.EBinary { op: Binop.In{}, left: left, right: right }
-        } else {
-            break
+            continue
         }
+        break
     }
     return left
 }
@@ -2120,36 +2170,49 @@ fn parse_string_parts(str s) StringPart[] {
     while i < s.len() {
         ch := s.at(i)
 
-        if ch == 92 {  // backslash
-            if i + 1 < s.len() {
-                next := s.at(i + 1)
-                if next == 110 {
-                    current = current + "\n"
-                    i = i + 2
-                } else if next == 114 {
-                    current = current + "\r"
-                    i = i + 2
-                } else if next == 116 {
-                    current = current + "\t"
-                    i = i + 2
-                } else if next == 92 {
-                    current = current + "\\"
-                    i = i + 2
-                } else if next == 34 {
-                    current = current + "\""
-                    i = i + 2
-                } else if next == 123 {
-                    current = current + "{"
-                    i = i + 2
-                } else {
-                    current = current + chr(ch).to_string()
-                    i = i + 1
-                }
-            } else {
-                current = current + chr(ch).to_string()
+        if ch == '\\' {
+            if i + 1 >= s.len() {
+                current = current + ch.to_string()
                 i = i + 1
+                continue
             }
-        } else if ch == 123 {  // {
+            next := s.at(i + 1)
+            if next == 'n' {
+                current = current + "\n"
+                i = i + 2
+                continue
+            }
+            if next == 'r' {
+                current = current + "\r"
+                i = i + 2
+                continue
+            }
+            if next == 't' {
+                current = current + "\t"
+                i = i + 2
+                continue
+            }
+            if next == '\\' {
+                current = current + "\\"
+                i = i + 2
+                continue
+            }
+            if next == '"' {
+                current = current + "\""
+                i = i + 2
+                continue
+            }
+            if next == '{' {
+                current = current + "{"
+                i = i + 2
+                continue
+            }
+            current = current + ch.to_string()
+            i = i + 1
+            continue
+        }
+
+        if ch == '{' {
             if current.len() > 0 {
                 parts.push(StringPart.SLiteral { value: current })
                 current = ""
@@ -2160,22 +2223,23 @@ fn parse_string_parts(str s) StringPart[] {
             depth := 1
             while i < s.len() && depth > 0 {
                 c := s.at(i)
-                if c == 123 {
+                if c == '{' {
                     depth = depth + 1
-                } else if c == 125 {
+                } else if c == '}' {
                     depth = depth - 1
                 }
                 if depth > 0 {
-                    interp = interp + chr(c).to_string()
+                    interp = interp + c.to_string()
                 }
                 i = i + 1
             }
 
             parts.push(StringPart.SInterp { expr: parse_interp_expr(interp) })
-        } else {
-            current = current + chr(ch).to_string()
-            i = i + 1
+            continue
         }
+
+        current = current + ch.to_string()
+        i = i + 1
     }
 
     if current.len() > 0 {
