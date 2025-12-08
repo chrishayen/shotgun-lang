@@ -701,7 +701,7 @@ x -= <span class="nu">1</span>   <span class="cm">// subtract and assign</span>
 x *= <span class="nu">2</span>   <span class="cm">// multiply and assign</span>
 x /= <span class="nu">2</span>   <span class="cm">// divide and assign</span></code></pre>
 
-        <h2>Imports</h2>
+        <h2>Packages and Imports</h2>
 
         <h3>Project Configuration</h3>
 
@@ -713,45 +713,82 @@ x /= <span class="nu">2</span>   <span class="cm">// divide and assign</span></c
 
         <pre><code>shotgun init myapp</code></pre>
 
-        <h3>The uses Statement</h3>
+        <h3>Package Model</h3>
 
-        <p>Import modules with <code>uses:</code> - short form for a few imports:</p>
-
-        <pre><code><span class="kw">uses:</span> std.io, std.json</code></pre>
-
-        <p>Or long form with dashes for many imports:</p>
-
-        <pre><code><span class="kw">uses:</span>
-  - std.io
-  - std.json
-  - myapp.utils</code></pre>
-
-        <p>The last segment becomes the namespace:</p>
-
-        <pre><code><span class="kw">uses:</span> myapp.helpers.string_utils
-
-<span class="kw">fn</span> <span class="fn">main</span> {
-    result := string_utils.<span class="fn">uppercase</span>(<span class="st">"hello"</span>)
-}</code></pre>
-
-        <h3>File Resolution</h3>
-
-        <p>Import paths map to files:</p>
+        <p>shotgun uses a Go-style package system:</p>
 
         <ul>
-            <li><code>myapp.utils</code> resolves to <code>./utils.bs</code></li>
-            <li><code>myapp.db.conn</code> resolves to <code>./db/conn.bs</code></li>
-            <li>Alternatively: <code>./db/conn/mod.bs</code></li>
+            <li><strong>Directory = Package</strong>: Each directory is a package named after the directory</li>
+            <li><strong>Files merge</strong>: All <code>.bs</code> files in a directory combine into one namespace</li>
+            <li><strong>No imports within package</strong>: Files in the same directory can use each other's symbols directly</li>
         </ul>
 
         <h3>Example Project Structure</h3>
 
         <pre><code>myapp/
   shotgun.toml       <span class="cm"># name = "myapp"</span>
-  main.bs
-  utils.bs           <span class="cm"># import as myapp.utils</span>
-  db/
-    conn.bs          <span class="cm"># import as myapp.db.conn</span></code></pre>
+  main.bs            <span class="cm"># root package</span>
+  helpers.bs         <span class="cm"># merges with main.bs (same directory)</span>
+  parser/
+    lexer.bs         <span class="cm"># "parser" package</span>
+    grammar.bs       <span class="cm"># merges into "parser"</span>
+    ast.bs           <span class="cm"># merges into "parser"</span>
+  codegen/
+    emit.bs          <span class="cm"># "codegen" package</span></code></pre>
+
+        <p>In this structure, <code>main.bs</code> and <code>helpers.bs</code> share a namespace. Functions defined in <code>helpers.bs</code> can be called directly from <code>main.bs</code> without any import.</p>
+
+        <h3>The uses Statement</h3>
+
+        <p>Import other packages with <code>uses:</code> - short form for a few imports:</p>
+
+        <pre><code><span class="kw">uses:</span> parser, codegen</code></pre>
+
+        <p>Or long form with dashes for many imports:</p>
+
+        <pre><code><span class="kw">uses:</span>
+  - parser
+  - codegen
+  - myapp.utils</code></pre>
+
+        <p>Imported symbols are available directly (unqualified access):</p>
+
+        <pre><code><span class="kw">uses:</span> parser
+
+<span class="kw">fn</span> <span class="fn">main</span> {
+    <span class="cm">// Call function from parser package directly</span>
+    tokens := <span class="fn">tokenize</span>(source)
+    ast := <span class="fn">parse</span>(tokens)
+}</code></pre>
+
+        <h3>Package Resolution</h3>
+
+        <p>Import paths map to directories:</p>
+
+        <ul>
+            <li><code>parser</code> resolves to <code>./parser/</code> (all .bs files)</li>
+            <li><code>myapp.utils</code> resolves to <code>./utils/</code></li>
+            <li><code>myapp.db.conn</code> resolves to <code>./db/conn/</code></li>
+        </ul>
+
+        <h3>Within a Package</h3>
+
+        <p>Files in the same directory share everything - no imports needed:</p>
+
+        <pre><code><span class="cm">// helpers.bs</span>
+<span class="kw">fn</span> <span class="fn">helper_add</span>(<span class="ty">int</span> a, <span class="ty">int</span> b) <span class="ty">int</span> {
+    <span class="kw">return</span> a + b
+}
+
+<span class="ty">Config</span> <span class="kw">::</span> <span class="kw">struct</span> {
+    debug <span class="ty">bool</span>
+}
+
+<span class="cm">// main.bs (same directory - no import needed)</span>
+<span class="kw">fn</span> <span class="fn">main</span> {
+    x := <span class="fn">helper_add</span>(<span class="nu">10</span>, <span class="nu">20</span>)  <span class="cm">// defined in helpers.bs</span>
+    cfg := <span class="ty">Config</span> { debug: <span class="kw">true</span> }
+}</code></pre>
 
         <h2>Memory Management</h2>
 

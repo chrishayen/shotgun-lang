@@ -76,21 +76,22 @@ let cmd_parse filename =
     exit 0
 
 let cmd_check filename =
-  match parse_file filename with
-  | Error e ->
-    prerr_endline e;
-    exit 1
-  | Ok ast ->
-    let abs_filename = if Filename.is_relative filename then
-      Filename.concat (Sys.getcwd ()) filename
-    else filename in
-    let cache = Resolver.create_cache () in
-    Hashtbl.replace cache.parsed abs_filename ast;
-    (* Check for project config for multi-file support *)
-    let config = try_load_config filename in
-    let warnings = match config with
-      | None ->
-        (* No config - use relative import resolution *)
+  let abs_filename = if Filename.is_relative filename then
+    Filename.concat (Sys.getcwd ()) filename
+  else filename in
+  let pkg_dir = Filename.dirname abs_filename in
+  let cache = Resolver.create_cache () in
+  (* Check for project config for multi-file support *)
+  let config = try_load_config filename in
+  let warnings = match config with
+    | None ->
+      (* No config - use relative import resolution with single file *)
+      (match parse_file filename with
+      | Error e ->
+        prerr_endline e;
+        exit 1
+      | Ok ast ->
+        Hashtbl.replace cache.parsed abs_filename ast;
         let resolve_errors = Resolver.resolve_imports_relative cache abs_filename ast in
         List.iter (fun e -> prerr_endline e) resolve_errors;
         if resolve_errors <> [] then exit 1;
@@ -99,113 +100,130 @@ let cmd_check filename =
           List.iter prerr_endline warnings;
           exit 1
         end;
-        warnings
-      | Some cfg ->
-        (* Multi-file mode with project config *)
-        let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
+        warnings)
+    | Some cfg ->
+      (* Package mode - load all .bs files in TARGET FILE's directory (not project root) *)
+      (match Resolver.load_package_from_dir cache pkg_dir with
+      | Error e ->
+        prerr_endline e;
+        exit 1
+      | Ok ast ->
+        let resolve_errors = Resolver.resolve_package_imports cache cfg pkg_dir ast in
         List.iter (fun e -> prerr_endline e) resolve_errors;
         if resolve_errors <> [] then exit 1;
-        let (_env, warnings) = Resolver.analyze_with_imports cfg cache ast in
+        let (_env, warnings) = Resolver.analyze_package_with_imports cfg cache pkg_dir ast in
         if List.exists (fun w -> not (String.starts_with ~prefix:"Warning" w)) warnings then begin
           List.iter prerr_endline warnings;
           exit 1
         end;
-        warnings
-    in
-    List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
-    print_endline "OK";
-    exit 0
+        warnings)
+  in
+  List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
+  print_endline "OK";
+  exit 0
 
 let cmd_emit_c filename =
-  match parse_file filename with
-  | Error e ->
-    prerr_endline e;
-    exit 1
-  | Ok ast ->
-    let abs_filename = if Filename.is_relative filename then
-      Filename.concat (Sys.getcwd ()) filename
-    else filename in
-    let cache = Resolver.create_cache () in
-    Hashtbl.replace cache.parsed abs_filename ast;
-    (* Check for project config for multi-file support *)
-    let config = try_load_config filename in
-    let (env, warnings, all_items) = match config with
-      | None ->
-        (* No config - use relative import resolution *)
+  let abs_filename = if Filename.is_relative filename then
+    Filename.concat (Sys.getcwd ()) filename
+  else filename in
+  let pkg_dir = Filename.dirname abs_filename in
+  let cache = Resolver.create_cache () in
+  (* Check for project config for multi-file support *)
+  let config = try_load_config filename in
+  let (env, warnings, all_items) = match config with
+    | None ->
+      (* No config - use relative import resolution with single file *)
+      (match parse_file filename with
+      | Error e ->
+        prerr_endline e;
+        exit 1
+      | Ok ast ->
+        Hashtbl.replace cache.parsed abs_filename ast;
         let resolve_errors = Resolver.resolve_imports_relative cache abs_filename ast in
         List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
         if resolve_errors <> [] then exit 1;
         let (env, warnings) = Resolver.analyze_with_imports_relative cache abs_filename ast in
         let all_items = Resolver.collect_all_items_relative cache abs_filename ast in
-        (env, warnings, all_items)
-      | Some cfg ->
-        (* Multi-file mode with project config *)
-        let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
+        (env, warnings, all_items))
+    | Some cfg ->
+      (* Package mode - load all .bs files in TARGET FILE's directory (not project root) *)
+      (match Resolver.load_package_from_dir cache pkg_dir with
+      | Error e ->
+        prerr_endline e;
+        exit 1
+      | Ok ast ->
+        let resolve_errors = Resolver.resolve_package_imports cache cfg pkg_dir ast in
         List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
         if resolve_errors <> [] then exit 1;
-        let (env, warnings) = Resolver.analyze_with_imports cfg cache ast in
-        let all_items = Resolver.collect_all_items cache cfg ast in
-        (env, warnings, all_items)
-    in
-    List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
-    let c_code = emit_c env all_items in
-    print_string c_code;
-    exit 0
+        let (env, warnings) = Resolver.analyze_package_with_imports cfg cache pkg_dir ast in
+        let all_items = Resolver.collect_package_items cache cfg ast in
+        (env, warnings, all_items))
+  in
+  List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
+  let c_code = emit_c env all_items in
+  print_string c_code;
+  exit 0
 
 let cmd_build filename output_opt =
-  match parse_file filename with
-  | Error e ->
-    prerr_endline e;
-    exit 1
-  | Ok ast ->
-    let abs_filename = if Filename.is_relative filename then
-      Filename.concat (Sys.getcwd ()) filename
-    else filename in
-    let cache = Resolver.create_cache () in
-    Hashtbl.replace cache.parsed abs_filename ast;
-    (* Check for project config for multi-file support *)
-    let config = try_load_config filename in
-    let (env, warnings, all_items) = match config with
-      | None ->
-        (* No config - use relative import resolution *)
+  let abs_filename = if Filename.is_relative filename then
+    Filename.concat (Sys.getcwd ()) filename
+  else filename in
+  let pkg_dir = Filename.dirname abs_filename in
+  let cache = Resolver.create_cache () in
+  (* Check for project config for multi-file support *)
+  let config = try_load_config filename in
+  let (env, warnings, all_items, base) = match config with
+    | None ->
+      (* No config - use relative import resolution with single file *)
+      (match parse_file filename with
+      | Error e ->
+        prerr_endline e;
+        exit 1
+      | Ok ast ->
+        Hashtbl.replace cache.parsed abs_filename ast;
         let resolve_errors = Resolver.resolve_imports_relative cache abs_filename ast in
         List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
         if resolve_errors <> [] then exit 1;
         let (env, warnings) = Resolver.analyze_with_imports_relative cache abs_filename ast in
         let all_items = Resolver.collect_all_items_relative cache abs_filename ast in
-        (env, warnings, all_items)
-      | Some cfg ->
-        (* Multi-file mode with project config *)
-        let resolve_errors = Resolver.resolve_imports cache cfg abs_filename ast in
+        (env, warnings, all_items, basename_no_ext filename))
+    | Some cfg ->
+      (* Package mode - load all .bs files in TARGET FILE's directory (not project root) *)
+      (match Resolver.load_package_from_dir cache pkg_dir with
+      | Error e ->
+        prerr_endline e;
+        exit 1
+      | Ok ast ->
+        let resolve_errors = Resolver.resolve_package_imports cache cfg pkg_dir ast in
         List.iter (fun e -> prerr_endline ("Error: " ^ e)) resolve_errors;
         if resolve_errors <> [] then exit 1;
-        let (env, warnings) = Resolver.analyze_with_imports cfg cache ast in
-        let all_items = Resolver.collect_all_items cache cfg ast in
-        (env, warnings, all_items)
-    in
-    List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
-    let c_code = emit_c env all_items in
-    let base = basename_no_ext filename in
-    let c_file = base ^ ".c" in
-    let output = match output_opt with
-      | Some o -> o
-      | None -> base
-    in
-    (* Write C file *)
-    let oc = open_out c_file in
-    output_string oc c_code;
-    close_out oc;
-    (* Compile *)
-    let result = compile_c c_file output in
-    (* Clean up C file *)
-    Sys.remove c_file;
-    match result with
-    | Error e ->
-      prerr_endline e;
-      exit 1
-    | Ok () ->
-      Printf.printf "Built %s\n" output;
-      exit 0
+        let (env, warnings) = Resolver.analyze_package_with_imports cfg cache pkg_dir ast in
+        let all_items = Resolver.collect_package_items cache cfg ast in
+        (* Use project name as output name *)
+        (env, warnings, all_items, cfg.name))
+  in
+  List.iter (fun w -> prerr_endline ("Warning: " ^ w)) warnings;
+  let c_code = emit_c env all_items in
+  let c_file = base ^ ".c" in
+  let output = match output_opt with
+    | Some o -> o
+    | None -> base
+  in
+  (* Write C file *)
+  let oc = open_out c_file in
+  output_string oc c_code;
+  close_out oc;
+  (* Compile *)
+  let result = compile_c c_file output in
+  (* Clean up C file *)
+  Sys.remove c_file;
+  match result with
+  | Error e ->
+    prerr_endline e;
+    exit 1
+  | Ok () ->
+    Printf.printf "Built %s\n" output;
+    exit 0
 
 let cmd_init name =
   (* Create shotgun.toml *)

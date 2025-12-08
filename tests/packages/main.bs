@@ -1,0 +1,20 @@
+uses: utils
+
+fn main {
+    // Test calling function from same package (helpers.bs)
+    int x = helper_add(10, 20)
+    print(x)
+
+    // Test calling function from utils package (math.bs)
+    // Currently uses unqualified access - all imports are merged directly
+    int y = twice(5)
+    print(y)
+
+    // Test calling function from utils package (strings.bs)
+    str s = greet("World")
+    print(s)
+
+    // Test struct from same package (helpers.bs)
+    Config cfg = Config { debug: true }
+    print(cfg.debug)
+}

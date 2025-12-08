@@ -3,10 +3,6 @@
 // Recursive descent parser that consumes tokens from the lexer
 // and produces an AST.
 
-uses: shotgun.lexer
-uses: shotgun.token
-uses: shotgun.ast
-
 // Parser state
 Parser :: struct {
     lexer Lexer

@@ -1,5 +1,4 @@
 // Struct tests
-uses: bootstrap.test
 
 Person :: struct {
     name str

@@ -1,5 +1,4 @@
 // Variant tests
-uses: bootstrap.test
 
 Option :: variant {
     Some { value int }

@@ -1,4 +1,4 @@
-uses: testpkg.utils
+uses: utils
 
 fn main {
     int result = add(1, 2)

@@ -3,8 +3,6 @@
 // The lexer reads source code character by character and produces tokens.
 // It handles whitespace, comments, string interpolation, and multi-character operators.
 
-uses: shotgun.token
-
 // Lexer state
 Lexer :: struct {
     source str

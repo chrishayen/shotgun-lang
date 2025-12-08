@@ -2,14 +2,16 @@
 
 open Ast
 
-(* Cache for parsed and analyzed modules *)
+(* Cache for parsed and analyzed packages (directories) and individual files *)
 type module_cache = {
-  parsed: (string, program) Hashtbl.t;
-  envs: (string, Semantic.env) Hashtbl.t;
+  parsed: (string, program) Hashtbl.t;      (* file path -> AST *)
+  packages: (string, program) Hashtbl.t;    (* package dir -> merged AST *)
+  envs: (string, Semantic.env) Hashtbl.t;   (* package dir -> env *)
 }
 
 let create_cache () = {
   parsed = Hashtbl.create 16;
+  packages = Hashtbl.create 16;
   envs = Hashtbl.create 16;
 }
 
@@ -34,6 +36,20 @@ let parse_file filename =
     let pos = lexbuf.Lexing.lex_curr_p in
     Error (Printf.sprintf "Parse error at %s:%d:%d"
              pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol))
+
+(* Parse all files in a package directory and merge into one AST *)
+let parse_package _pkg_dir files =
+  let all_items = ref [] in
+  let errors = ref [] in
+  List.iter (fun file ->
+    match parse_file file with
+    | Error e -> errors := e :: !errors
+    | Ok items -> all_items := !all_items @ items
+  ) files;
+  if !errors <> [] then
+    Error (String.concat "\n" (List.rev !errors))
+  else
+    Ok !all_items
 
 (* Extract uses from a program *)
 let get_uses program =
@@ -314,3 +330,174 @@ let collect_all_items_relative cache current_file program =
     !imported_items @ this_items
   in
   collect current_file program
+
+(* === Package-based resolution (Go-style) === *)
+
+(* Load a package and all its files into the cache *)
+let load_package cache pkg_dir files =
+  if Hashtbl.mem cache.packages pkg_dir then
+    Ok (Hashtbl.find cache.packages pkg_dir)
+  else
+    match parse_package pkg_dir files with
+    | Error e -> Error e
+    | Ok merged_ast ->
+      Hashtbl.replace cache.packages pkg_dir merged_ast;
+      Ok merged_ast
+
+(* Resolve and load all package imports recursively *)
+let rec resolve_package_imports cache config current_pkg program =
+  let uses = get_uses program in
+  let errors = ref [] in
+
+  List.iter (fun import_path ->
+    match Config.resolve_import_to_package config import_path with
+    | None ->
+      (* Fall back to single-file resolution for backward compatibility *)
+      (match Config.resolve_import config import_path with
+      | None ->
+        let path_str = String.concat "." import_path in
+        errors := Printf.sprintf "Cannot resolve import: %s" path_str :: !errors
+      | Some resolved_path ->
+        if not (Hashtbl.mem cache.parsed resolved_path) then begin
+          if resolved_path = current_pkg then
+            errors := Printf.sprintf "Circular import: %s" resolved_path :: !errors
+          else begin
+            match parse_file resolved_path with
+            | Error e -> errors := e :: !errors
+            | Ok imported_program ->
+              Hashtbl.replace cache.parsed resolved_path imported_program;
+              let sub_errors = resolve_package_imports cache config resolved_path imported_program in
+              errors := sub_errors @ !errors
+          end
+        end)
+    | Some (pkg_dir, files) ->
+      if not (Hashtbl.mem cache.packages pkg_dir) then begin
+        if pkg_dir = current_pkg then
+          errors := Printf.sprintf "Circular import: %s" pkg_dir :: !errors
+        else begin
+          match load_package cache pkg_dir files with
+          | Error e -> errors := e :: !errors
+          | Ok imported_program ->
+            (* Recursively resolve imports of the imported package *)
+            let sub_errors = resolve_package_imports cache config pkg_dir imported_program in
+            errors := sub_errors @ !errors
+        end
+      end
+  ) uses;
+
+  List.rev !errors
+
+(* Analyze a package with its imports *)
+let rec analyze_package_with_imports config cache _current_pkg program =
+  let uses = get_uses program in
+  let import_errors = ref [] in
+
+  (* First analyze imported packages recursively *)
+  List.iter (fun import_path ->
+    let pkg_dir_opt = match Config.resolve_import_to_package config import_path with
+      | Some (pkg_dir, _) -> Some pkg_dir
+      | None ->
+        (* Fall back to single-file *)
+        (match Config.resolve_import config import_path with
+        | Some path -> Some path
+        | None -> None)
+    in
+    match pkg_dir_opt with
+    | None -> ()
+    | Some resolved_path ->
+      if not (Hashtbl.mem cache.envs resolved_path) then begin
+        let imported_program =
+          match Hashtbl.find_opt cache.packages resolved_path with
+          | Some p -> Some p
+          | None -> Hashtbl.find_opt cache.parsed resolved_path
+        in
+        match imported_program with
+        | None -> ()
+        | Some prog ->
+          let (env, warnings) = analyze_package_with_imports config cache resolved_path prog in
+          List.iter (fun w ->
+            import_errors := (resolved_path ^ ": " ^ w) :: !import_errors
+          ) warnings;
+          Hashtbl.replace cache.envs resolved_path env
+      end
+  ) uses;
+
+  (* Create env and pre-populate with imported symbols *)
+  let main_env = Semantic.create_env () in
+
+  (* Merge imported symbols into main env *)
+  List.iter (fun import_path ->
+    let resolved_opt = match Config.resolve_import_to_package config import_path with
+      | Some (pkg_dir, _) -> Some pkg_dir
+      | None -> Config.resolve_import config import_path
+    in
+    match resolved_opt with
+    | None -> ()
+    | Some resolved_path ->
+      match Hashtbl.find_opt cache.envs resolved_path with
+      | None -> ()
+      | Some imported_env ->
+        let namespace = match Config.namespace_of_import import_path with
+          | Some ns -> ns
+          | None -> Config.package_name_of_dir resolved_path
+        in
+        merge_env ~into:main_env ~from:imported_env ~namespace ~errors:import_errors
+  ) uses;
+
+  (* Register and check the main program items *)
+  List.iter (Semantic.register_item main_env) program;
+  List.iter (Semantic.check_item main_env) program;
+
+  let main_warnings = List.rev !(main_env.errors_list) in
+  (main_env, !import_errors @ main_warnings)
+
+(* Collect all items from a package and its imports *)
+let collect_package_items cache config program =
+  let seen_paths = Hashtbl.create 16 in
+  let rec collect program =
+    let uses = get_uses program in
+    let imported_items = ref [] in
+
+    List.iter (fun import_path ->
+      let resolved_opt = match Config.resolve_import_to_package config import_path with
+        | Some (pkg_dir, _) -> Some pkg_dir
+        | None -> Config.resolve_import config import_path
+      in
+      match resolved_opt with
+      | None -> ()
+      | Some resolved_path ->
+        if not (Hashtbl.mem seen_paths resolved_path) then begin
+          Hashtbl.add seen_paths resolved_path true;
+          let imported_program =
+            match Hashtbl.find_opt cache.packages resolved_path with
+            | Some p -> Some p
+            | None -> Hashtbl.find_opt cache.parsed resolved_path
+          in
+          match imported_program with
+          | None -> ()
+          | Some prog ->
+            let transitive_items = collect prog in
+            imported_items := transitive_items @ !imported_items
+        end
+    ) uses;
+
+    let this_items = List.filter (function IUses _ -> false | _ -> true) program in
+    !imported_items @ this_items
+  in
+  collect program
+
+(* Load the root package (all .bs files in project root) *)
+let load_root_package cache config =
+  let files = Config.find_bs_files_in_dir config.Config.root in
+  if files = [] then
+    Error "No .bs files found in project root"
+  else
+    load_package cache config.root files
+
+(* Load a package from any directory (for target file's package) *)
+let load_package_from_dir cache pkg_dir =
+  let files = Config.find_bs_files_in_dir pkg_dir in
+  if files = [] then
+    Error (Printf.sprintf "No .bs files found in %s" pkg_dir)
+  else
+    load_package cache pkg_dir files

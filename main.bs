@@ -2,8 +2,7 @@
 //
 // Parser test driver - reads a file and prints the parsed AST.
 
-uses: shotgun.parser
-uses: shotgun.ast
+uses: compiler
 
 fn main() {
     // Default test file, or could be changed to read from args

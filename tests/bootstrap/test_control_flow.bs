@@ -1,5 +1,4 @@
 // Control flow tests
-uses: bootstrap.test
 
 fn absolute(int x) int {
     if x < 0 {

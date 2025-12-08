@@ -1,0 +1,9 @@
+// String utilities - part of utils package, merges with math.bs
+
+fn greet(str name) str {
+    return "Hello, " + name + "!"
+}
+
+fn shout(str msg) str {
+    return msg + "!!!"
+}

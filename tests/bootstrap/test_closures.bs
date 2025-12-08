@@ -1,5 +1,4 @@
 // Closure tests
-uses: bootstrap.test
 
 fn apply_int(int x, fn(int) int f) int {
     return f(x)

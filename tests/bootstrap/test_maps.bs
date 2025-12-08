@@ -1,5 +1,4 @@
 // Map tests
-uses: bootstrap.test
 
 fn main {
     t := new_test()

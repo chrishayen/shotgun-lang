@@ -1,5 +1,4 @@
 // Generics tests
-uses: bootstrap.test
 
 Box<T> :: struct {
     value T

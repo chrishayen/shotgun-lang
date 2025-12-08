@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-SHOTGUN="$PROJECT_ROOT/compiler/_build/default/bin/main.exe"
+SHOTGUN="$PROJECT_ROOT/bootstrap/_build/default/bin/main.exe"
 
 # Colors for output
 RED='\033[0;31m'
@@ -147,7 +147,7 @@ done
 
 echo ""
 echo "--- Import Tests ---"
-# Test multi-file import project
+# Test multi-file import project (package style)
 if [ -d "$SCRIPT_DIR/imports" ]; then
     # Valid multi-file import
     TOTAL=$((TOTAL + 1))
@@ -158,10 +158,12 @@ if [ -d "$SCRIPT_DIR/imports" ]; then
         echo -e "${RED}[FAIL]${NC} imports/multi-file - expected to compile"
         FAILED=$((FAILED + 1))
     fi
+fi
 
-    # Unresolved import should fail
+# Unresolved import should fail (in separate directory)
+if [ -d "$SCRIPT_DIR/imports_bad" ]; then
     TOTAL=$((TOTAL + 1))
-    if (cd "$SCRIPT_DIR/imports" && "$SHOTGUN" check bad_import.bs > /dev/null 2>&1); then
+    if (cd "$SCRIPT_DIR/imports_bad" && "$SHOTGUN" check bad_import.bs > /dev/null 2>&1); then
         echo -e "${RED}[FAIL]${NC} imports/bad_import - expected to fail but compiled"
         FAILED=$((FAILED + 1))
     else

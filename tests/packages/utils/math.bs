@@ -1,0 +1,9 @@
+// Math utilities - part of utils package
+
+fn twice(int x) int {
+    return x * 2
+}
+
+fn triple(int x) int {
+    return x * 3
+}

@@ -1,0 +1,9 @@
+// Helper functions - part of root package, merges with main.bs
+
+fn helper_add(int a, int b) int {
+    return a + b
+}
+
+Config :: struct {
+    debug bool
+}
