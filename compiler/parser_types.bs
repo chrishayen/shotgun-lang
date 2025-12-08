@@ -1,0 +1,142 @@
+// Type parsing for the parser
+//
+// This file handles parsing type annotations:
+// - Built-in types: int, str, bool, char, f32, f64, u32, u64
+// - User-defined types: Person, Option, Map
+// - Generic types: Option<int>, Map<str, Person>
+// - Array types: int[], Person[]
+// - Optional types: int?, str?
+// - Channel types: chan int
+// - Function types: fn(int, str) bool
+
+// Parse a type
+// Examples:
+//   int, str, bool, char, f32, f64, u32, u64
+//   Person, Option, Map
+//   Option<int>, Map<str, Person>
+//   int[], str[], Person[]
+//   int?, str?, Person?
+//   int[]?, Option<int>[]
+//   chan int
+//   fn(int, str) bool
+Parser :: parse_type(self) Type {
+    self.skip_newlines()
+
+    // Check for built-in types (keywords)
+    if self.is_keyword("int") {
+        self.advance()
+        return self.parse_type_suffix(Type.TInt{})
+    }
+    if self.is_keyword("str") {
+        self.advance()
+        return self.parse_type_suffix(Type.TStr{})
+    }
+    if self.is_keyword("bool") {
+        self.advance()
+        return self.parse_type_suffix(Type.TBool{})
+    }
+    if self.is_keyword("char") {
+        self.advance()
+        return self.parse_type_suffix(Type.TChar{})
+    }
+    if self.is_keyword("f32") {
+        self.advance()
+        return self.parse_type_suffix(Type.TF32{})
+    }
+    if self.is_keyword("f64") {
+        self.advance()
+        return self.parse_type_suffix(Type.TF64{})
+    }
+    if self.is_keyword("u32") {
+        self.advance()
+        return self.parse_type_suffix(Type.TU32{})
+    }
+    if self.is_keyword("u64") {
+        self.advance()
+        return self.parse_type_suffix(Type.TU64{})
+    }
+    if self.is_keyword("chan") {
+        self.advance()
+        elem := self.parse_type()
+        return Type.TChan { elem: elem }
+    }
+    if self.is_keyword("fn") {
+        return self.parse_fn_type()
+    }
+
+    // User-defined type
+    if self.is_type_ident() {
+        name := self.get_type_ident()
+        self.advance()
+
+        // Check for type arguments <T, U>
+        if self.is_lt() {
+            self.advance()
+            Type[] args = []
+            args.push(self.parse_type())
+            while self.is_comma() {
+                self.advance()
+                args.push(self.parse_type())
+            }
+            self.expect_gt()
+            return self.parse_type_suffix(Type.TApply { name: name, args: args })
+        }
+
+        return self.parse_type_suffix(Type.TUser { name: name })
+    }
+
+    print("Error: expected type at {self.current.location.format()}")
+    return Type.TVoid{}
+}
+
+// Parse type suffixes: [], ?
+// Examples:
+//   int[]      (array of int)
+//   Person?    (optional Person)
+//   str[]?     (optional array of str)
+//   int[][]    (array of array of int)
+Parser :: parse_type_suffix(self, Type base) Type {
+    // Array suffix []
+    if self.is_lbracket() {
+        self.advance()
+        self.expect_rbracket()
+        return self.parse_type_suffix(Type.TArray { elem: base })
+    }
+
+    // Optional suffix ?
+    if self.is_question() {
+        self.advance()
+        return self.parse_type_suffix(Type.TOptional { inner: base })
+    }
+
+    return base
+}
+
+// Parse function type
+// Examples:
+//   fn() int
+//   fn(int) bool
+//   fn(int, str) Person
+//   fn(int x, str y)        (void return)
+Parser :: parse_fn_type(self) Type {
+    self.expect_keyword("fn")
+    self.expect_lparen()
+
+    Type[] params = []
+    if !self.is_rparen() {
+        params.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            params.push(self.parse_type())
+        }
+    }
+    self.expect_rparen()
+
+    // Optional return type
+    Type? ret = none
+    if !self.is_lbrace() && !self.is_newline() && !self.is_eof() {
+        ret = self.parse_type()
+    }
+
+    return Type.TFunc { params: params, ret: ret }
+}

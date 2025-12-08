@@ -1,0 +1,231 @@
+// Match expression and pattern parsing for the parser
+//
+// This file handles:
+// - Match expressions with multiple arms
+// - Pattern matching including wildcards, literals, bindings, tuples, and variants
+// - Variant pattern destructuring
+
+// Parse match expression
+// Examples:
+//   match x { 0 -> "zero", 1 -> "one", _ -> "other" }
+//   match opt using Option { Some { value: v } -> v, None -> 0 }
+//   match (a, b) { (0, 0) -> "origin", (x, y) -> "point" }
+//   match ch { 'a' -> 1, 'b' -> 2, _ -> 0 }
+Parser :: parse_match(self) Expr {
+    self.expect_keyword("match")
+
+    // Check for tuple match: match (a, b) { ... }
+    Expr[] exprs = []
+    if self.is_lparen() {
+        self.advance()
+        exprs.push(self.parse_expr())
+        while self.is_comma() {
+            self.advance()
+            exprs.push(self.parse_expr())
+        }
+        self.expect_rparen()
+    } else {
+        exprs.push(self.parse_expr())
+    }
+
+    // Optional 'using' clause
+    Type? using_type = none
+    if self.is_keyword("using") {
+        self.advance()
+        using_type = self.parse_type()
+    }
+
+    self.expect_lbrace()
+
+    MatchArm[] arms = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        arms.push(self.parse_match_arm())
+
+        if self.is_comma() {
+            self.advance()
+        }
+        self.skip_newlines()
+    }
+
+    self.expect_rbrace()
+
+    return Expr.EMatch { exprs: exprs, using_type: using_type, arms: arms }
+}
+
+// Parse a single match arm (pattern -> expression)
+// Examples:
+//   0 -> "zero"
+//   Some { value: v } -> v
+//   (x, y) -> x + y
+//   _ -> default_value
+Parser :: parse_match_arm(self) MatchArm {
+    pattern := self.parse_pattern()
+    self.expect_arrow()
+    expr := self.parse_expr()
+    return MatchArm { pattern: pattern, expr: expr }
+}
+
+// Parse a pattern (used in match arms)
+// Examples:
+//   _                           (wildcard)
+//   x                           (binding)
+//   42, "hello", 'c'            (literals)
+//   true, false
+//   (a, b)                      (tuple pattern)
+//   Some { value: v }           (variant pattern)
+//   Option.None                 (qualified variant)
+Parser :: parse_pattern(self) Pattern {
+    // Wildcard
+    if self.is_underscore() {
+        self.advance()
+        return Pattern.PWildcard{}
+    }
+
+    // Tuple pattern: (p1, p2)
+    if self.is_lparen() {
+        self.advance()
+        Pattern[] patterns = []
+        patterns.push(self.parse_pattern())
+        while self.is_comma() {
+            self.advance()
+            patterns.push(self.parse_pattern())
+        }
+        self.expect_rparen()
+        return Pattern.PTuple { patterns: patterns }
+    }
+
+    // Literal patterns
+    if self.is_int() {
+        value := self.get_int()
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EInt { value: value } }
+    }
+    if self.is_char() {
+        value := self.get_char()
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EChar { value: value } }
+    }
+    if self.is_string() {
+        value := self.get_string()
+        self.advance()
+        parts := parse_string_parts(value)
+        return Pattern.PLiteral { expr: Expr.EString { parts: parts } }
+    }
+    if self.is_keyword("true") {
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EBool { value: true } }
+    }
+    if self.is_keyword("false") {
+        self.advance()
+        return Pattern.PLiteral { expr: Expr.EBool { value: false } }
+    }
+
+    // Type identifier - variant pattern
+    if self.is_type_ident() {
+        return self.parse_variant_pattern()
+    }
+
+    // Simple identifier binding
+    if self.is_ident() {
+        name := self.get_ident()
+        self.advance()
+        return Pattern.PIdent { name: name }
+    }
+
+    print("Error: unexpected token in pattern at {self.current.location.format()}")
+    return Pattern.PWildcard{}
+}
+
+// Parse variant pattern
+// Examples:
+//   Some { value: v }           (with 'using' type inference)
+//   None                        (no fields)
+//   Option.Some { value: v }    (qualified)
+//   Option<int>.Some { value: v }  (with type args)
+//   Result.Ok { value: data }
+Parser :: parse_variant_pattern(self) Pattern {
+    first_name := self.get_type_ident()
+    self.advance()
+
+    // Check for type arguments: Option<int>.Some
+    Type? typ = none
+    if self.is_lt() {
+        self.advance()
+        Type[] args = []
+        args.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            args.push(self.parse_type())
+        }
+        self.expect_gt()
+        typ = Type.TApply { name: first_name, args: args }
+
+        self.expect_dot()
+        variant_name := self.get_type_ident()
+        self.advance()
+
+        bindings := self.parse_pattern_bindings()
+        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
+    }
+
+    // Check for qualified: Enum.Variant
+    if self.is_dot() {
+        self.advance()
+        variant_name := self.get_type_ident()
+        self.advance()
+
+        typ = Type.TUser { name: first_name }
+        bindings := self.parse_pattern_bindings()
+        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
+    }
+
+    // Unqualified variant (with 'using')
+    bindings := self.parse_pattern_bindings()
+    return Pattern.PVariant { typ: none, variant_name: first_name, bindings: bindings }
+}
+
+// Parse pattern bindings (field destructuring in variant patterns)
+// Examples:
+//   { value: v }
+//   { name: n, age: a }
+//   { left: l, right: r, data: d }
+Parser :: parse_pattern_bindings(self) PatternBinding[] {
+    PatternBinding[] bindings = []
+
+    if self.is_lbrace() {
+        self.advance()
+        self.skip_newlines()
+
+        if !self.is_rbrace() {
+            bindings.push(self.parse_pattern_binding())
+            while self.is_comma() {
+                self.advance()
+                self.skip_newlines()
+                if self.is_rbrace() {
+                    break
+                }
+                bindings.push(self.parse_pattern_binding())
+            }
+        }
+        self.skip_newlines()
+        self.expect_rbrace()
+    }
+
+    return bindings
+}
+
+// Parse a single pattern binding (field_name: binding_name)
+// Examples:
+//   value: v
+//   name: n
+//   left: leftNode
+Parser :: parse_pattern_binding(self) PatternBinding {
+    field_name := self.get_ident()
+    self.advance()
+    self.expect_colon()
+    binding_name := self.get_ident()
+    self.advance()
+    return PatternBinding { field_name: field_name, binding_name: binding_name }
+}

@@ -8,7 +8,7 @@ build:
 
 test: build
 	$(OPAM_ENV) cd bootstrap && dune test
-	./tests/run_tests.sh
+	./run_tests.sh
 
 clean:
 	cd bootstrap && dune clean

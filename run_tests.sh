@@ -1,11 +1,12 @@
 #!/bin/bash
-# Shotgun Compiler Sanity Tests
-# Run from project root: ./tests/run_tests.sh
+# Shotgun Compiler Tests
+# Run from project root: ./run_tests.sh
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TESTS_DIR="$PROJECT_ROOT/tests"
+BOOTSTRAP_TESTS_DIR="$PROJECT_ROOT/bootstrap_tests"
 SHOTGUN="$PROJECT_ROOT/bootstrap/_build/default/bin/main.exe"
 
 # Colors for output
@@ -50,108 +51,104 @@ test_error() {
 }
 
 echo "========================================"
-echo "Shotgun Compiler Sanity Tests"
+echo "Shotgun Compiler Tests"
 echo "========================================"
 echo ""
 
 # Check if compiler exists
 if [ ! -f "$SHOTGUN" ]; then
     echo -e "${RED}Error: Compiler not found at $SHOTGUN${NC}"
-    echo "Run 'dune build' in compiler/ first"
+    echo "Run 'make build' first"
     exit 1
 fi
 
-# Run valid tests
+echo "========================================"
+echo "Language Tests (tests/)"
+echo "========================================"
+echo ""
+
 echo "--- Basic Tests ---"
-for f in "$SCRIPT_DIR"/basic/*.bs; do
+for f in "$TESTS_DIR"/basic/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Struct Tests ---"
-for f in "$SCRIPT_DIR"/structs/*.bs; do
+for f in "$TESTS_DIR"/structs/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Function Tests ---"
-for f in "$SCRIPT_DIR"/functions/*.bs; do
+for f in "$TESTS_DIR"/functions/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Method Tests ---"
-for f in "$SCRIPT_DIR"/methods/*.bs; do
+for f in "$TESTS_DIR"/methods/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Trait Tests ---"
-for f in "$SCRIPT_DIR"/traits/*.bs; do
+for f in "$TESTS_DIR"/traits/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Variant Tests ---"
-for f in "$SCRIPT_DIR"/variants/*.bs; do
+for f in "$TESTS_DIR"/variants/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Control Flow Tests ---"
-for f in "$SCRIPT_DIR"/control_flow/*.bs; do
+for f in "$TESTS_DIR"/control_flow/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Generics Tests ---"
-for f in "$SCRIPT_DIR"/generics/*.bs; do
+for f in "$TESTS_DIR"/generics/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Map Tests ---"
-for f in "$SCRIPT_DIR"/maps/*.bs; do
+for f in "$TESTS_DIR"/maps/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Recursive Type Tests ---"
-for f in "$SCRIPT_DIR"/recursive/*.bs; do
+for f in "$TESTS_DIR"/recursive/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Closure Tests ---"
-for f in "$SCRIPT_DIR"/closures/*.bs; do
+for f in "$TESTS_DIR"/closures/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Array Tests ---"
-for f in "$SCRIPT_DIR"/arrays/*.bs; do
-    [ -f "$f" ] && test_valid "$f"
-done
-
-echo ""
-echo "--- Bootstrap Tests ---"
-for f in "$SCRIPT_DIR"/bootstrap/*.bs; do
+for f in "$TESTS_DIR"/arrays/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
 echo ""
 echo "--- Error Tests (should fail) ---"
-for f in "$SCRIPT_DIR"/errors/*.bs; do
+for f in "$TESTS_DIR"/errors/*.bs; do
     [ -f "$f" ] && test_error "$f"
 done
 
 echo ""
 echo "--- Import Tests ---"
-# Test multi-file import project (package style)
-if [ -d "$SCRIPT_DIR/imports" ]; then
-    # Valid multi-file import
+if [ -d "$TESTS_DIR/imports" ]; then
     TOTAL=$((TOTAL + 1))
-    if (cd "$SCRIPT_DIR/imports" && "$SHOTGUN" check main.bs > /dev/null 2>&1); then
+    if (cd "$TESTS_DIR/imports" && "$SHOTGUN" check main.bs > /dev/null 2>&1); then
         echo -e "${GREEN}[PASS]${NC} imports/multi-file"
         PASSED=$((PASSED + 1))
     else
@@ -160,10 +157,9 @@ if [ -d "$SCRIPT_DIR/imports" ]; then
     fi
 fi
 
-# Unresolved import should fail (in separate directory)
-if [ -d "$SCRIPT_DIR/imports_bad" ]; then
+if [ -d "$TESTS_DIR/imports_bad" ]; then
     TOTAL=$((TOTAL + 1))
-    if (cd "$SCRIPT_DIR/imports_bad" && "$SHOTGUN" check bad_import.bs > /dev/null 2>&1); then
+    if (cd "$TESTS_DIR/imports_bad" && "$SHOTGUN" check bad_import.bs > /dev/null 2>&1); then
         echo -e "${RED}[FAIL]${NC} imports/bad_import - expected to fail but compiled"
         FAILED=$((FAILED + 1))
     else
@@ -171,6 +167,17 @@ if [ -d "$SCRIPT_DIR/imports_bad" ]; then
         PASSED=$((PASSED + 1))
     fi
 fi
+
+echo ""
+echo "========================================"
+echo "Bootstrap Compiler Tests (bootstrap_tests/)"
+echo "========================================"
+echo ""
+
+echo "--- Bootstrap Shotgun Tests ---"
+for f in "$BOOTSTRAP_TESTS_DIR"/*.bs; do
+    [ -f "$f" ] && test_valid "$f"
+done
 
 echo ""
 echo "========================================"

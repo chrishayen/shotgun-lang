@@ -1,0 +1,384 @@
+// Statement parsing for the parser
+//
+// This file handles:
+// - Block parsing
+// - All statement types (var decl, return, if, for, while, go, expr)
+// - Anonymous function parsing
+// - Parameter parsing
+
+// Parse anonymous function
+// Examples:
+//   fn(int x) int { return x * 2 }
+//   fn(str s) { print(s) }
+//   fn() bool { return true }
+//   fn(int a, int b) int { return a + b }
+Parser :: parse_anon_fn(self) Expr {
+    self.expect_keyword("fn")
+    self.expect_lparen()
+
+    params := self.parse_params()
+    self.expect_rparen()
+
+    // Optional return type
+    Type? ret = none
+    if !self.is_lbrace() {
+        ret = self.parse_type()
+    }
+
+    body := self.parse_block()
+
+    str[] captures = []
+    return Expr.EAnonFn { params: params, ret: ret, body: body, captures: captures }
+}
+
+// Parse parameter list (comma-separated)
+// Examples:
+//   ()
+//   (self)
+//   (int x)
+//   (int x, str y)
+//   (self, int n)
+//   (Type a, Type b, Type c)
+Parser :: parse_params(self) Param[] {
+    Param[] params = []
+
+    if self.is_rparen() {
+        return params
+    }
+
+    params.push(self.parse_param())
+    while self.is_comma() {
+        self.advance()
+        params.push(self.parse_param())
+    }
+
+    return params
+}
+
+// Parse a single parameter
+// Examples:
+//   self
+//   int x
+//   str name
+//   Person[] people
+//   Option<int> maybe
+Parser :: parse_param(self) Param {
+    if self.is_keyword("self") {
+        self.advance()
+        return Param.PSelf{}
+    }
+
+    typ := self.parse_type()
+    name := self.get_ident()
+    self.advance()
+    return Param.PNamed { typ: typ, name: name }
+}
+
+// Parse a block of statements
+// Examples:
+//   { }
+//   { return 0 }
+//   { x := 5\n y := 10\n return x + y }
+Parser :: parse_block(self) StmtList {
+    self.expect_lbrace()
+
+    Stmt[] stmts = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        stmts.push(self.parse_stmt())
+        self.skip_newlines()
+    }
+
+    self.expect_rbrace()
+    return StmtList { items: stmts }
+}
+
+// Parse a statement
+// Examples:
+//   int x = 5                   (typed declaration)
+//   x := 5                      (inferred declaration)
+//   const MAX = 100             (constant)
+//   return x
+//   return
+//   if cond { ... }
+//   for i in items { ... }
+//   while cond { ... }
+//   go func()
+//   break
+//   continue
+//   expr                        (expression statement)
+Parser :: parse_stmt(self) Stmt {
+    self.skip_newlines()
+
+    // Variable declaration with type: int x = 5
+    if self.is_keyword("int") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("str") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("bool") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("char") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("f32") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("f64") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("u32") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("u64") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+    if self.is_keyword("chan") {
+        typ := self.parse_type()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SVarDecl { typ: typ, name: name, init: init }
+    }
+
+    // Type-declared variable: Person p = ...
+    if self.is_type_ident() {
+        return self.parse_type_or_expr_stmt()
+    }
+
+    // Const declaration
+    if self.is_keyword("const") {
+        self.advance()
+        name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+        return Stmt.SConstDecl { name: name, init: init }
+    }
+
+    // Return statement
+    if self.is_keyword("return") {
+        self.advance()
+        if self.is_eof() || self.is_newline() || self.is_rbrace() {
+            return Stmt.SReturn { expr: none }
+        }
+        expr := self.parse_expr()
+        return Stmt.SReturn { expr: expr }
+    }
+
+    // If statement
+    if self.is_keyword("if") {
+        return self.parse_if()
+    }
+
+    // For loop
+    if self.is_keyword("for") {
+        return self.parse_for()
+    }
+
+    // While loop
+    if self.is_keyword("while") {
+        return self.parse_while()
+    }
+
+    // Go statement
+    if self.is_keyword("go") {
+        self.advance()
+        expr := self.parse_expr()
+        return Stmt.SGo { expr: expr }
+    }
+
+    // Variable declaration with inference: x := 5
+    if self.is_ident() {
+        name := self.get_ident()
+        self.advance()
+
+        if self.is_coloneq() {
+            self.advance()
+            init := self.parse_expr()
+            return Stmt.SVarDeclInfer { name: name, init: init }
+        }
+
+        // It's an expression statement
+        expr := Expr.EIdent { name: name }
+        expr = self.continue_postfix(expr)
+        expr = self.continue_expr(expr)
+        return Stmt.SExpr { expr: expr }
+    }
+
+    // Expression statement
+    expr := self.parse_expr()
+    return Stmt.SExpr { expr: expr }
+}
+
+// Handle statements that start with a type identifier
+// Disambiguates between declaration and expression
+// Examples:
+//   Person p = Person { ... }   (declaration)
+//   Person[] items = []         (array declaration)
+//   Person { name: "x" }        (expression - struct literal)
+//   Option.Some { value: 5 }    (expression - variant)
+Parser :: parse_type_or_expr_stmt(self) Stmt {
+    name := self.get_type_ident()
+    self.advance()
+
+    // Check for type arguments
+    Type[] type_args = []
+    if self.is_lt() {
+        self.advance()
+        type_args.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            type_args.push(self.parse_type())
+        }
+        self.expect_gt()
+    }
+
+    // Check for array suffix
+    is_array := false
+    if self.is_lbracket() {
+        self.advance()
+        self.expect_rbracket()
+        is_array = true
+    }
+
+    // If followed by an identifier, it's a declaration
+    if self.is_ident() {
+        var_name := self.get_ident()
+        self.advance()
+        self.expect_eq()
+        init := self.parse_expr()
+
+        Type typ = Type.TUser { name: name }
+        if type_args.len() > 0 {
+            typ = Type.TApply { name: name, args: type_args }
+        }
+        if is_array {
+            typ = Type.TArray { elem: typ }
+        }
+
+        return Stmt.SVarDecl { typ: typ, name: var_name, init: init }
+    }
+
+    // Otherwise it's an expression starting with the type
+    Expr expr = Expr.EIdent { name: name }
+
+    if self.is_lbrace() {
+        self.advance()
+        fields := self.parse_field_inits()
+        self.expect_rbrace()
+        expr = Expr.EStructLit { name: name, type_args: type_args, fields: fields }
+    } else if self.is_dot() {
+        self.advance()
+        variant_name := self.get_type_ident()
+        self.advance()
+        FieldInit[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_field_inits()
+            self.expect_rbrace()
+        }
+        expr = Expr.EEnumVariant { enum_name: name, type_args: type_args, variant_name: variant_name, fields: fields }
+    }
+
+    expr = self.continue_postfix(expr)
+    expr = self.continue_expr(expr)
+    return Stmt.SExpr { expr: expr }
+}
+
+// Parse if statement
+// Examples:
+//   if cond { ... }
+//   if cond { ... } else { ... }
+//   if a { ... } else if b { ... } else { ... }
+Parser :: parse_if(self) Stmt {
+    self.expect_keyword("if")
+    cond := self.parse_expr()
+    then_block := self.parse_block()
+
+    StmtList? else_block = none
+    if self.is_keyword("else") {
+        self.advance()
+        if self.is_keyword("if") {
+            else_stmt := self.parse_if()
+            Stmt[] wrapped = []
+            wrapped.push(else_stmt)
+            else_block = StmtList { items: wrapped }
+        } else {
+            else_block = self.parse_block()
+        }
+    }
+
+    return Stmt.SIf { cond: cond, then_block: then_block, else_block: else_block }
+}
+
+// Parse for loop
+// Examples:
+//   for i in items { ... }
+//   for x in 0..10 { ... }
+//   for c in "hello" { ... }
+Parser :: parse_for(self) Stmt {
+    self.expect_keyword("for")
+    var_name := self.get_ident()
+    self.advance()
+    self.expect_keyword("in")
+    iter := self.parse_expr()
+    body := self.parse_block()
+    return Stmt.SFor { var: var_name, iter: iter, body: body }
+}
+
+// Parse while loop
+// Examples:
+//   while cond { ... }
+//   while true { ... break }
+//   while i < 10 { i += 1 }
+Parser :: parse_while(self) Stmt {
+    self.expect_keyword("while")
+    cond := self.parse_expr()
+    body := self.parse_block()
+    return Stmt.SWhile { cond: cond, body: body }
+}

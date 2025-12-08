@@ -1,0 +1,817 @@
+// Expression parsing for the parser
+//
+// This file handles parsing all expression types with correct precedence:
+// - Primary expressions (literals, identifiers, struct literals)
+// - Postfix expressions (calls, member access, indexing)
+// - Unary expressions (!expr)
+// - Binary expressions with precedence climbing
+// - Assignment expressions
+
+// Parse a primary expression (literals, identifiers, grouped expressions)
+// Examples:
+//   42, 3.14, "hello", 'c'
+//   true, false, none
+//   self, name, count
+//   chan()
+//   match x { ... }
+//   fn(int x) { return x * 2 }
+//   Person { name: "Chris" }
+//   Option.Some { value: 5 }
+//   [1, 2, 3]
+//   (a + b)
+Parser :: parse_primary(self) Expr {
+    self.skip_newlines()
+
+    // Integer literal
+    if self.is_int() {
+        value := self.get_int()
+        self.advance()
+        return Expr.EInt { value: value }
+    }
+
+    // Float literal
+    if self.is_float() {
+        value := self.get_float()
+        self.advance()
+        return Expr.EFloat { value: value }
+    }
+
+    // String literal
+    if self.is_string() {
+        value := self.get_string()
+        self.advance()
+        parts := parse_string_parts(value)
+        return Expr.EString { parts: parts }
+    }
+
+    // Character literal
+    if self.is_char() {
+        value := self.get_char()
+        self.advance()
+        return Expr.EChar { value: value }
+    }
+
+    // Boolean and none
+    if self.is_keyword("true") {
+        self.advance()
+        return Expr.EBool { value: true }
+    }
+    if self.is_keyword("false") {
+        self.advance()
+        return Expr.EBool { value: false }
+    }
+    if self.is_keyword("none") {
+        self.advance()
+        return Expr.ENone{}
+    }
+    if self.is_keyword("self") {
+        self.advance()
+        return Expr.EIdent { name: "self" }
+    }
+
+    // chan()
+    if self.is_keyword("chan") {
+        self.advance()
+        self.expect_lparen()
+        self.expect_rparen()
+        return Expr.EChan{}
+    }
+
+    // match expression
+    if self.is_keyword("match") {
+        return self.parse_match()
+    }
+
+    // Anonymous function: fn(params) { body }
+    if self.is_keyword("fn") {
+        return self.parse_anon_fn()
+    }
+
+    // Identifier
+    if self.is_ident() {
+        name := self.get_ident()
+        self.advance()
+        return Expr.EIdent { name: name }
+    }
+
+    // Type identifier - could be struct literal, enum variant
+    if self.is_type_ident() {
+        return self.parse_type_expr()
+    }
+
+    // Array literal [a, b, c]
+    if self.is_lbracket() {
+        return self.parse_array_literal()
+    }
+
+    // Parenthesized expression
+    if self.is_lparen() {
+        self.advance()
+        expr := self.parse_expr()
+        self.expect_rparen()
+        return Expr.EParen { expr: expr }
+    }
+
+    print("Error: unexpected token in expression at {self.current.location.format()}")
+    return Expr.EInt { value: 0 }
+}
+
+// Parse expressions starting with a type identifier (struct literal, enum variant)
+// Examples:
+//   Person { name: "Chris", age: 30 }
+//   Option<int>.Some { value: 5 }
+//   Result.Ok { value: data }
+//   Node<T> { left: l, right: r }
+Parser :: parse_type_expr(self) Expr {
+    name := self.get_type_ident()
+    self.advance()
+
+    // Check for type arguments <T>
+    Type[] type_args = []
+    if self.is_lt() {
+        self.advance()
+        type_args.push(self.parse_type())
+        while self.is_comma() {
+            self.advance()
+            type_args.push(self.parse_type())
+        }
+        self.expect_gt()
+    }
+
+    // Struct literal: Name { ... } or Name<T> { ... }
+    if self.is_lbrace() {
+        self.advance()
+        fields := self.parse_field_inits()
+        self.expect_rbrace()
+        return Expr.EStructLit { name: name, type_args: type_args, fields: fields }
+    }
+
+    // Enum variant: Name.Variant or Name<T>.Variant { ... }
+    if self.is_dot() {
+        self.advance()
+        variant_name := self.get_type_ident()
+        self.advance()
+
+        FieldInit[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_field_inits()
+            self.expect_rbrace()
+        }
+
+        return Expr.EEnumVariant {
+            enum_name: name,
+            type_args: type_args,
+            variant_name: variant_name,
+            fields: fields
+        }
+    }
+
+    // Just a type name used as expression (error case, but handle gracefully)
+    return Expr.EIdent { name: name }
+}
+
+// Parse field initializers (comma-separated list of name: expr)
+// Examples:
+//   name: "Chris", age: 30
+//   value: x + 1
+//   left: node1, right: node2, data: 42
+Parser :: parse_field_inits(self) FieldInit[] {
+    FieldInit[] fields = []
+    self.skip_newlines()
+
+    if self.is_rbrace() {
+        return fields
+    }
+
+    fields.push(self.parse_field_init())
+    while self.is_comma() {
+        self.advance()
+        self.skip_newlines()
+        if self.is_rbrace() {
+            return fields
+        }
+        fields.push(self.parse_field_init())
+    }
+    self.skip_newlines()
+
+    return fields
+}
+
+// Parse a single field initializer
+// Examples:
+//   name: "Chris"
+//   age: 30
+//   value: x + y
+Parser :: parse_field_init(self) FieldInit {
+    name := self.get_ident()
+    self.advance()
+    self.expect_colon()
+    value := self.parse_expr()
+    return FieldInit { name: name, value: value }
+}
+
+// Parse array literal
+// Examples:
+//   []
+//   [1, 2, 3]
+//   ["a", "b", "c"]
+//   [x, y, z]
+//   [1, 2, 3,]   (trailing comma allowed)
+Parser :: parse_array_literal(self) Expr {
+    self.expect_lbracket()
+
+    Expr[] elements = []
+    self.skip_newlines()
+
+    if !self.is_rbracket() {
+        elements.push(self.parse_expr())
+        while self.is_comma() {
+            self.advance()
+            self.skip_newlines()
+            if self.is_rbracket() {
+                break
+            }
+            elements.push(self.parse_expr())
+        }
+    }
+    self.skip_newlines()
+    self.expect_rbracket()
+
+    return Expr.EArrayLit { elements: elements }
+}
+
+// Parse postfix expressions (calls, member access, indexing)
+// Examples:
+//   obj.field
+//   obj.method()
+//   func(a, b, c)
+//   arr[0]
+//   arr[i + 1]
+//   map.get::<str>("key")
+//   obj.field.method()[0]
+Parser :: parse_postfix(self) Expr {
+    expr := self.parse_primary()
+
+    while true {
+        // Method/field access: expr.name
+        if self.is_dot() {
+            self.advance()
+            member := self.get_ident()
+            self.advance()
+            expr = Expr.EMember { expr: expr, member: member }
+            continue
+        }
+
+        // Function call: expr(args)
+        if self.is_lparen() {
+            self.advance()
+            args := self.parse_args()
+            self.expect_rparen()
+            expr = Expr.ECall { callee: expr, type_args: [], args: args }
+            continue
+        }
+
+        // Generic call: expr::<T>(args)
+        if self.is_coloncolon() {
+            self.advance()
+            if self.is_lt() {
+                self.advance()
+                Type[] type_args = []
+                type_args.push(self.parse_type())
+                while self.is_comma() {
+                    self.advance()
+                    type_args.push(self.parse_type())
+                }
+                self.expect_gt()
+                self.expect_lparen()
+                args := self.parse_args()
+                self.expect_rparen()
+                expr = Expr.ECall { callee: expr, type_args: type_args, args: args }
+            }
+            continue
+        }
+
+        // Index: expr[index]
+        if self.is_lbracket() {
+            self.advance()
+            index := self.parse_expr()
+            self.expect_rbracket()
+            expr = Expr.EIndex { expr: expr, index: index }
+            continue
+        }
+
+        break
+    }
+
+    return expr
+}
+
+// Parse argument list (comma-separated expressions)
+// Examples:
+//   ()           -> empty
+//   (a)          -> [a]
+//   (a, b, c)    -> [a, b, c]
+//   (x + 1, "hi")
+Parser :: parse_args(self) Expr[] {
+    Expr[] args = []
+    self.skip_newlines()
+
+    if self.is_rparen() {
+        return args
+    }
+
+    args.push(self.parse_expr())
+    while self.is_comma() {
+        self.advance()
+        self.skip_newlines()
+        args.push(self.parse_expr())
+    }
+    self.skip_newlines()
+
+    return args
+}
+
+// Parse unary expressions
+// Examples:
+//   !flag
+//   !done
+//   !!value
+Parser :: parse_unary(self) Expr {
+    if self.is_bang() {
+        self.advance()
+        expr := self.parse_unary()
+        return Expr.EUnary { op: Unop.Not{}, expr: expr }
+    }
+
+    return self.parse_postfix()
+}
+
+// Parse multiplicative expressions (highest precedence binary ops)
+// Examples:
+//   a * b
+//   x / y
+//   n % 2
+//   a * b * c
+//   x / y % z
+Parser :: parse_mul(self) Expr {
+    left := self.parse_unary()
+
+    while true {
+        if self.is_star() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mul{}, left: left, right: right }
+            continue
+        }
+        if self.is_slash() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Div{}, left: left, right: right }
+            continue
+        }
+        if self.is_percent() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mod{}, left: left, right: right }
+            continue
+        }
+        break
+    }
+
+    return left
+}
+
+// Parse additive expressions
+// Examples:
+//   a + b
+//   x - y
+//   a + b - c
+//   x + y * z   (mul binds tighter)
+Parser :: parse_add(self) Expr {
+    left := self.parse_mul()
+
+    while true {
+        if self.is_plus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Add{}, left: left, right: right }
+            continue
+        }
+        if self.is_minus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Sub{}, left: left, right: right }
+            continue
+        }
+        break
+    }
+
+    return left
+}
+
+// Parse comparison expressions
+// Examples:
+//   a == b
+//   x != y
+//   n < 10
+//   n > 0
+//   n <= max
+//   n >= min
+//   key in map
+Parser :: parse_cmp(self) Expr {
+    left := self.parse_add()
+
+    while true {
+        if self.is_eqeq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Eq{}, left: left, right: right }
+            continue
+        }
+        if self.is_neq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Neq{}, left: left, right: right }
+            continue
+        }
+        if self.is_lt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lt{}, left: left, right: right }
+            continue
+        }
+        if self.is_gt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gt{}, left: left, right: right }
+            continue
+        }
+        if self.is_lte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lte{}, left: left, right: right }
+            continue
+        }
+        if self.is_gte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gte{}, left: left, right: right }
+            continue
+        }
+        if self.is_keyword("in") {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.In{}, left: left, right: right }
+            continue
+        }
+        break
+    }
+
+    return left
+}
+
+// Parse logical AND expressions
+// Examples:
+//   a && b
+//   x > 0 && x < 10
+//   done && valid && ready
+Parser :: parse_and(self) Expr {
+    left := self.parse_cmp()
+
+    while self.is_andand() {
+        self.advance()
+        right := self.parse_cmp()
+        left = Expr.EBinary { op: Binop.And{}, left: left, right: right }
+    }
+
+    return left
+}
+
+// Parse 'or' expressions (error handling / default values)
+// Examples:
+//   result or 0
+//   value or return
+//   data or error NotFound {}
+//   channel.recv() or wait(1000)
+Parser :: parse_or_clause(self) Expr {
+    left := self.parse_and()
+
+    if self.is_keyword("or") {
+        self.advance()
+        clause := self.parse_or_rhs()
+        return Expr.EOr { expr: left, clause: clause }
+    }
+
+    return left
+}
+
+// Parse the right-hand side of an 'or' expression
+// Examples:
+//   or return
+//   or return x
+//   or error NotFound { path: p }
+//   or wait(1000)
+//   or 0
+//   or "default"
+Parser :: parse_or_rhs(self) OrClause {
+    // or return
+    if self.is_keyword("return") {
+        self.advance()
+        if self.is_eof() || self.is_newline() || self.is_rbrace() {
+            return OrClause.OrReturn { expr: none }
+        }
+        expr := self.parse_and()
+        return OrClause.OrReturn { expr: expr }
+    }
+
+    // or error ErrorType { ... }
+    if self.is_keyword("error") {
+        self.advance()
+        error_name := self.get_type_ident()
+        self.advance()
+        FieldInit[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_field_inits()
+            self.expect_rbrace()
+        }
+        return OrClause.OrError { error_name: error_name, fields: fields }
+    }
+
+    // or wait(timeout)
+    if self.is_keyword("wait") {
+        self.advance()
+        self.expect_lparen()
+        expr := self.parse_expr()
+        self.expect_rparen()
+        return OrClause.OrWait { expr: expr }
+    }
+
+    // or default_value
+    expr := self.parse_and()
+    return OrClause.OrExpr { expr: expr }
+}
+
+// Parse logical OR expressions (||)
+// Examples:
+//   a || b
+//   done || timeout
+//   x == 0 || y == 0 || z == 0
+Parser :: parse_bool_or(self) Expr {
+    left := self.parse_or_clause()
+
+    while self.is_oror() {
+        self.advance()
+        right := self.parse_or_clause()
+        left = Expr.EBinary { op: Binop.Or{}, left: left, right: right }
+    }
+
+    return left
+}
+
+// Parse assignment expressions
+// Examples:
+//   x = 5
+//   count += 1
+//   total -= n
+//   product *= 2
+//   ratio /= divisor
+//   arr[i] = value
+//   obj.field = newValue
+Parser :: parse_assignment(self) Expr {
+    expr := self.parse_bool_or()
+
+    if self.is_eq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.Assign{}, target: expr, value: value }
+    }
+    if self.is_pluseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.AddAssign{}, target: expr, value: value }
+    }
+    if self.is_minuseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.SubAssign{}, target: expr, value: value }
+    }
+    if self.is_stareq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.MulAssign{}, target: expr, value: value }
+    }
+    if self.is_slasheq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.DivAssign{}, target: expr, value: value }
+    }
+
+    return expr
+}
+
+// Main expression parser entry point
+// Handles all expression types with correct precedence
+Parser :: parse_expr(self) Expr {
+    return self.parse_assignment()
+}
+
+// Continue parsing postfix operations on an already-parsed expression
+// Used when disambiguating statements that start with type identifiers
+Parser :: continue_postfix(self, Expr expr) Expr {
+    while true {
+        if self.is_dot() {
+            self.advance()
+            member := self.get_ident()
+            self.advance()
+            expr = Expr.EMember { expr: expr, member: member }
+            continue
+        }
+        if self.is_lparen() {
+            self.advance()
+            args := self.parse_args()
+            self.expect_rparen()
+            expr = Expr.ECall { callee: expr, type_args: [], args: args }
+            continue
+        }
+        if self.is_lbracket() {
+            self.advance()
+            index := self.parse_expr()
+            self.expect_rbracket()
+            expr = Expr.EIndex { expr: expr, index: index }
+            continue
+        }
+        break
+    }
+    return expr
+}
+
+// Continue parsing binary operators from an already-parsed left operand
+// Applies all precedence levels in order
+Parser :: continue_expr(self, Expr left) Expr {
+    left = self.continue_mul(left)
+    left = self.continue_add(left)
+    left = self.continue_cmp(left)
+    left = self.continue_and(left)
+    left = self.continue_or_clause(left)
+    left = self.continue_bool_or(left)
+    left = self.continue_assignment(left)
+    return left
+}
+
+// Continue parsing * / % operators
+Parser :: continue_mul(self, Expr left) Expr {
+    while true {
+        if self.is_star() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mul{}, left: left, right: right }
+            continue
+        }
+        if self.is_slash() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Div{}, left: left, right: right }
+            continue
+        }
+        if self.is_percent() {
+            self.advance()
+            right := self.parse_unary()
+            left = Expr.EBinary { op: Binop.Mod{}, left: left, right: right }
+            continue
+        }
+        break
+    }
+    return left
+}
+
+// Continue parsing + - operators
+Parser :: continue_add(self, Expr left) Expr {
+    while true {
+        if self.is_plus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Add{}, left: left, right: right }
+            continue
+        }
+        if self.is_minus() {
+            self.advance()
+            right := self.parse_mul()
+            left = Expr.EBinary { op: Binop.Sub{}, left: left, right: right }
+            continue
+        }
+        break
+    }
+    return left
+}
+
+// Continue parsing comparison operators (== != < > <= >= in)
+Parser :: continue_cmp(self, Expr left) Expr {
+    while true {
+        if self.is_eqeq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Eq{}, left: left, right: right }
+            continue
+        }
+        if self.is_neq() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Neq{}, left: left, right: right }
+            continue
+        }
+        if self.is_lt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lt{}, left: left, right: right }
+            continue
+        }
+        if self.is_gt() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gt{}, left: left, right: right }
+            continue
+        }
+        if self.is_lte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Lte{}, left: left, right: right }
+            continue
+        }
+        if self.is_gte() {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.Gte{}, left: left, right: right }
+            continue
+        }
+        if self.is_keyword("in") {
+            self.advance()
+            right := self.parse_add()
+            left = Expr.EBinary { op: Binop.In{}, left: left, right: right }
+            continue
+        }
+        break
+    }
+    return left
+}
+
+// Continue parsing && operator
+Parser :: continue_and(self, Expr left) Expr {
+    while self.is_andand() {
+        self.advance()
+        right := self.parse_cmp()
+        left = Expr.EBinary { op: Binop.And{}, left: left, right: right }
+    }
+    return left
+}
+
+// Continue parsing 'or' clause for error handling
+Parser :: continue_or_clause(self, Expr left) Expr {
+    if self.is_keyword("or") {
+        self.advance()
+        clause := self.parse_or_rhs()
+        return Expr.EOr { expr: left, clause: clause }
+    }
+    return left
+}
+
+// Continue parsing || operator
+Parser :: continue_bool_or(self, Expr left) Expr {
+    while self.is_oror() {
+        self.advance()
+        right := self.parse_or_clause()
+        left = Expr.EBinary { op: Binop.Or{}, left: left, right: right }
+    }
+    return left
+}
+
+// Continue parsing assignment operators (= += -= *= /=)
+Parser :: continue_assignment(self, Expr left) Expr {
+    if self.is_eq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.Assign{}, target: left, value: value }
+    }
+    if self.is_pluseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.AddAssign{}, target: left, value: value }
+    }
+    if self.is_minuseq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.SubAssign{}, target: left, value: value }
+    }
+    if self.is_stareq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.MulAssign{}, target: left, value: value }
+    }
+    if self.is_slasheq() {
+        self.advance()
+        value := self.parse_assignment()
+        return Expr.EAssign { op: Assignop.DivAssign{}, target: left, value: value }
+    }
+    return left
+}

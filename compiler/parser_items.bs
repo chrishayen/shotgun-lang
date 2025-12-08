@@ -1,0 +1,398 @@
+// Top-level item parsing for the parser
+//
+// This file handles:
+// - Program parsing (entry point)
+// - Top-level items: functions, structs, variants, traits, impls, methods, errors
+// - Uses/import parsing
+
+// Parse a complete program (entry point for parsing a source file)
+// A program is a sequence of top-level items
+Parser :: parse_program(self) Program {
+    Item[] items = []
+
+    self.skip_newlines()
+    while !self.is_eof() {
+        items.push(self.parse_item())
+        self.skip_newlines()
+    }
+
+    return Program { items: items }
+}
+
+// Parse a top-level item
+// Examples:
+//   uses: foo.bar
+//   fn main { ... }
+//   fn add(int a, int b) int { ... }
+//   Person :: struct { ... }
+//   Option<T> :: variant { ... }
+//   Printable :: trait { ... }
+//   Person :: impl Display { ... }
+//   Person :: name(self) str { ... }
+//   NotFound :: error { ... }
+Parser :: parse_item(self) Item {
+    self.skip_newlines()
+
+    // uses: imports
+    if self.is_keyword("uses") {
+        return self.parse_uses()
+    }
+
+    // fn name(...) { ... }
+    if self.is_keyword("fn") {
+        return self.parse_function()
+    }
+
+    // Type :: struct/variant/trait/impl/method/error
+    if self.is_type_ident() {
+        return self.parse_type_item()
+    }
+
+    print("Error: unexpected token at top level: {self.current.location.format()}")
+    self.advance()
+    return Item.IFunction { name: "", type_params: [], params: [], ret: none, body: [] }
+}
+
+// Parse uses statement (imports)
+// Examples:
+//   uses: foo.bar
+//   uses: foo.bar, baz.qux
+//   uses:
+//     - foo.bar
+//     - baz.qux
+Parser :: parse_uses(self) Item {
+    self.expect_keyword("uses")
+    self.expect_colon()
+
+    ImportPath[] paths = []
+
+    if self.is_newline() {
+        self.skip_newlines()
+        while self.is_minus() {
+            self.advance()
+            paths.push(self.parse_import_path())
+            self.skip_newlines()
+        }
+    } else {
+        paths.push(self.parse_import_path())
+        while self.is_comma() {
+            self.advance()
+            paths.push(self.parse_import_path())
+        }
+    }
+
+    return Item.IUses { paths: paths }
+}
+
+// Parse an import path (dot-separated identifiers)
+// Examples:
+//   std.io
+//   foo.bar.baz
+//   shotgun.lexer
+Parser :: parse_import_path(self) ImportPath {
+    str[] parts = []
+    parts.push(self.get_ident())
+    self.advance()
+
+    while self.is_dot() {
+        self.advance()
+        parts.push(self.get_ident())
+        self.advance()
+    }
+
+    return ImportPath { parts: parts }
+}
+
+// Parse function definition
+// Examples:
+//   fn main { ... }
+//   fn add(int a, int b) int { return a + b }
+//   fn identity<T>(T x) T { return x }
+//   fn read_file(str path) str or error { ... }
+Parser :: parse_function(self) Item {
+    self.expect_keyword("fn")
+    name := self.get_ident()
+    self.advance()
+
+    // Optional type parameters
+    str[] type_params = []
+    if self.is_lt() {
+        self.advance()
+        type_params.push(self.get_type_ident())
+        self.advance()
+        while self.is_comma() {
+            self.advance()
+            type_params.push(self.get_type_ident())
+            self.advance()
+        }
+        self.expect_gt()
+    }
+
+    // Parameters (optional for main)
+    Param[] params = []
+    if self.is_lparen() {
+        self.advance()
+        params = self.parse_params()
+        self.expect_rparen()
+    }
+
+    // Optional return type
+    Type? ret = none
+    if !self.is_lbrace() {
+        ret = self.parse_type()
+        if self.is_keyword("or") {
+            self.advance()
+            if self.is_keyword("error") {
+                self.advance()
+            }
+        }
+    }
+
+    body := self.parse_block()
+
+    return Item.IFunction { name: name, type_params: type_params, params: params, ret: ret, body: body }
+}
+
+// Parse type-prefixed item (struct, variant, trait, impl, method, error)
+// Examples:
+//   Person :: struct { name str\n age int }
+//   Option<T> :: variant { Some { value T }\n None }
+//   Display :: trait { show(self) str }
+//   Person :: impl Display { show(self) str { ... } }
+//   Person :: greet(self) { ... }
+//   Person<T> :: get<U>(self, U key) T { ... }
+//   NotFound :: error { path str }
+Parser :: parse_type_item(self) Item {
+    type_name := self.get_type_ident()
+    self.advance()
+
+    // Check for type parameters before ::
+    str[] type_params = []
+    if self.is_lt() {
+        self.advance()
+        type_params.push(self.get_type_ident())
+        self.advance()
+        while self.is_comma() {
+            self.advance()
+            type_params.push(self.get_type_ident())
+            self.advance()
+        }
+        self.expect_gt()
+    }
+
+    self.expect_coloncolon()
+
+    // struct
+    if self.is_keyword("struct") {
+        self.advance()
+        self.expect_lbrace()
+        fields := self.parse_fields()
+        self.expect_rbrace()
+        return Item.IStruct { name: type_name, type_params: type_params, fields: fields }
+    }
+
+    // variant
+    if self.is_keyword("variant") {
+        self.advance()
+        self.expect_lbrace()
+        variants := self.parse_enum_variants()
+        self.expect_rbrace()
+        return Item.IEnum { name: type_name, type_params: type_params, variants: variants }
+    }
+
+    // trait
+    if self.is_keyword("trait") {
+        self.advance()
+        self.expect_lbrace()
+        methods := self.parse_trait_methods()
+        self.expect_rbrace()
+        return Item.ITrait { name: type_name, methods: methods }
+    }
+
+    // impl Trait
+    if self.is_keyword("impl") {
+        self.advance()
+        trait_name := self.get_type_ident()
+        self.advance()
+        self.expect_lbrace()
+        methods := self.parse_impl_methods()
+        self.expect_rbrace()
+        return Item.IImpl { type_name: type_name, trait_name: trait_name, methods: methods }
+    }
+
+    // error
+    if self.is_keyword("error") {
+        self.advance()
+        self.expect_lbrace()
+        fields := self.parse_fields()
+        self.expect_rbrace()
+        return Item.IError { name: type_name, fields: fields }
+    }
+
+    // method: Type :: method_name(params) ret { body }
+    method_name := self.get_ident()
+    self.advance()
+
+    // Check for type params on method
+    str[] method_type_params = []
+    if self.is_lt() {
+        self.advance()
+        method_type_params.push(self.get_type_ident())
+        self.advance()
+        while self.is_comma() {
+            self.advance()
+            method_type_params.push(self.get_type_ident())
+            self.advance()
+        }
+        self.expect_gt()
+    }
+
+    self.expect_lparen()
+    params := self.parse_params()
+    self.expect_rparen()
+
+    Type? ret = none
+    if !self.is_lbrace() {
+        ret = self.parse_type()
+    }
+
+    body := self.parse_block()
+
+    str[] all_params = []
+    for p in type_params {
+        all_params.push(p)
+    }
+    for p in method_type_params {
+        all_params.push(p)
+    }
+
+    return Item.IMethod {
+        type_name: type_name,
+        method_name: method_name,
+        type_params: all_params,
+        params: params,
+        ret: ret,
+        body: body
+    }
+}
+
+// Parse struct/error fields (name followed by type, newline separated)
+// Examples:
+//   name str
+//   age int
+//   items Person[]
+//   data Option<T>
+Parser :: parse_fields(self) Field[] {
+    Field[] fields = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_ident()
+        self.advance()
+        typ := self.parse_type()
+        fields.push(Field { name: name, typ: typ })
+        self.skip_newlines()
+    }
+
+    return fields
+}
+
+// Parse enum/variant variants
+// Examples:
+//   None
+//   Some { value T }
+//   Ok { value T }
+//   Err { error E }
+//   Leaf { data int }
+//   Node { left Node\n right Node }
+Parser :: parse_enum_variants(self) EnumVariant[] {
+    EnumVariant[] variants = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_type_ident()
+        self.advance()
+
+        Field[] fields = []
+        if self.is_lbrace() {
+            self.advance()
+            fields = self.parse_fields()
+            self.expect_rbrace()
+        }
+
+        variants.push(EnumVariant { name: name, fields: fields })
+        self.skip_newlines()
+    }
+
+    return variants
+}
+
+// Parse trait method signatures (declarations without bodies)
+// Examples:
+//   len(self) int
+//   push(self, T item)
+//   compare(self, Self other) int
+//   default_value() T
+Parser :: parse_trait_methods(self) TraitMethod[] {
+    TraitMethod[] methods = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_ident()
+        self.advance()
+        self.expect_lparen()
+        params := self.parse_params()
+        self.expect_rparen()
+
+        Type? ret = none
+        if !self.is_newline() && !self.is_rbrace() {
+            ret = self.parse_type()
+        }
+
+        has_self := false
+        for p in params {
+            is_self := match p using Param {
+                PSelf -> true,
+                _ -> false
+            }
+            if is_self {
+                has_self = true
+            }
+        }
+
+        methods.push(TraitMethod { name: name, params: params, has_self: has_self, ret: ret })
+        self.skip_newlines()
+    }
+
+    return methods
+}
+
+// Parse impl method definitions (with bodies)
+// Examples:
+//   len(self) int { return self.count }
+//   show(self) str { return "Person" }
+//   push(self, T item) { self.items.push(item) }
+Parser :: parse_impl_methods(self) ImplMethod[] {
+    ImplMethod[] methods = []
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        name := self.get_ident()
+        self.advance()
+        self.expect_lparen()
+        params := self.parse_params()
+        self.expect_rparen()
+
+        Type? ret = none
+        if !self.is_lbrace() {
+            ret = self.parse_type()
+        }
+
+        body := self.parse_block()
+
+        methods.push(ImplMethod { name: name, params: params, ret: ret, body: body })
+        self.skip_newlines()
+    }
+
+    return methods
+}

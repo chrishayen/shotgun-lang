@@ -1,0 +1,463 @@
+// Token inspection and expectation methods for the parser
+//
+// This file contains:
+// - is_*() methods: Check if current token matches a specific type
+// - expect_*() methods: Assert current token and advance, or error
+// - get_*() methods: Extract values from current token
+
+// Check if current token matches a keyword
+Parser :: is_keyword(self, str name) bool {
+    return match self.current.token using Token {
+        TkKeyword { name: n } -> n == name,
+        _ -> false
+    }
+}
+
+// Check if current token is a specific type
+Parser :: is_type_ident(self) bool {
+    return match self.current.token using Token {
+        TkTypeIdent { name: n } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_ident(self) bool {
+    return match self.current.token using Token {
+        TkIdent { name: n } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_int(self) bool {
+    return match self.current.token using Token {
+        TkInt { value: v } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_float(self) bool {
+    return match self.current.token using Token {
+        TkFloat { value: v } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_string(self) bool {
+    return match self.current.token using Token {
+        TkString { value: v } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_char(self) bool {
+    return match self.current.token using Token {
+        TkChar { value: v } -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_eof(self) bool {
+    return match self.current.token using Token {
+        TkEof -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_newline(self) bool {
+    return match self.current.token using Token {
+        TkNewline -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lparen(self) bool {
+    return match self.current.token using Token {
+        TkLParen -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_rparen(self) bool {
+    return match self.current.token using Token {
+        TkRParen -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lbrace(self) bool {
+    return match self.current.token using Token {
+        TkLBrace -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_rbrace(self) bool {
+    return match self.current.token using Token {
+        TkRBrace -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lbracket(self) bool {
+    return match self.current.token using Token {
+        TkLBracket -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_rbracket(self) bool {
+    return match self.current.token using Token {
+        TkRBracket -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_comma(self) bool {
+    return match self.current.token using Token {
+        TkComma -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_colon(self) bool {
+    return match self.current.token using Token {
+        TkColon -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_coloncolon(self) bool {
+    return match self.current.token using Token {
+        TkColonColon -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_coloneq(self) bool {
+    return match self.current.token using Token {
+        TkColonEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_dot(self) bool {
+    return match self.current.token using Token {
+        TkDot -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_arrow(self) bool {
+    return match self.current.token using Token {
+        TkArrow -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_question(self) bool {
+    return match self.current.token using Token {
+        TkQuestion -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_underscore(self) bool {
+    return match self.current.token using Token {
+        TkUnderscore -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_eq(self) bool {
+    return match self.current.token using Token {
+        TkEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_plus(self) bool {
+    return match self.current.token using Token {
+        TkPlus -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_minus(self) bool {
+    return match self.current.token using Token {
+        TkMinus -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_star(self) bool {
+    return match self.current.token using Token {
+        TkStar -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_slash(self) bool {
+    return match self.current.token using Token {
+        TkSlash -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_percent(self) bool {
+    return match self.current.token using Token {
+        TkPercent -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_eqeq(self) bool {
+    return match self.current.token using Token {
+        TkEqEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_neq(self) bool {
+    return match self.current.token using Token {
+        TkNeq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lt(self) bool {
+    return match self.current.token using Token {
+        TkLt -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_gt(self) bool {
+    return match self.current.token using Token {
+        TkGt -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_lte(self) bool {
+    return match self.current.token using Token {
+        TkLte -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_gte(self) bool {
+    return match self.current.token using Token {
+        TkGte -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_andand(self) bool {
+    return match self.current.token using Token {
+        TkAndAnd -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_oror(self) bool {
+    return match self.current.token using Token {
+        TkOrOr -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_bang(self) bool {
+    return match self.current.token using Token {
+        TkBang -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_pluseq(self) bool {
+    return match self.current.token using Token {
+        TkPlusEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_minuseq(self) bool {
+    return match self.current.token using Token {
+        TkMinusEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_stareq(self) bool {
+    return match self.current.token using Token {
+        TkStarEq -> true,
+        _ -> false
+    }
+}
+
+Parser :: is_slasheq(self) bool {
+    return match self.current.token using Token {
+        TkSlashEq -> true,
+        _ -> false
+    }
+}
+
+// Expect a specific keyword, error if not present
+Parser :: expect_keyword(self, str name) bool {
+    if self.is_keyword(name) {
+        self.advance()
+        return true
+    }
+    print("Error: expected keyword '{name}' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_lparen(self) bool {
+    if self.is_lparen() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '(' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_rparen(self) bool {
+    if self.is_rparen() {
+        self.advance()
+        return true
+    }
+    print("Error: expected ')' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_lbrace(self) bool {
+    if self.is_lbrace() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '\{' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_rbrace(self) bool {
+    if self.is_rbrace() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '\}' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_lbracket(self) bool {
+    if self.is_lbracket() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '[' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_rbracket(self) bool {
+    if self.is_rbracket() {
+        self.advance()
+        return true
+    }
+    print("Error: expected ']' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_colon(self) bool {
+    if self.is_colon() {
+        self.advance()
+        return true
+    }
+    print("Error: expected ':' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_coloncolon(self) bool {
+    if self.is_coloncolon() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '::' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_eq(self) bool {
+    if self.is_eq() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '=' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_arrow(self) bool {
+    if self.is_arrow() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '->' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_gt(self) bool {
+    if self.is_gt() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '>' at {self.current.location.format()}")
+    return false
+}
+
+Parser :: expect_dot(self) bool {
+    if self.is_dot() {
+        self.advance()
+        return true
+    }
+    print("Error: expected '.' at {self.current.location.format()}")
+    return false
+}
+
+// Get the name from current ident token
+Parser :: get_ident(self) str {
+    return match self.current.token using Token {
+        TkIdent { name: n } -> n,
+        _ -> ""
+    }
+}
+
+Parser :: get_type_ident(self) str {
+    return match self.current.token using Token {
+        TkTypeIdent { name: n } -> n,
+        _ -> ""
+    }
+}
+
+Parser :: get_int(self) int {
+    return match self.current.token using Token {
+        TkInt { value: v } -> v,
+        _ -> 0
+    }
+}
+
+Parser :: get_float(self) f64 {
+    return match self.current.token using Token {
+        TkFloat { value: v } -> v,
+        _ -> 0.0
+    }
+}
+
+Parser :: get_string(self) str {
+    return match self.current.token using Token {
+        TkString { value: v } -> v,
+        _ -> ""
+    }
+}
+
+Parser :: get_char(self) char {
+    return match self.current.token using Token {
+        TkChar { value: v } -> v,
+        _ -> '\0'
+    }
+}
