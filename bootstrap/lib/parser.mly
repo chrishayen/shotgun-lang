@@ -470,9 +470,10 @@ match_arm_list:
   | newlines arm = match_arm rest = match_arm_list { arm :: rest }
   ;
 
-(* Match arm: pattern -> { stmts } *)
+(* Match arm: pattern -> { stmts } or pattern -> expr *)
 match_arm:
   | p = pattern ARROW LBRACE stmts = list(stmt) RBRACE { (p, stmts) }
+  | p = pattern ARROW e = expr { (p, [SExpr e]) }
   ;
 
 string_expr:
