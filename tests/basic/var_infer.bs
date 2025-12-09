@@ -1,12 +1,21 @@
 // Test := type inference for variable declarations
-fn main() {
-    x := 42
-    name := "hello"
-    flag := true
-    nums := [1, 2, 3]
 
-    print(x)
-    print(name)
-    print(flag)
-    print(nums[0])
+fn test_int_inference() {
+    x := 42
+    assert_eq(x, 42)
+}
+
+fn test_string_inference() {
+    name := "hello"
+    assert_eq(name, "hello")
+}
+
+fn test_bool_inference() {
+    flag := true
+    assert_true(flag)
+}
+
+fn test_array_inference() {
+    nums := [1, 2, 3]
+    assert_eq(nums[0], 1)
 }

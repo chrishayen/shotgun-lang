@@ -449,6 +449,8 @@ void CodeGen::gen_impl_decl(const ImplDecl& impl) {
         llvm::AllocaInst* self_alloca = create_entry_alloca(func, "self", self_type);
         builder_->CreateStore(&*arg_it, self_alloca);
         named_values_["self"] = self_alloca;
+        // Store the struct type for self field access
+        var_types_["self"] = ResolvedType::make_struct(impl.type_name, {});
         ++arg_it;
 
         for (const auto& p : method.params) {
@@ -1173,14 +1175,45 @@ llvm::Value* CodeGen::gen_call(const Expr::Call& call) {
 
     // Check for method call (field.name())
     if (auto* field_expr = std::get_if<Expr::Field>(&call.callee->kind)) {
+        // For method calls, we need the pointer to the object (not the loaded value)
+        llvm::Value* obj_ptr = nullptr;
+        std::string type_name;
+
+        // If object is an identifier, get its alloca directly
+        if (auto* ident = std::get_if<Expr::Ident>(&field_expr->object->kind)) {
+            auto it = named_values_.find(ident->name);
+            if (it != named_values_.end()) {
+                obj_ptr = it->second;
+                if (auto* alloca_type = llvm::dyn_cast<llvm::StructType>(it->second->getAllocatedType())) {
+                    type_name = alloca_type->getName().str();
+                }
+            }
+        }
+
+        if (obj_ptr && !type_name.empty()) {
+            std::string method_name = type_name + "_" + field_expr->name;
+            llvm::Function* fn = module_->getFunction(method_name);
+            if (fn) {
+                std::vector<llvm::Value*> args;
+                args.push_back(obj_ptr); // self pointer
+                for (const auto& arg : call.args) {
+                    args.push_back(gen_expr(arg));
+                }
+                return builder_->CreateCall(fn, args);
+            }
+        }
+
+        // Fallback: evaluate the object (for field access, not method call)
         llvm::Value* obj = gen_expr(field_expr->object);
         if (!obj) return nullptr;
 
-        // Try to find mangled method name
-        // TODO: get actual type name from semantic analysis
+        // Try to find method with mangled name
         std::string method_name = field_expr->name;
+        if (auto* struct_ty = llvm::dyn_cast<llvm::StructType>(obj->getType())) {
+            type_name = struct_ty->getName().str();
+            method_name = type_name + "_" + field_expr->name;
+        }
 
-        // For now, look up as standalone function
         llvm::Function* fn = module_->getFunction(method_name);
         if (fn) {
             std::vector<llvm::Value*> args;
@@ -1247,13 +1280,61 @@ llvm::Value* CodeGen::gen_index(const Expr::Index& idx) {
 }
 
 llvm::Value* CodeGen::gen_field(const Expr::Field& field) {
+    // Check if this is a field access on a known variable (like self)
+    if (auto* ident = std::get_if<Expr::Ident>(&field.object->kind)) {
+        auto type_it = var_types_.find(ident->name);
+        if (type_it != var_types_.end() && type_it->second->kind == ResolvedType::Kind::Struct) {
+            // This is a pointer to a struct (like self in a method)
+            auto it = named_values_.find(ident->name);
+            if (it != named_values_.end()) {
+                // Load the pointer
+                llvm::Value* ptr = builder_->CreateLoad(
+                    llvm::PointerType::get(*context_, 0), it->second, ident->name);
+
+                // Look up struct definition to find field index
+                std::string struct_name = type_it->second->name;
+                llvm::StructType* struct_ty = get_or_create_struct_type(struct_name);
+                unsigned field_idx = 0;
+
+                if (auto def = symbols_->lookup_struct(struct_name)) {
+                    for (size_t i = 0; i < def->fields.size(); ++i) {
+                        if (def->fields[i].name == field.name) {
+                            field_idx = i;
+                            break;
+                        }
+                    }
+                }
+
+                // GEP to get field pointer
+                llvm::Value* field_ptr = builder_->CreateStructGEP(
+                    struct_ty, ptr, field_idx, field.name);
+
+                // Load and return the field value
+                llvm::Type* field_type = struct_ty->getElementType(field_idx);
+                return builder_->CreateLoad(field_type, field_ptr, field.name);
+            }
+        }
+    }
+
     llvm::Value* obj = gen_expr(field.object);
     if (!obj) return nullptr;
 
     // Struct value - use extractvalue
-    if (obj->getType()->isStructTy()) {
-        // TODO: look up actual field index from symbol table
-        return builder_->CreateExtractValue(obj, 0, field.name);
+    if (auto* struct_ty = llvm::dyn_cast<llvm::StructType>(obj->getType())) {
+        // Get struct name and look up field index
+        std::string struct_name = struct_ty->getName().str();
+        unsigned field_idx = 0;
+
+        if (auto def = symbols_->lookup_struct(struct_name)) {
+            for (size_t i = 0; i < def->fields.size(); ++i) {
+                if (def->fields[i].name == field.name) {
+                    field_idx = i;
+                    break;
+                }
+            }
+        }
+
+        return builder_->CreateExtractValue(obj, field_idx, field.name);
     }
 
     // For pointers, we'd need type info to do GEP

@@ -3,13 +3,21 @@ fn add(int a, int b) int {
     return a + b
 }
 
-fn greet_person(str name) {
-    print("Hello, {name}!")
+fn greet_person(str name) str {
+    return f"Hello, {name}!"
 }
 
-fn main {
+fn test_add_function() {
     int result = add(5, 3)
-    print("5 + 3 = {result}")
+    assert_eq(result, 8)
+}
 
-    greet_person("Alice")
+fn test_add_negative() {
+    int result = add(-5, 10)
+    assert_eq(result, 5)
+}
+
+fn test_greet_person() {
+    str greeting = greet_person("Alice")
+    assert_eq(greeting, "Hello, Alice!")
 }

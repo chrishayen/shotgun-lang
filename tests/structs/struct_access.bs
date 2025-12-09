@@ -4,12 +4,16 @@ Person :: struct {
     age int
 }
 
-fn main {
+fn test_struct_field_access() {
     Person p = Person { name: "Alice", age: 30 }
+    assert_eq(p.name, "Alice")
+    assert_eq(p.age, 30)
+}
 
+fn test_struct_field_assign_to_var() {
+    Person p = Person { name: "Bob", age: 25 }
     str n = p.name
     int a = p.age
-
-    print("Name: {n}")
-    print("Age: {a}")
+    assert_eq(n, "Bob")
+    assert_eq(a, 25)
 }

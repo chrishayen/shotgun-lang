@@ -11,11 +11,14 @@ Counter :: increment(self) int {
     return self.value + 1
 }
 
-fn main {
+fn test_method_get() {
     Counter c = Counter { value: 10 }
     int v = c.get()
-    int next = c.increment()
+    assert_eq(v, 10)
+}
 
-    print("Value: {v}")
-    print("Next: {next}")
+fn test_method_increment() {
+    Counter c = Counter { value: 10 }
+    int next = c.increment()
+    assert_eq(next, 11)
 }

@@ -10,6 +10,15 @@ Point :: struct {
     y f64
 }
 
-fn main {
-    print("Structs defined")
+fn test_person_struct() {
+    Person p = Person { name: "Alice", age: 30, active: true }
+    assert_eq(p.name, "Alice")
+    assert_eq(p.age, 30)
+    assert_true(p.active)
+}
+
+fn test_point_struct() {
+    Point pt = Point { x: 1.5, y: 2.5 }
+    assert_eq(pt.x, 1.5)
+    assert_eq(pt.y, 2.5)
 }

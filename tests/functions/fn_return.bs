@@ -4,7 +4,7 @@ fn double(int x) int {
 }
 
 fn make_greeting(str name) str {
-    return "Hello, {name}!"
+    return f"Hello, {name}!"
 }
 
 fn is_positive(int n) bool {
@@ -14,11 +14,22 @@ fn is_positive(int n) bool {
     return false
 }
 
-fn main {
+fn test_double() {
     int d = double(21)
-    str g = make_greeting("World")
-    bool pos = is_positive(5)
+    assert_eq(d, 42)
+}
 
-    print("Double of 21: {d}")
-    print(g)
+fn test_make_greeting() {
+    str g = make_greeting("World")
+    assert_eq(g, "Hello, World!")
+}
+
+fn test_is_positive_true() {
+    bool pos = is_positive(5)
+    assert_true(pos)
+}
+
+fn test_is_positive_false() {
+    bool neg = is_positive(-5)
+    assert_false(neg)
 }

@@ -1,4 +1,5 @@
-// Test: Simple hello world print
-fn main {
-    print("Hello, World!")
+// Test: Simple hello world
+fn test_hello_world() {
+    str msg = "Hello, World!"
+    assert_eq(msg, "Hello, World!")
 }

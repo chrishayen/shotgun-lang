@@ -4,9 +4,14 @@ Person :: struct {
     age int
 }
 
-fn main {
+fn test_struct_literal_alice() {
     Person alice = Person { name: "Alice", age: 30 }
-    Person bob = Person { name: "Bob", age: 25 }
+    assert_eq(alice.name, "Alice")
+    assert_eq(alice.age, 30)
+}
 
-    print("Created two Person structs")
+fn test_struct_literal_bob() {
+    Person bob = Person { name: "Bob", age: 25 }
+    assert_eq(bob.name, "Bob")
+    assert_eq(bob.age, 25)
 }

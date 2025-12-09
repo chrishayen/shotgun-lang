@@ -5,7 +5,7 @@ Person :: struct {
 }
 
 Person :: greet(self) str {
-    return "Hello, I am {self.name}"
+    return f"Hello, I am {self.name}"
 }
 
 Person :: is_adult(self) bool {
@@ -15,7 +15,18 @@ Person :: is_adult(self) bool {
     return false
 }
 
-fn main {
+fn test_greet_method() {
     Person p = Person { name: "Alice", age: 30 }
-    print("Method defined")
+    str greeting = p.greet()
+    assert_eq(greeting, "Hello, I am Alice")
+}
+
+fn test_is_adult_true() {
+    Person p = Person { name: "Alice", age: 30 }
+    assert_true(p.is_adult())
+}
+
+fn test_is_adult_false() {
+    Person kid = Person { name: "Bob", age: 10 }
+    assert_false(kid.is_adult())
 }

@@ -1,8 +1,11 @@
 // Test: Basic function definition and call
-fn greet {
-    print("Hello from greet!")
+
+// Helper function called by test
+fn greet_helper() str {
+    return "Hello from greet!"
 }
 
-fn main {
-    greet()
+fn test_basic_function_call() {
+    str msg = greet_helper()
+    assert_eq(msg, "Hello from greet!")
 }

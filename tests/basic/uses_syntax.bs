@@ -1,6 +1,6 @@
 uses: uses_helper
 
-fn main {
+fn test_uses_import() {
     int x = helper_func()
-    print(x)
+    assert_eq(x, 42)
 }

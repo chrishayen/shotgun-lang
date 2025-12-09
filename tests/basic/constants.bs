@@ -1,10 +1,11 @@
 // Test: Const declarations
-fn main {
-    const max_size = 100
-    const pi = 3.14159
-    const greeting = "Hello"
 
-    print("Max size: {max_size}")
-    print("Pi: {pi}")
-    print("Greeting: {greeting}")
+fn test_const_int() {
+    const max_size = 100
+    assert_eq(max_size, 100)
+}
+
+fn test_const_string() {
+    const greeting = "Hello"
+    assert_eq(greeting, "Hello")
 }
