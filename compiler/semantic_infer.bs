@@ -1,0 +1,670 @@
+// Type inference for expressions in the Shotgun self-hosted compiler
+
+// ============================================================
+// Expr accessor helper functions (workaround for flow-sensitive typing)
+// ============================================================
+
+// Get name from EIdent
+fn get_ident_name(Expr e) str {
+    return e.name
+}
+
+// Get binary op from EBinary
+fn get_binary_op(Expr e) Binop {
+    return e.op
+}
+
+// Get left operand from EBinary
+fn get_binary_left(Expr e) Expr {
+    return e.left
+}
+
+// Get right operand from EBinary
+fn get_binary_right(Expr e) Expr {
+    return e.right
+}
+
+// Get callee from ECall
+fn get_call_callee(Expr e) Expr {
+    return e.callee
+}
+
+// Get type args from ECall
+fn get_call_type_args(Expr e) Type[] {
+    return e.type_args.items
+}
+
+// Get args from ECall
+fn get_call_args(Expr e) Expr[] {
+    return e.args.items
+}
+
+// Get expr from EMember
+fn get_member_expr(Expr e) Expr {
+    return e.expr
+}
+
+// Get member name from EMember
+fn get_member_name(Expr e) str {
+    return e.member
+}
+
+// Get expr from EIndex
+fn get_index_expr(Expr e) Expr {
+    return e.expr
+}
+
+// Get index from EIndex
+fn get_index_index(Expr e) Expr {
+    return e.index
+}
+
+// Get expr from EOr
+fn get_or_expr(Expr e) Expr {
+    return e.expr
+}
+
+// Get name from EStructLit
+fn get_struct_lit_name(Expr e) str {
+    return e.name
+}
+
+// Get type args from EStructLit
+fn get_struct_lit_type_args(Expr e) TypeList {
+    return e.type_args
+}
+
+// Get enum name from EEnumVariant
+fn get_enum_variant_name(Expr e) str {
+    return e.enum_name
+}
+
+// Get type args from EEnumVariant
+fn get_enum_variant_type_args(Expr e) TypeList {
+    return e.type_args
+}
+
+// Get elements from EArrayLit
+fn get_array_lit_elements(Expr e) Expr[] {
+    return e.elements.items
+}
+
+// Get inner expr from EParen
+fn get_paren_expr(Expr e) Expr {
+    return e.expr
+}
+
+// Get value from EAssign
+fn get_assign_value(Expr e) Expr {
+    return e.value
+}
+
+// Get arms from EMatch
+fn get_match_arms(Expr e) MatchArm[] {
+    return e.arms.items
+}
+
+// Get params from EAnonFn
+fn get_anon_fn_params(Expr e) Param[] {
+    return e.params.items
+}
+
+// Get ret type from EAnonFn
+fn get_anon_fn_ret(Expr e) Type? {
+    return e.ret
+}
+
+// Get body from EAnonFn
+fn get_anon_fn_body(Expr e) Stmt[] {
+    return e.body.items
+}
+
+// Get body expr from MatchArm
+fn get_arm_expr(MatchArm arm) Expr {
+    return arm.expr
+}
+
+// Get param name from named param
+fn get_param_name(Param p) str {
+    return p.name
+}
+
+// Get param type from named param
+fn get_param_type(Param p) Type {
+    return p.typ
+}
+
+// Get symbol typ from SVar
+fn get_svar_typ(Symbol s) Type {
+    return s.typ
+}
+
+// Get func ret from SFunc
+fn get_sfunc_ret(Symbol s) Type? {
+    return s.ret
+}
+
+// Get return expr from SReturn
+fn get_return_expr(Stmt s) Expr? {
+    return s.expr
+}
+
+// Get then block from SIf
+fn get_if_then(Stmt s) Stmt[] {
+    return s.then_block.items
+}
+
+// Get else block from SIf
+fn get_if_else(Stmt s) StmtList? {
+    return s.else_block
+}
+
+// Get body from SFor
+fn get_for_body(Stmt s) Stmt[] {
+    return s.body.items
+}
+
+// Get body from SWhile
+fn get_while_body(Stmt s) Stmt[] {
+    return s.body.items
+}
+
+// ============================================================
+// Type inference
+// ============================================================
+
+// Infer the type of an expression
+// Returns none if type cannot be inferred
+fn infer_expr_type(Env env, Expr expr) Type? {
+    // Literals
+    if expr is EInt {
+        return Type.TInt{}
+    }
+    if expr is EFloat {
+        return Type.TF64{}
+    }
+    if expr is EString {
+        return Type.TStr{}
+    }
+    if expr is EBool {
+        return Type.TBool{}
+    }
+    if expr is EChar {
+        return Type.TChar{}
+    }
+    if expr is ENone {
+        return none
+    }
+
+    // Identifiers
+    if expr is EIdent {
+        name := get_ident_name(expr)
+        if env.symbols.has(name) {
+            sym := env.symbols[name]
+            if sym is SVar {
+                return get_svar_typ(sym)
+            }
+        }
+        return none
+    }
+
+    // Binary operations
+    if expr is EBinary {
+        op := get_binary_op(expr)
+        left := get_binary_left(expr)
+        right := get_binary_right(expr)
+
+        // Arithmetic operations - return type of operands (or TInt as fallback)
+        if op is Add || op is Sub || op is Mul || op is Div || op is Mod {
+            lt := infer_expr_type(env, left)
+            rt := infer_expr_type(env, right)
+            if lt && rt {
+                lt_unwrap := lt or Type.TVoid{}
+                rt_unwrap := rt or Type.TVoid{}
+                if types_equal(lt_unwrap, rt_unwrap) {
+                    return lt
+                }
+            }
+            return Type.TInt{}
+        }
+
+        // Comparison and logical operations - always return bool
+        return Type.TBool{}
+    }
+
+    // Unary operations
+    if expr is EUnary {
+        return Type.TBool{}
+    }
+
+    // Function calls
+    if expr is ECall {
+        callee := get_call_callee(expr)
+        return infer_call_type(env, callee)
+    }
+
+    // Member access (field access)
+    if expr is EMember {
+        obj := get_member_expr(expr)
+        field_name := get_member_name(expr)
+        return infer_member_type(env, obj, field_name)
+    }
+
+    // Array/map indexing
+    if expr is EIndex {
+        arr := get_index_expr(expr)
+        return infer_index_type(env, arr)
+    }
+
+    // Or expressions - unwraps optional
+    if expr is EOr {
+        e := get_or_expr(expr)
+        inner_type := infer_expr_type(env, e)
+        if inner_type {
+            inner := inner_type or Type.TVoid{}
+            if inner is TOptional {
+                return get_optional_inner(inner)
+            }
+            return inner_type
+        }
+        return none
+    }
+
+    // Struct literals
+    if expr is EStructLit {
+        name := get_struct_lit_name(expr)
+        type_args := get_struct_lit_type_args(expr)
+
+        if type_args.items.len() == 0 {
+            return Type.TUser { name: name }
+        }
+
+        return Type.TApply { name: name, args: type_args }
+    }
+
+    // Enum variant literals
+    if expr is EEnumVariant {
+        enum_name := get_enum_variant_name(expr)
+        type_args := get_enum_variant_type_args(expr)
+
+        if type_args.items.len() == 0 {
+            return Type.TUser { name: enum_name }
+        }
+
+        return Type.TApply { name: enum_name, args: type_args }
+    }
+
+    // Array literals
+    if expr is EArrayLit {
+        elements := get_array_lit_elements(expr)
+        if elements.len() == 0 {
+            return none
+        }
+
+        first := elements[0]
+        elem_type := infer_expr_type(env, first)
+        if elem_type {
+            elem := elem_type or Type.TVoid{}
+            return Type.TArray { elem: elem }
+        }
+
+        return none
+    }
+
+    // Channel constructor
+    if expr is EChan {
+        return none
+    }
+
+    // Parenthesized expressions
+    if expr is EParen {
+        e := get_paren_expr(expr)
+        return infer_expr_type(env, e)
+    }
+
+    // Assignment expressions
+    if expr is EAssign {
+        value := get_assign_value(expr)
+        return infer_expr_type(env, value)
+    }
+
+    // Match expressions
+    if expr is EMatch {
+        arms := get_match_arms(expr)
+        if arms.len() == 0 {
+            return none
+        }
+
+        first_arm := arms[0]
+        body := get_arm_expr(first_arm)
+        return infer_expr_type(env, body)
+    }
+
+    // Anonymous functions
+    if expr is EAnonFn {
+        params := get_anon_fn_params(expr)
+        ret_type := get_anon_fn_ret(expr)
+        body := get_anon_fn_body(expr)
+
+        // Build param types list
+        Type[] param_types = []
+        i := 0
+        while i < params.len() {
+            param := params[i]
+            if param is PNamed {
+                param_types.push(get_param_type(param))
+            }
+            i += 1
+        }
+
+        // Infer return type if not specified
+        inferred_ret := ret_type
+        if !ret_type {
+            // Create a new scope with params for inference
+            fn_env := push_scope(env)
+            j := 0
+            while j < params.len() {
+                p := params[j]
+                if p is PNamed {
+                    fn_env.symbols[get_param_name(p)] = Symbol.SVar { typ: get_param_type(p), is_const: false }
+                }
+                j += 1
+            }
+            inferred_ret = infer_return_type_from_body(fn_env, body)
+        }
+
+        return Type.TFunc { params: TypeList { items: param_types }, ret: inferred_ret }
+    }
+
+    return none
+}
+
+// Infer type for function/method calls
+fn infer_call_type(Env env, Expr callee) Type? {
+    // Handle direct function calls
+    if callee is EIdent {
+        name := get_ident_name(callee)
+
+        // Built-in functions
+        if name == "read_file" {
+            return Type.TStr{}
+        }
+        if name == "write_file" {
+            return none
+        }
+        if name == "print" {
+            return none
+        }
+        if name == "chr" {
+            return Type.TChar{}
+        }
+        if name == "ord" {
+            return Type.TInt{}
+        }
+
+        // User-defined functions
+        if env.symbols.has(name) {
+            sym := env.symbols[name]
+            if sym is SFunc {
+                return get_sfunc_ret(sym)
+            }
+            if sym is SVar {
+                typ := get_svar_typ(sym)
+                if typ is TFunc {
+                    return get_func_ret(typ)
+                }
+            }
+        }
+        return none
+    }
+
+    // Handle method calls
+    if callee is EMember {
+        obj := get_member_expr(callee)
+        method_name := get_member_name(callee)
+        obj_type := infer_expr_type(env, obj)
+
+        if !obj_type {
+            return none
+        }
+
+        obj_t := obj_type or Type.TVoid{}
+        return infer_method_return_type(env, obj_t, method_name)
+    }
+
+    return none
+}
+
+// Infer return type for method calls
+fn infer_method_return_type(Env env, Type obj_type, str method_name) Type? {
+    // Map methods
+    if obj_type is TApply {
+        type_name := get_type_name(obj_type)
+        if type_name == "Map" {
+            if method_name == "len" {
+                return Type.TInt{}
+            }
+            if method_name == "has" {
+                return Type.TBool{}
+            }
+            if method_name == "get" {
+                type_args := get_apply_args(obj_type)
+                if type_args.len() == 2 {
+                    return type_args[1]
+                }
+            }
+            return none
+        }
+
+        // Generic type methods
+        key := method_key(type_name, method_name)
+        if env.method_rets.has(key) {
+            ret := env.method_rets[key]
+
+            // Substitute type parameters
+            if env.generic_struct_params.has(type_name) {
+                tparams := env.generic_struct_params[type_name].items
+                type_args := get_apply_args(obj_type)
+                return substitute_type_params(tparams, type_args, ret)
+            }
+
+            return ret
+        }
+        return none
+    }
+
+    // User type methods
+    if obj_type is TUser {
+        type_name := get_type_name(obj_type)
+        key := method_key(type_name, method_name)
+        if env.method_rets.has(key) {
+            return env.method_rets[key]
+        }
+        return none
+    }
+
+    // Channel methods
+    if obj_type is TChan {
+        if method_name == "recv" {
+            return get_elem_type(obj_type)
+        }
+        return none
+    }
+
+    // String methods
+    if obj_type is TStr {
+        if method_name == "len" || method_name == "find" {
+            return Type.TInt{}
+        }
+        if method_name == "at" {
+            return Type.TChar{}
+        }
+        if method_name == "contains" || method_name == "starts_with" || method_name == "ends_with" {
+            return Type.TBool{}
+        }
+        if method_name == "slice" || method_name == "trim" || method_name == "replace" || method_name == "to_upper" || method_name == "to_lower" {
+            return Type.TStr{}
+        }
+        if method_name == "split" {
+            return Type.TArray { elem: Type.TStr{} }
+        }
+        return none
+    }
+
+    // Char methods
+    if obj_type is TChar {
+        if method_name == "to_string" {
+            return Type.TStr{}
+        }
+        return none
+    }
+
+    // Array methods
+    if obj_type is TArray {
+        if method_name == "len" {
+            return Type.TInt{}
+        }
+        if method_name == "push" {
+            return none
+        }
+        return none
+    }
+
+    return none
+}
+
+// Infer type for member/field access
+fn infer_member_type(Env env, Expr obj, str field_name) Type? {
+    obj_type := infer_expr_type(env, obj)
+
+    if !obj_type {
+        return none
+    }
+
+    obj_t := obj_type or Type.TVoid{}
+
+    // User struct field access
+    if obj_t is TUser {
+        type_name := get_type_name(obj_t)
+        if env.structs.has(type_name) {
+            fields := env.structs[type_name].items
+            i := 0
+            while i < fields.len() {
+                field := fields[i]
+                if field.name == field_name {
+                    return field.typ
+                }
+                i += 1
+            }
+        }
+        return none
+    }
+
+    // Generic struct field access
+    if obj_t is TApply {
+        type_name := get_type_name(obj_t)
+        if env.structs.has(type_name) {
+            fields := env.structs[type_name].items
+            i := 0
+            while i < fields.len() {
+                field := fields[i]
+                if field.name == field_name {
+                    // Substitute type parameters
+                    if env.generic_struct_params.has(type_name) {
+                        tparams := env.generic_struct_params[type_name].items
+                        type_args := get_apply_args(obj_t)
+                        return substitute_type_params(tparams, type_args, field.typ)
+                    }
+                    return field.typ
+                }
+                i += 1
+            }
+        }
+        return none
+    }
+
+    return none
+}
+
+// Infer type for index expressions (array/map)
+fn infer_index_type(Env env, Expr arr) Type? {
+    arr_type := infer_expr_type(env, arr)
+
+    if !arr_type {
+        return none
+    }
+
+    arr_t := arr_type or Type.TVoid{}
+
+    if arr_t is TArray {
+        return get_elem_type(arr_t)
+    }
+
+    if arr_t is TApply {
+        type_name := get_type_name(arr_t)
+        if type_name == "Map" {
+            type_args := get_apply_args(arr_t)
+            if type_args.len() == 2 {
+                return type_args[1]
+            }
+        }
+    }
+
+    return none
+}
+
+// Infer return type from closure body by finding return statements
+fn infer_return_type_from_body(Env env, Stmt[] body) Type? {
+    int i = 0
+    Type? result = none
+
+    while i < body.len() {
+        if !result {
+            result = infer_return_type_from_stmt(env, body[i])
+        }
+        i += 1
+    }
+
+    return result
+}
+
+// Infer return type from a single statement
+fn infer_return_type_from_stmt(Env env, Stmt stmt) Type? {
+    if stmt is SReturn {
+        e := get_return_expr(stmt)
+        if e {
+            e_unwrap := e or Expr.ENone{}
+            return infer_expr_type(env, e_unwrap)
+        }
+        return none
+    }
+
+    if stmt is SIf {
+        then_stmts := get_if_then(stmt)
+        then_type := infer_return_type_from_body(env, then_stmts)
+
+        if then_type {
+            return then_type
+        }
+
+        else_stmts := get_if_else(stmt)
+        if else_stmts {
+            else_unwrap := else_stmts or StmtList { items: [] }
+            return infer_return_type_from_body(env, else_unwrap.items)
+        }
+
+        return none
+    }
+
+    if stmt is SFor {
+        body := get_for_body(stmt)
+        return infer_return_type_from_body(env, body)
+    }
+
+    if stmt is SWhile {
+        body := get_while_body(stmt)
+        return infer_return_type_from_body(env, body)
+    }
+
+    return none
+}

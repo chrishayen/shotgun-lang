@@ -225,6 +225,18 @@ Parser :: parse_stmt(self) Stmt {
         return self.parse_while()
     }
 
+    // Break statement
+    if self.is_keyword("break") {
+        self.advance()
+        return Stmt.SBreak{}
+    }
+
+    // Continue statement
+    if self.is_keyword("continue") {
+        self.advance()
+        return Stmt.SContinue{}
+    }
+
     // Go statement
     if self.is_keyword("go") {
         self.advance()
@@ -361,14 +373,24 @@ Parser :: parse_if(self) Stmt {
 //   for i in items { ... }
 //   for x in 0..10 { ... }
 //   for c in "hello" { ... }
+//   for key, value in map { ... }
 Parser :: parse_for(self) Stmt {
     self.expect_keyword("for")
     var_name := self.get_ident()
     self.advance()
+
+    // Check for second variable (map iteration)
+    str? var2 = none
+    if self.is_comma() {
+        self.advance()
+        var2 = self.get_ident()
+        self.advance()
+    }
+
     self.expect_keyword("in")
     iter := self.parse_expr()
     body := self.parse_block()
-    return Stmt.SFor { var: var_name, iter: iter, body: body }
+    return Stmt.SFor { var: var_name, var2: var2, iter: iter, body: body }
 }
 
 // Parse while loop

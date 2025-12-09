@@ -1,0 +1,372 @@
+// Type comparison and utility functions for semantic analysis
+
+// Helper to get TypeList items from a TFunc
+fn get_func_params(Type t) Type[] {
+    return t.params.items
+}
+
+// Helper to get return type from a TFunc
+fn get_func_ret(Type t) Type? {
+    return t.ret
+}
+
+// Helper to get TypeList items from a TApply
+fn get_apply_args(Type t) Type[] {
+    return t.args.items
+}
+
+// Helper to get name from TUser, TParam, TApply
+fn get_type_name(Type t) str {
+    return t.name
+}
+
+// Helper to get inner type from TOptional
+fn get_optional_inner(Type t) Type {
+    return t.inner
+}
+
+// Helper to get elem type from TArray or TChan
+fn get_elem_type(Type t) Type {
+    return t.elem
+}
+
+// Helper to get value type from TResult
+fn get_result_value(Type t) Type {
+    return t.value
+}
+
+// Helper to get err_type from TResult
+fn get_result_err(Type t) str {
+    return t.err_type
+}
+
+// Helper to unwrap Type? to Type (returns TVoid if none)
+fn unwrap_type(Type? maybe_t) Type {
+    return maybe_t or Type.TVoid{}
+}
+
+// Check if two types are structurally equal
+fn types_equal(Type t1, Type t2) bool {
+    // Check primitives first
+    if t1 is TInt && t2 is TInt {
+        return true
+    }
+    if t1 is TStr && t2 is TStr {
+        return true
+    }
+    if t1 is TBool && t2 is TBool {
+        return true
+    }
+    if t1 is TChar && t2 is TChar {
+        return true
+    }
+    if t1 is TF32 && t2 is TF32 {
+        return true
+    }
+    if t1 is TF64 && t2 is TF64 {
+        return true
+    }
+    if t1 is TU32 && t2 is TU32 {
+        return true
+    }
+    if t1 is TU64 && t2 is TU64 {
+        return true
+    }
+    if t1 is TVoid && t2 is TVoid {
+        return true
+    }
+
+    // Check optional types
+    if t1 is TOptional && t2 is TOptional {
+        return types_equal(get_optional_inner(t1), get_optional_inner(t2))
+    }
+
+    // Check array types
+    if t1 is TArray && t2 is TArray {
+        return types_equal(get_elem_type(t1), get_elem_type(t2))
+    }
+
+    // Check channel types
+    if t1 is TChan && t2 is TChan {
+        return types_equal(get_elem_type(t1), get_elem_type(t2))
+    }
+
+    // Check user types
+    if t1 is TUser && t2 is TUser {
+        return get_type_name(t1) == get_type_name(t2)
+    }
+
+    // Check result types
+    if t1 is TResult && t2 is TResult {
+        val_eq := types_equal(get_result_value(t1), get_result_value(t2))
+        err_eq := get_result_err(t1) == get_result_err(t2)
+        return val_eq && err_eq
+    }
+
+    // Check function types
+    if t1 is TFunc && t2 is TFunc {
+        params1 := get_func_params(t1)
+        params2 := get_func_params(t2)
+
+        if params1.len() != params2.len() {
+            return false
+        }
+
+        // Check all param types are equal
+        i := 0
+        while i < params1.len() {
+            if !types_equal(params1[i], params2[i]) {
+                return false
+            }
+            i += 1
+        }
+
+        // Check return types
+        ret1 := get_func_ret(t1)
+        ret2 := get_func_ret(t2)
+
+        if !ret1 && !ret2 {
+            return true
+        }
+        if ret1 && ret2 {
+            return types_equal(unwrap_type(ret1), unwrap_type(ret2))
+        }
+        return false
+    }
+
+    // Check applied generic types
+    if t1 is TApply && t2 is TApply {
+        if get_type_name(t1) != get_type_name(t2) {
+            return false
+        }
+
+        args1 := get_apply_args(t1)
+        args2 := get_apply_args(t2)
+
+        if args1.len() != args2.len() {
+            return false
+        }
+
+        i := 0
+        while i < args1.len() {
+            if !types_equal(args1[i], args2[i]) {
+                return false
+            }
+            i += 1
+        }
+
+        return true
+    }
+
+    // Check type parameters
+    if t1 is TParam && t2 is TParam {
+        return get_type_name(t1) == get_type_name(t2)
+    }
+
+    return false
+}
+
+// Check if source type can be assigned to target type
+// Allows assigning T to T? (optional)
+fn types_assignable(Type target, Type source) bool {
+    if types_equal(target, source) {
+        return true
+    }
+
+    if target is TOptional {
+        return types_equal(get_optional_inner(target), source)
+    }
+
+    return false
+}
+
+// Check if a type is defined in the environment
+fn type_exists(Env env, Type typ) bool {
+    // Primitives always exist
+    if typ is TInt || typ is TStr || typ is TBool || typ is TChar {
+        return true
+    }
+    if typ is TF32 || typ is TF64 || typ is TU32 || typ is TU64 || typ is TVoid {
+        return true
+    }
+
+    // Optional, array, and channel types - check inner type
+    if typ is TOptional {
+        return type_exists(env, get_optional_inner(typ))
+    }
+    if typ is TArray {
+        return type_exists(env, get_elem_type(typ))
+    }
+    if typ is TChan {
+        return type_exists(env, get_elem_type(typ))
+    }
+
+    // User-defined types
+    if typ is TUser {
+        name := get_type_name(typ)
+        return env.structs.has(name) || env.enums.has(name) || env.errors.has(name)
+    }
+
+    // Result types
+    if typ is TResult {
+        val_ok := type_exists(env, get_result_value(typ))
+        err_name := get_result_err(typ)
+        err_ok := err_name == "Error" || env.errors.has(err_name)
+        return val_ok && err_ok
+    }
+
+    // Type parameters are always valid
+    if typ is TParam {
+        return true
+    }
+
+    // Applied generic types
+    if typ is TApply {
+        name := get_type_name(typ)
+        args := get_apply_args(typ)
+
+        // Check arity
+        arity_ok := true
+        if env.generic_struct_params.has(name) {
+            tparams := env.generic_struct_params[name].items
+            arity_ok = tparams.len() == args.len()
+        } else if env.generic_enum_params.has(name) {
+            tparams := env.generic_enum_params[name].items
+            arity_ok = tparams.len() == args.len()
+        }
+
+        if !arity_ok {
+            return false
+        }
+
+        // Map<K, V> is a built-in generic type
+        type_defined := name == "Map" || env.structs.has(name) || env.enums.has(name)
+        if !type_defined {
+            return false
+        }
+
+        // Check all type arguments exist
+        i := 0
+        while i < args.len() {
+            if !type_exists(env, args[i]) {
+                return false
+            }
+            i += 1
+        }
+
+        return true
+    }
+
+    // Function types
+    if typ is TFunc {
+        params := get_func_params(typ)
+
+        // Check all param types exist
+        i := 0
+        while i < params.len() {
+            if !type_exists(env, params[i]) {
+                return false
+            }
+            i += 1
+        }
+
+        // Check return type exists
+        ret := get_func_ret(typ)
+        if ret {
+            return type_exists(env, unwrap_type(ret))
+        }
+
+        return true
+    }
+
+    return false
+}
+
+// Find index of element in array (helper for substitute_type_params)
+fn find_index(str[] arr, str target) int {
+    i := 0
+    while i < arr.len() {
+        if arr[i] == target {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// Substitute generic type parameters with concrete type arguments
+fn substitute_type_params(str[] type_params, Type[] type_args, Type typ) Type {
+    // TUser - substitute if it's a type parameter
+    if typ is TUser {
+        name := get_type_name(typ)
+        idx := find_index(type_params, name)
+        if idx >= 0 && idx < type_args.len() {
+            return type_args[idx]
+        }
+        return typ
+    }
+
+    // TArray - substitute element type
+    if typ is TArray {
+        new_elem := substitute_type_params(type_params, type_args, get_elem_type(typ))
+        return Type.TArray { elem: new_elem }
+    }
+
+    // TOptional - substitute inner type
+    if typ is TOptional {
+        new_inner := substitute_type_params(type_params, type_args, get_optional_inner(typ))
+        return Type.TOptional { inner: new_inner }
+    }
+
+    // TChan - substitute element type
+    if typ is TChan {
+        new_elem := substitute_type_params(type_params, type_args, get_elem_type(typ))
+        return Type.TChan { elem: new_elem }
+    }
+
+    // TResult - substitute value type
+    if typ is TResult {
+        new_val := substitute_type_params(type_params, type_args, get_result_value(typ))
+        return Type.TResult { value: new_val, err_type: get_result_err(typ) }
+    }
+
+    // TApply - substitute all type arguments
+    if typ is TApply {
+        name := get_type_name(typ)
+        args := get_apply_args(typ)
+
+        Type[] new_args = []
+        i := 0
+        while i < args.len() {
+            new_arg := substitute_type_params(type_params, type_args, args[i])
+            new_args.push(new_arg)
+            i += 1
+        }
+
+        return Type.TApply { name: name, args: TypeList { items: new_args } }
+    }
+
+    // TFunc - substitute param and return types
+    if typ is TFunc {
+        params := get_func_params(typ)
+
+        Type[] new_params = []
+        i := 0
+        while i < params.len() {
+            new_param := substitute_type_params(type_params, type_args, params[i])
+            new_params.push(new_param)
+            i += 1
+        }
+
+        Type? new_ret = none
+        ret := get_func_ret(typ)
+        if ret {
+            new_ret = substitute_type_params(type_params, type_args, unwrap_type(ret))
+        }
+
+        return Type.TFunc { params: TypeList { items: new_params }, ret: new_ret }
+    }
+
+    // Default - return type unchanged
+    return typ
+}

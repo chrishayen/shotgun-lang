@@ -180,34 +180,26 @@ Lexer :: read_string(self) Token {
         if ch == '\\' {
             self.advance()
             next := self.peek()
-            match next {
-                'n' -> {
-                    result = result + "\n"
-                    self.advance()
-                }
-                'r' -> {
-                    result = result + "\r"
-                    self.advance()
-                }
-                't' -> {
-                    result = result + "\t"
-                    self.advance()
-                }
-                '\\' -> {
-                    result = result + "\\"
-                    self.advance()
-                }
-                '"' -> {
-                    result = result + "\""
-                    self.advance()
-                }
-                '{' -> {
-                    result = result + "\\" + "\{"
-                    self.advance()
-                }
-                _ -> {
-                    result = result + "\\"
-                }
+            if next == 'n' {
+                result = result + "\n"
+                self.advance()
+            } else if next == 'r' {
+                result = result + "\r"
+                self.advance()
+            } else if next == 't' {
+                result = result + "\t"
+                self.advance()
+            } else if next == '\\' {
+                result = result + "\\"
+                self.advance()
+            } else if next == '"' {
+                result = result + "\""
+                self.advance()
+            } else if next == '{' {
+                result = result + "\\" + "\{"
+                self.advance()
+            } else {
+                result = result + "\\"
             }
         } else if ch == '{' {
             // Read until matching }
@@ -257,14 +249,20 @@ Lexer :: read_char(self) Token {
     if ch == '\\' {
         self.advance()
         next := self.peek()
-        result_char = match next {
-            'n' -> '\n'
-            'r' -> '\r'
-            't' -> '\t'
-            '\\' -> '\\'
-            '\'' -> '\''
-            '0' -> '\0'
-            _ -> { return Token.TkError { msg: "unknown escape sequence in character literal" } }
+        if next == 'n' {
+            result_char = '\n'
+        } else if next == 'r' {
+            result_char = '\r'
+        } else if next == 't' {
+            result_char = '\t'
+        } else if next == '\\' {
+            result_char = '\\'
+        } else if next == '\'' {
+            result_char = '\''
+        } else if next == '0' {
+            result_char = '\0'
+        } else {
+            return Token.TkError { msg: "unknown escape sequence in character literal" }
         }
         self.advance()
     } else if ch == '\'' {

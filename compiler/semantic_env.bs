@@ -46,12 +46,15 @@ fn create_env() Env {
     }
 }
 
-// Create a child scope
-// Note: symbols map is shared - local variables shadow but don't need full copy
-// since we only add to scopes, never remove
+// Create a child scope (copies symbols map for local scope)
 fn push_scope(Env env) Env {
+    new_symbols := Map<str, Symbol>{}
+    for key, value in env.symbols {
+        new_symbols[key] = value
+    }
+
     return Env {
-        symbols: env.symbols,
+        symbols: new_symbols,
         structs: env.structs,
         enums: env.enums,
         traits: env.traits,

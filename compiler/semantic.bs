@@ -1,0 +1,59 @@
+// Semantic analysis entry point for the Shotgun self-hosted compiler
+//
+// This file provides the main entry point for semantic analysis.
+// It performs a two-pass analysis:
+//   1. Register all declarations (structs, enums, functions, etc.)
+//   2. Check all items for semantic errors
+//
+// Dependencies (must be included in this order):
+//   - semantic_env.bs     : Environment and symbol table
+//   - semantic_types.bs   : Type comparison and utilities
+//   - semantic_infer.bs   : Type inference for expressions
+//   - semantic_check.bs   : Expression and statement checking
+//   - semantic_items.bs   : Item registration and checking
+
+// Analyze a program and return errors (empty if successful)
+fn analyze(Program program) str[] {
+    env := create_env()
+
+    items := program.items.items
+
+    // First pass: register all declarations
+    i := 0
+    while i < items.len() {
+        register_item(env, items[i])
+        i += 1
+    }
+
+    // Second pass: check all items
+    j := 0
+    while j < items.len() {
+        check_item(env, items[j])
+        j += 1
+    }
+
+    return env.error_list
+}
+
+// Analyze and return both environment and errors
+fn analyze_with_env(Program program) Env {
+    env := create_env()
+
+    items := program.items.items
+
+    // First pass: register all declarations
+    i := 0
+    while i < items.len() {
+        register_item(env, items[i])
+        i += 1
+    }
+
+    // Second pass: check all items
+    j := 0
+    while j < items.len() {
+        check_item(env, items[j])
+        j += 1
+    }
+
+    return env
+}

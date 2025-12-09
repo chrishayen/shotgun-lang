@@ -17,6 +17,7 @@ StringList :: struct { items str[] }
 StringPartList :: struct { items StringPart[] }
 FieldInitList :: struct { items FieldInit[] }
 PatternList :: struct { items Pattern[] }
+PatternBindingList :: struct { items PatternBinding[] }
 MatchArmList :: struct { items MatchArm[] }
 ParamList :: struct { items Param[] }
 ExprList :: struct { items Expr[] }
@@ -27,6 +28,12 @@ TraitMethodList :: struct { items TraitMethod[] }
 ImplMethodList :: struct { items ImplMethod[] }
 ImportPathList :: struct { items ImportPath[] }
 ItemList :: struct { items Item[] }
+
+// Pattern binding for variant destructuring: field_name: binding_name
+PatternBinding :: struct {
+    field_name str
+    binding str
+}
 
 // Types
 Type :: variant {
@@ -121,6 +128,7 @@ Pattern :: variant {
     PVariant {
         typ Type?
         variant_name str
+        bindings PatternBindingList
     }
     PWildcard
     PTuple { patterns PatternList }
@@ -231,9 +239,12 @@ Stmt :: variant {
     }
     SFor {
         var str
+        var2 str?
         iter Expr
         body StmtList
     }
+    SBreak
+    SContinue
     SWhile {
         cond Expr
         body StmtList

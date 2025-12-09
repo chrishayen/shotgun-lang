@@ -288,7 +288,11 @@ let rec infer_expr_type env expr =
      | Some (TArray t) -> Some t
      | Some (TApply ("Map", [_k; v])) -> Some v  (* Map indexing returns value type *)
      | _ -> None)
-  | EOr (e, _clause) -> infer_expr_type env e
+  | EOr (e, _clause) ->
+    (* The or operator unwraps optional types *)
+    (match infer_expr_type env e with
+     | Some (TOptional inner) -> Some inner
+     | other -> other)
   | EStructLit (name, type_args, _fields) ->
     if type_args = [] then Some (TUser name)
     else Some (TApply (name, type_args))
@@ -817,7 +821,11 @@ let rec get_expr_type env locals expr =
      | Some (TArray t) -> Some t
      | Some (TApply ("Map", [_k; v])) -> Some v  (* Map indexing returns value type *)
      | _ -> None)
-  | EOr (e, _) -> get_expr_type env locals e
+  | EOr (e, _) ->
+    (* The or operator unwraps optional types *)
+    (match get_expr_type env locals e with
+     | Some (TOptional inner) -> Some inner
+     | other -> other)
   | EStructLit (name, type_args, _) ->
     if type_args = [] then Some (TUser name)
     else Some (TApply (name, type_args))
@@ -918,7 +926,7 @@ let check_return_types env params declared_ret body =
     ) params;
     let returns = collect_return_types env locals body in
     List.iter (function
-      | Some t when not (types_equal t ret_type) ->
+      | Some t when not (types_assignable ~target:ret_type ~source:t) ->
         add_error env (Printf.sprintf "Return type mismatch: expected %s but found %s"
                          (Ast.show_typ ret_type) (Ast.show_typ t))
       | None -> ()  (* ignore if type couldn't be inferred *)

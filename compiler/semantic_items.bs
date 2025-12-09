@@ -1,0 +1,426 @@
+// Item registration and checking for semantic analysis
+//
+// This file implements:
+// - register_item: First pass - register all declarations into the environment
+// - check_item: Second pass - validate all items
+
+// ============================================================
+// Item accessor helpers
+// ============================================================
+
+// Get name from IStruct
+fn get_istruct_name(Item i) str {
+    return i.name
+}
+
+// Get type_params from IStruct
+fn get_istruct_type_params(Item i) str[] {
+    return i.type_params.items
+}
+
+// Get fields from IStruct
+fn get_istruct_fields(Item i) FieldList {
+    return i.fields
+}
+
+// Get name from IEnum
+fn get_ienum_name(Item i) str {
+    return i.name
+}
+
+// Get type_params from IEnum
+fn get_ienum_type_params(Item i) str[] {
+    return i.type_params.items
+}
+
+// Get variants from IEnum
+fn get_ienum_variants(Item i) EnumVariantList {
+    return i.variants
+}
+
+// Get name from ITrait
+fn get_itrait_name(Item i) str {
+    return i.name
+}
+
+// Get methods from ITrait
+fn get_itrait_methods(Item i) TraitMethodList {
+    return i.methods
+}
+
+// Get type_name from IImpl
+fn get_iimpl_type_name(Item i) str {
+    return i.type_name
+}
+
+// Get trait_name from IImpl
+fn get_iimpl_trait_name(Item i) str {
+    return i.trait_name
+}
+
+// Get methods from IImpl
+fn get_iimpl_methods(Item i) ImplMethodList {
+    return i.methods
+}
+
+// Get type_name from IMethod
+fn get_imethod_type_name(Item i) str {
+    return i.type_name
+}
+
+// Get method_name from IMethod
+fn get_imethod_method_name(Item i) str {
+    return i.method_name
+}
+
+// Get params from IMethod
+fn get_imethod_params(Item i) ParamList {
+    return i.params
+}
+
+// Get ret from IMethod
+fn get_imethod_ret(Item i) Type? {
+    return i.ret
+}
+
+// Get body from IMethod
+fn get_imethod_body(Item i) StmtList {
+    return i.body
+}
+
+// Get name from IFunction
+fn get_ifunction_name(Item i) str {
+    return i.name
+}
+
+// Get params from IFunction
+fn get_ifunction_params(Item i) ParamList {
+    return i.params
+}
+
+// Get ret from IFunction
+fn get_ifunction_ret(Item i) Type? {
+    return i.ret
+}
+
+// Get body from IFunction
+fn get_ifunction_body(Item i) StmtList {
+    return i.body
+}
+
+// Get name from IError
+fn get_ierror_name(Item i) str {
+    return i.name
+}
+
+// Get fields from IError
+fn get_ierror_fields(Item i) FieldList {
+    return i.fields
+}
+
+// Get method name from ImplMethod
+fn get_implmethod_name(ImplMethod m) str {
+    return m.name
+}
+
+// Get params from ImplMethod
+fn get_implmethod_params(ImplMethod m) ParamList {
+    return m.params
+}
+
+// Get ret from ImplMethod
+fn get_implmethod_ret(ImplMethod m) Type? {
+    return m.ret
+}
+
+// Get body from ImplMethod
+fn get_implmethod_body(ImplMethod m) StmtList {
+    return m.body
+}
+
+// ============================================================
+// First pass: Register all declarations
+// ============================================================
+
+fn register_item(Env env, Item item) {
+    if item is IStruct {
+        name := get_istruct_name(item)
+        type_params := get_istruct_type_params(item)
+        fields := get_istruct_fields(item)
+
+        env.structs[name] = fields
+        if type_params.len() > 0 {
+            env.generic_struct_params[name] = StringList { items: type_params }
+        }
+        return
+    }
+
+    if item is IEnum {
+        name := get_ienum_name(item)
+        type_params := get_ienum_type_params(item)
+        variants := get_ienum_variants(item)
+
+        env.enums[name] = variants
+        if type_params.len() > 0 {
+            env.generic_enum_params[name] = StringList { items: type_params }
+        }
+        return
+    }
+
+    if item is ITrait {
+        name := get_itrait_name(item)
+        methods := get_itrait_methods(item)
+        env.traits[name] = methods
+        return
+    }
+
+    if item is IError {
+        name := get_ierror_name(item)
+        fields := get_ierror_fields(item)
+        env.errors[name] = fields
+        return
+    }
+
+    if item is IMethod {
+        type_name := get_imethod_type_name(item)
+        method_name := get_imethod_method_name(item)
+        params := get_imethod_params(item)
+        ret := get_imethod_ret(item)
+
+        key := method_key(type_name, method_name)
+        env.methods[key] = params
+        if ret {
+            ret_unwrap := ret or Type.TVoid{}
+            env.method_rets[key] = ret_unwrap
+        }
+        return
+    }
+
+    if item is IImpl {
+        // Implementation methods are registered when checking
+        return
+    }
+
+    if item is IFunction {
+        name := get_ifunction_name(item)
+        params := get_ifunction_params(item)
+        ret := get_ifunction_ret(item)
+        env.symbols[name] = Symbol.SFunc { params: params, ret: ret }
+        return
+    }
+
+    if item is IUses {
+        // Import resolution handled by resolver module
+        return
+    }
+}
+
+// ============================================================
+// Param order checking
+// ============================================================
+
+fn check_param_order(Env env, Param[] params) {
+    seen_optional := false
+    i := 0
+    while i < params.len() {
+        param := params[i]
+        if param is PNamed {
+            typ := get_param_type(param)
+            is_optional := typ is TOptional
+            if seen_optional && !is_optional {
+                param_name := get_param_name(param)
+                add_error(env, "Required parameter '{param_name}' cannot follow optional parameter")
+            }
+            if is_optional {
+                seen_optional = true
+            }
+        }
+        i += 1
+    }
+}
+
+// ============================================================
+// Function and method checking
+// ============================================================
+
+fn check_function(Env env, Param[] params, Stmt[] body, Type? ret) {
+    check_param_order(env, params)
+
+    func_env := push_scope(env)
+
+    // Add params to scope
+    i := 0
+    while i < params.len() {
+        param := params[i]
+        if param is PNamed {
+            func_env.symbols[get_param_name(param)] = Symbol.SVar { typ: get_param_type(param), is_const: false }
+        }
+        i += 1
+    }
+
+    // Check body
+    j := 0
+    while j < body.len() {
+        check_stmt(func_env, body[j])
+        j += 1
+    }
+
+    // Return type checking is done by the bootstrap compiler already
+}
+
+fn check_method(Env env, str type_name, Param[] params, Stmt[] body, Type? ret) {
+    check_param_order(env, params)
+
+    method_env := push_scope(env)
+    method_env.in_method = true
+    method_env.current_type = type_name
+
+    // Add self to scope
+    method_env.symbols["self"] = Symbol.SVar { typ: Type.TUser { name: type_name }, is_const: false }
+
+    // Add params to scope
+    i := 0
+    while i < params.len() {
+        param := params[i]
+        if param is PNamed {
+            method_env.symbols[get_param_name(param)] = Symbol.SVar { typ: get_param_type(param), is_const: false }
+        }
+        i += 1
+    }
+
+    // Check body
+    j := 0
+    while j < body.len() {
+        check_stmt(method_env, body[j])
+        j += 1
+    }
+}
+
+// ============================================================
+// Type existence with type params
+// ============================================================
+
+fn type_exists_with_params(Env env, str[] type_params, Type typ) bool {
+    // Type parameters are always valid in this context
+    if typ is TUser {
+        name := get_type_name(typ)
+        // Check if it's one of the type parameters
+        i := 0
+        while i < type_params.len() {
+            if type_params[i] == name {
+                return true
+            }
+            i += 1
+        }
+    }
+
+    // Fall back to normal type_exists
+    return type_exists(env, typ)
+}
+
+// ============================================================
+// Second pass: Check all items
+// ============================================================
+
+fn check_item(Env env, Item item) {
+    if item is IStruct {
+        name := get_istruct_name(item)
+        type_params := get_istruct_type_params(item)
+        fields := get_istruct_fields(item)
+
+        // Check all field types exist
+        i := 0
+        while i < fields.items.len() {
+            field := fields.items[i]
+            if !type_exists_with_params(env, type_params, field.typ) {
+                add_error(env, "Unknown type for field {field.name} in struct {name}")
+            }
+            i += 1
+        }
+        return
+    }
+
+    if item is IEnum {
+        name := get_ienum_name(item)
+        type_params := get_ienum_type_params(item)
+        variants := get_ienum_variants(item)
+
+        // Check all variant field types exist
+        i := 0
+        while i < variants.items.len() {
+            v := variants.items[i]
+            j := 0
+            while j < v.fields.items.len() {
+                field := v.fields.items[j]
+                if !type_exists_with_params(env, type_params, field.typ) {
+                    add_error(env, "Unknown type for field {field.name} in variant {v.name} of enum {name}")
+                }
+                j += 1
+            }
+            i += 1
+        }
+        return
+    }
+
+    if item is ITrait {
+        // Just declarations, no bodies to check
+        return
+    }
+
+    if item is IImpl {
+        type_name := get_iimpl_type_name(item)
+        trait_name := get_iimpl_trait_name(item)
+        methods := get_iimpl_methods(item)
+
+        // Check trait exists
+        if !env.traits.has(trait_name) {
+            add_error(env, "Unknown trait: {trait_name}")
+        }
+
+        // Check each method
+        i := 0
+        while i < methods.items.len() {
+            m := methods.items[i]
+            params := get_implmethod_params(m)
+            ret := get_implmethod_ret(m)
+            body := get_implmethod_body(m)
+            check_method(env, type_name, params.items, body.items, ret)
+            i += 1
+        }
+        return
+    }
+
+    if item is IMethod {
+        type_name := get_imethod_type_name(item)
+        params := get_imethod_params(item)
+        ret := get_imethod_ret(item)
+        body := get_imethod_body(item)
+
+        // Check type exists
+        if !env.structs.has(type_name) && !env.enums.has(type_name) {
+            add_error(env, "Method defined for unknown type: {type_name}")
+        }
+
+        check_method(env, type_name, params.items, body.items, ret)
+        return
+    }
+
+    if item is IFunction {
+        params := get_ifunction_params(item)
+        ret := get_ifunction_ret(item)
+        body := get_ifunction_body(item)
+
+        check_function(env, params.items, body.items, ret)
+        return
+    }
+
+    if item is IError {
+        // Just a type definition
+        return
+    }
+
+    if item is IUses {
+        // Import validation handled by resolver module
+        return
+    }
+}

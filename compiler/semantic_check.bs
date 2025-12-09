@@ -1,0 +1,718 @@
+// Expression and statement validation for semantic analysis
+//
+// This file implements the core semantic checking logic:
+// - check_expr: Validates expressions (variable usage, type compatibility, etc.)
+// - check_stmt: Validates statements (declarations, control flow, etc.)
+// - bind_pattern_vars: Binds variables from match patterns into scope
+
+// ============================================================
+// Stmt and Pattern accessor helpers
+// ============================================================
+
+// Get name from SVarDecl
+fn get_vardecl_name(Stmt s) str {
+    return s.name
+}
+
+// Get type from SVarDecl
+fn get_vardecl_type(Stmt s) Type {
+    return s.typ
+}
+
+// Get init from SVarDecl
+fn get_vardecl_init(Stmt s) Expr {
+    return s.init
+}
+
+// Get name from SVarDeclInfer
+fn get_vardecl_infer_name(Stmt s) str {
+    return s.name
+}
+
+// Get init from SVarDeclInfer
+fn get_vardecl_infer_init(Stmt s) Expr {
+    return s.init
+}
+
+// Get name from SConstDecl
+fn get_constdecl_name(Stmt s) str {
+    return s.name
+}
+
+// Get init from SConstDecl
+fn get_constdecl_init(Stmt s) Expr {
+    return s.init
+}
+
+// Get cond from SIf
+fn get_if_cond(Stmt s) Expr {
+    return s.cond
+}
+
+// Get then_block from SIf
+fn get_if_then_block(Stmt s) Stmt[] {
+    return s.then_block.items
+}
+
+// Get else_block from SIf
+fn get_if_else_block(Stmt s) StmtList? {
+    return s.else_block
+}
+
+// Get cond from SWhile
+fn get_while_cond(Stmt s) Expr {
+    return s.cond
+}
+
+// Get body from SWhile
+fn get_while_body_items(Stmt s) Stmt[] {
+    return s.body.items
+}
+
+// Get var from SFor
+fn get_for_var(Stmt s) str {
+    return s.var
+}
+
+// Get iter from SFor
+fn get_for_iter(Stmt s) Expr {
+    return s.iter
+}
+
+// Get body from SFor
+fn get_for_body_items(Stmt s) Stmt[] {
+    return s.body.items
+}
+
+// Get var2 from SFor (optional second loop var for map iteration)
+fn get_for_var2(Stmt s) str? {
+    return s.var2
+}
+
+// Get expr from SGo
+fn get_go_expr(Stmt s) Expr {
+    return s.expr
+}
+
+// Get expr from SExpr
+fn get_sexpr_expr(Stmt s) Expr {
+    return s.expr
+}
+
+// Get name from PIdent
+fn get_pident_name(Pattern p) str {
+    return p.name
+}
+
+// Get variant_name from PVariant
+fn get_pvariant_name(Pattern p) str {
+    return p.variant_name
+}
+
+// Get bindings from PVariant
+fn get_pvariant_bindings(Pattern p) PatternBinding[] {
+    return p.bindings.items
+}
+
+// Get patterns from PTuple
+fn get_ptuple_patterns(Pattern p) Pattern[] {
+    return p.patterns.items
+}
+
+// Get field_name from PatternBinding
+fn get_binding_field(PatternBinding b) str {
+    return b.field_name
+}
+
+// Get binding name from PatternBinding
+fn get_binding_name(PatternBinding b) str {
+    return b.binding
+}
+
+// Get expr from OrClause if it's OrExpr
+fn get_orclause_expr(OrClause c) Expr {
+    return c.expr
+}
+
+// Get expr from OrClause if it's OrReturn with Some
+fn get_orclause_return_expr(OrClause c) Expr? {
+    return c.expr
+}
+
+// Get clause from EOr
+fn get_eor_clause(Expr e) OrClause {
+    return e.clause
+}
+
+// Get elements from EArrayLit
+fn get_earraylit_elements(Expr e) Expr[] {
+    return e.elements.items
+}
+
+// Get fields from EStructLit
+fn get_estructlit_fields(Expr e) FieldInit[] {
+    return e.fields.items
+}
+
+// Get field name from FieldInit
+fn get_field_init_name(FieldInit f) str {
+    return f.name
+}
+
+// Get field value from FieldInit
+fn get_field_init_value(FieldInit f) Expr {
+    return f.value
+}
+
+// Get fields from EEnumVariant
+fn get_enumvariant_fields(Expr e) FieldInit[] {
+    return e.fields.items
+}
+
+// Get expr from EUnary
+fn get_unary_expr(Expr e) Expr {
+    return e.expr
+}
+
+// Get target from EAssign
+fn get_assign_target(Expr e) Expr {
+    return e.target
+}
+
+// Get parts from EString
+fn get_string_parts(Expr e) StringPart[] {
+    return e.parts.items
+}
+
+// Get expr from StringPart.SPExpr
+fn get_stringpart_expr(StringPart p) Expr {
+    return p.expr
+}
+
+// Get exprs from EMatch
+fn get_match_exprs(Expr e) Expr[] {
+    return e.exprs.items
+}
+
+// Get using_type from EMatch
+fn get_match_using(Expr e) Type? {
+    return e.using_type
+}
+
+// Get arms from EMatch
+fn get_match_arms_items(Expr e) MatchArm[] {
+    return e.arms.items
+}
+
+// Get pattern from MatchArm
+fn get_arm_pattern(MatchArm a) Pattern {
+    return a.pattern
+}
+
+// Get body expr from MatchArm
+fn get_arm_body(MatchArm a) Expr {
+    return a.expr
+}
+
+// ============================================================
+// Pattern binding
+// ============================================================
+
+// Bind variables from match patterns into the environment
+fn bind_pattern_vars(Env env, Pattern pattern, Type? expr_type, Type? using_type) {
+    if pattern is PWildcard {
+        return
+    }
+
+    if pattern is PLiteral {
+        return
+    }
+
+    if pattern is PIdent {
+        // Bind identifier to the matched expression type
+        typ := expr_type or Type.TInt{}
+        env.symbols[get_pident_name(pattern)] = Symbol.SVar { typ: typ, is_const: false }
+        return
+    }
+
+    if pattern is PVariant {
+        // Look up the variant type to get field types
+        variant_name := get_pvariant_name(pattern)
+        bindings := get_pvariant_bindings(pattern)
+
+        // Find the enum type
+        enum_type := using_type or expr_type
+        if !enum_type {
+            return
+        }
+
+        enum_t := enum_type or Type.TVoid{}
+        type_name := ""
+        Type[] type_args = []
+
+        if enum_t is TUser {
+            type_name = get_type_name(enum_t)
+        }
+        if enum_t is TApply {
+            type_name = get_type_name(enum_t)
+            type_args = get_apply_args(enum_t)
+        }
+
+        if type_name == "" {
+            return
+        }
+
+        // Look up variant fields
+        if env.enums.has(type_name) {
+            variants := env.enums[type_name].items
+            i := 0
+            while i < variants.len() {
+                v := variants[i]
+                if v.name == variant_name {
+                    // Bind each field
+                    j := 0
+                    while j < bindings.len() {
+                        b := bindings[j]
+                        field_name := get_binding_field(b)
+                        binding_name := get_binding_name(b)
+
+                        // Find field type
+                        k := 0
+                        while k < v.fields.items.len() {
+                            field := v.fields.items[k]
+                            if field.name == field_name {
+                                field_type := field.typ
+
+                                // Substitute type params for generic enums
+                                if type_args.len() > 0 && env.generic_enum_params.has(type_name) {
+                                    tparams := env.generic_enum_params[type_name].items
+                                    field_type = substitute_type_params(tparams, type_args, field_type)
+                                }
+
+                                env.symbols[binding_name] = Symbol.SVar { typ: field_type, is_const: false }
+                                break
+                            }
+                            k += 1
+                        }
+                        j += 1
+                    }
+                    break
+                }
+                i += 1
+            }
+        }
+        return
+    }
+
+    if pattern is PTuple {
+        // Tuple patterns - recursively bind each element
+        // For now, we don't have tuple type info, so skip detailed binding
+        return
+    }
+}
+
+// ============================================================
+// Expression checking
+// ============================================================
+
+// Check an expression for semantic errors
+fn check_expr(Env env, Expr expr) {
+    if expr is EInt || expr is EFloat || expr is EBool || expr is EChar || expr is ENone || expr is EChan {
+        return
+    }
+
+    if expr is EString {
+        // Check interpolated parts
+        parts := get_string_parts(expr)
+        i := 0
+        while i < parts.len() {
+            part := parts[i]
+            if part is SInterp {
+                check_expr(env, get_stringpart_expr(part))
+            }
+            i += 1
+        }
+        return
+    }
+
+    if expr is EIdent {
+        name := get_ident_name(expr)
+
+        // Check for 'self' outside method
+        if name == "self" && !env.in_method {
+            add_error(env, "'self' used outside of method")
+            return
+        }
+
+        // Built-in functions and self
+        if name == "self" || name == "print" || name == "read_file" ||
+           name == "write_file" || name == "chr" || name == "ord" {
+            return
+        }
+
+        // Check variable is defined
+        if !env.symbols.has(name) {
+            add_error(env, "Undefined variable: {name}")
+        }
+        return
+    }
+
+    if expr is EBinary {
+        check_expr(env, get_binary_left(expr))
+        check_expr(env, get_binary_right(expr))
+        return
+    }
+
+    if expr is EUnary {
+        check_expr(env, get_unary_expr(expr))
+        return
+    }
+
+    if expr is ECall {
+        callee := get_call_callee(expr)
+        check_expr(env, callee)
+
+        // Check arguments
+        args := get_call_args(expr)
+        i := 0
+        while i < args.len() {
+            check_expr(env, args[i])
+            i += 1
+        }
+        return
+    }
+
+    if expr is EMember {
+        check_expr(env, get_member_expr(expr))
+        return
+    }
+
+    if expr is EIndex {
+        check_expr(env, get_index_expr(expr))
+        check_expr(env, get_index_index(expr))
+        return
+    }
+
+    if expr is EOr {
+        check_expr(env, get_or_expr(expr))
+        clause := get_eor_clause(expr)
+        if clause is OrExpr {
+            check_expr(env, get_orclause_expr(clause))
+        }
+        if clause is OrReturn {
+            ret_expr := get_orclause_return_expr(clause)
+            if ret_expr {
+                ret_e := ret_expr or Expr.ENone{}
+                check_expr(env, ret_e)
+            }
+        }
+        return
+    }
+
+    if expr is EStructLit {
+        name := get_struct_lit_name(expr)
+
+        // Map is a built-in type
+        if name != "Map" && !env.structs.has(name) {
+            add_error(env, "Unknown struct type: {name}")
+        }
+
+        // Check field expressions
+        fields := get_estructlit_fields(expr)
+        i := 0
+        while i < fields.len() {
+            field := fields[i]
+            check_expr(env, get_field_init_value(field))
+            i += 1
+        }
+        return
+    }
+
+    if expr is EEnumVariant {
+        enum_name := get_enum_variant_name(expr)
+
+        // Check enum exists
+        if !env.enums.has(enum_name) {
+            add_error(env, "Unknown enum type: {enum_name}")
+        }
+
+        // Check field expressions
+        fields := get_enumvariant_fields(expr)
+        i := 0
+        while i < fields.len() {
+            field := fields[i]
+            check_expr(env, get_field_init_value(field))
+            i += 1
+        }
+        return
+    }
+
+    if expr is EArrayLit {
+        elements := get_earraylit_elements(expr)
+        i := 0
+        while i < elements.len() {
+            check_expr(env, elements[i])
+            i += 1
+        }
+        return
+    }
+
+    if expr is EParen {
+        check_expr(env, get_paren_expr(expr))
+        return
+    }
+
+    if expr is EAssign {
+        target := get_assign_target(expr)
+        check_expr(env, target)
+        check_expr(env, get_assign_value(expr))
+
+        // Check for const reassignment
+        if target is EIdent {
+            name := get_ident_name(target)
+            if env.symbols.has(name) {
+                sym := env.symbols[name]
+                if sym is SVar {
+                    if get_svar_typ(sym) is TInt {
+                        // Can't directly check is_const from sym, need helper
+                        // For now, skip const check - it requires more helper functions
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    if expr is EMatch {
+        // Check matched expressions
+        match_exprs := get_match_exprs(expr)
+        i := 0
+        while i < match_exprs.len() {
+            check_expr(env, match_exprs[i])
+            i += 1
+        }
+
+        // Infer type from first match expression
+        Type? expr_type = none
+        if match_exprs.len() > 0 {
+            expr_type = infer_expr_type(env, match_exprs[0])
+        }
+
+        using_type := get_match_using(expr)
+
+        // Check each arm
+        arms := get_match_arms_items(expr)
+        j := 0
+        while j < arms.len() {
+            arm := arms[j]
+            arm_pattern := get_arm_pattern(arm)
+            arm_body := get_arm_body(arm)
+
+            // Create scope for arm
+            arm_env := push_scope(env)
+            bind_pattern_vars(arm_env, arm_pattern, expr_type, using_type)
+            check_expr(arm_env, arm_body)
+            j += 1
+        }
+        return
+    }
+
+    if expr is EAnonFn {
+        // Create scope for function body
+        fn_env := push_scope(env)
+
+        // Add params to scope
+        params := get_anon_fn_params(expr)
+        i := 0
+        while i < params.len() {
+            param := params[i]
+            if param is PNamed {
+                fn_env.symbols[get_param_name(param)] = Symbol.SVar { typ: get_param_type(param), is_const: false }
+            }
+            i += 1
+        }
+
+        // Check body
+        body := get_anon_fn_body(expr)
+        j := 0
+        while j < body.len() {
+            check_stmt(fn_env, body[j])
+            j += 1
+        }
+        return
+    }
+}
+
+// ============================================================
+// Statement checking
+// ============================================================
+
+// Check a statement for semantic errors
+fn check_stmt(Env env, Stmt stmt) {
+    if stmt is SBreak || stmt is SContinue {
+        return
+    }
+
+    if stmt is SVarDecl {
+        typ := get_vardecl_type(stmt)
+        name := get_vardecl_name(stmt)
+        init := get_vardecl_init(stmt)
+
+        // Check type exists
+        if !type_exists(env, typ) {
+            add_error(env, "Unknown type in declaration of {name}")
+        }
+
+        // Check initializer expression
+        check_expr(env, init)
+
+        // Add to symbol table
+        env.symbols[name] = Symbol.SVar { typ: typ, is_const: false }
+        return
+    }
+
+    if stmt is SVarDeclInfer {
+        name := get_vardecl_infer_name(stmt)
+        init := get_vardecl_infer_init(stmt)
+
+        // Check initializer expression
+        check_expr(env, init)
+
+        // Infer type
+        inferred := infer_expr_type(env, init)
+        typ := inferred or Type.TInt{}
+
+        // Add to symbol table
+        env.symbols[name] = Symbol.SVar { typ: typ, is_const: false }
+        return
+    }
+
+    if stmt is SConstDecl {
+        name := get_constdecl_name(stmt)
+        init := get_constdecl_init(stmt)
+
+        // Check initializer expression
+        check_expr(env, init)
+
+        // Infer type
+        inferred := infer_expr_type(env, init)
+        typ := inferred or Type.TInt{}
+
+        // Add to symbol table as const
+        env.symbols[name] = Symbol.SVar { typ: typ, is_const: true }
+        return
+    }
+
+    if stmt is SReturn {
+        ret_expr := get_return_expr(stmt)
+        if ret_expr {
+            e := ret_expr or Expr.ENone{}
+            check_expr(env, e)
+        }
+        return
+    }
+
+    if stmt is SIf {
+        // Check condition
+        check_expr(env, get_if_cond(stmt))
+
+        // Check then block
+        then_stmts := get_if_then_block(stmt)
+        then_env := push_scope(env)
+        i := 0
+        while i < then_stmts.len() {
+            check_stmt(then_env, then_stmts[i])
+            i += 1
+        }
+
+        // Check else block if present
+        else_block := get_if_else_block(stmt)
+        if else_block {
+            else_b := else_block or StmtList { items: [] }
+            else_stmts := else_b.items
+            else_env := push_scope(env)
+            j := 0
+            while j < else_stmts.len() {
+                check_stmt(else_env, else_stmts[j])
+                j += 1
+            }
+        }
+        return
+    }
+
+    if stmt is SFor {
+        // Check iterator expression
+        iter := get_for_iter(stmt)
+        check_expr(env, iter)
+
+        // Create new scope for loop body
+        body_env := push_scope(env)
+
+        // Infer loop variable type from iterator
+        iter_type := infer_expr_type(env, iter)
+        var_type := Type.TInt{}
+        Type? var2_type = none
+
+        if iter_type {
+            it := iter_type or Type.TVoid{}
+            if it is TArray {
+                var_type = get_elem_type(it)
+            }
+            if it is TApply {
+                type_name := get_type_name(it)
+                if type_name == "Map" {
+                    type_args := get_apply_args(it)
+                    if type_args.len() == 2 {
+                        var_type = type_args[0]  // key type
+                        var2_type = type_args[1] // value type
+                    }
+                }
+            }
+        }
+
+        // Add loop variable to scope
+        body_env.symbols[get_for_var(stmt)] = Symbol.SVar { typ: var_type, is_const: false }
+
+        // Add second variable if map iteration
+        var2 := get_for_var2(stmt)
+        if var2 && var2_type {
+            var2_name := var2 or ""
+            var2_t := var2_type or Type.TInt{}
+            body_env.symbols[var2_name] = Symbol.SVar { typ: var2_t, is_const: false }
+        }
+
+        // Check body
+        body_stmts := get_for_body_items(stmt)
+        i := 0
+        while i < body_stmts.len() {
+            check_stmt(body_env, body_stmts[i])
+            i += 1
+        }
+        return
+    }
+
+    if stmt is SWhile {
+        // Check condition
+        check_expr(env, get_while_cond(stmt))
+
+        // Check body
+        body_env := push_scope(env)
+        body_stmts := get_while_body_items(stmt)
+        i := 0
+        while i < body_stmts.len() {
+            check_stmt(body_env, body_stmts[i])
+            i += 1
+        }
+        return
+    }
+
+    if stmt is SGo {
+        check_expr(env, get_go_expr(stmt))
+        return
+    }
+
+    if stmt is SExpr {
+        check_expr(env, get_sexpr_expr(stmt))
+        return
+    }
+}

@@ -141,7 +141,9 @@ Parser :: parse_pattern(self) Pattern {
 // Examples:
 //   Some                        (with 'using' type inference)
 //   None
+//   Some { value: v }           (with bindings)
 //   Option.Some                 (qualified)
+//   Option.Some { value: v }    (qualified with bindings)
 //   Option<int>.Some            (with type args)
 //   Result.Ok
 Parser :: parse_variant_pattern(self) Pattern {
@@ -165,7 +167,8 @@ Parser :: parse_variant_pattern(self) Pattern {
         variant_name := self.get_type_ident()
         self.advance()
 
-        return Pattern.PVariant { typ: typ, variant_name: variant_name }
+        bindings := self.parse_pattern_bindings()
+        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
     }
 
     // Check for qualified: Enum.Variant
@@ -175,9 +178,43 @@ Parser :: parse_variant_pattern(self) Pattern {
         self.advance()
 
         typ = Type.TUser { name: first_name }
-        return Pattern.PVariant { typ: typ, variant_name: variant_name }
+        bindings := self.parse_pattern_bindings()
+        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
     }
 
     // Unqualified variant (with 'using')
-    return Pattern.PVariant { typ: none, variant_name: first_name }
+    bindings := self.parse_pattern_bindings()
+    return Pattern.PVariant { typ: none, variant_name: first_name, bindings: bindings }
+}
+
+// Parse pattern bindings: { field1: binding1, field2: binding2 }
+// Returns empty list if no bindings present
+Parser :: parse_pattern_bindings(self) PatternBindingList {
+    PatternBinding[] bindings = []
+
+    if !self.is_lbrace() {
+        return PatternBindingList { items: bindings }
+    }
+
+    self.advance()
+    self.skip_newlines()
+
+    while !self.is_rbrace() && !self.is_eof() {
+        // Parse field_name: binding_name
+        field_name := self.get_ident()
+        self.advance()
+        self.expect_colon()
+        binding_name := self.get_ident()
+        self.advance()
+
+        bindings.push(PatternBinding { field_name: field_name, binding: binding_name })
+
+        if self.is_comma() {
+            self.advance()
+        }
+        self.skip_newlines()
+    }
+
+    self.expect_rbrace()
+    return PatternBindingList { items: bindings }
 }
