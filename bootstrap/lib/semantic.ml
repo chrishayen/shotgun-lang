@@ -140,6 +140,13 @@ let rec types_equal t1 t2 =
   | TParam a, TParam b -> a = b
   | _ -> false
 
+(* Type compatibility for assignment: T can be assigned to T? *)
+let types_assignable ~target ~source =
+  types_equal target source ||
+  (match target with
+   | TOptional inner -> types_equal inner source
+   | _ -> false)
+
 (* Substitute generic type parameters with concrete args *)
 let rec substitute_type_params type_params type_args typ =
   match typ with
@@ -544,9 +551,9 @@ let rec check_expr env expr =
   | EAssign (_, lhs, rhs) ->
     check_expr env lhs;
     check_expr env rhs;
-    (* Type compatibility check *)
+    (* Type compatibility check: T can be assigned to T? *)
     (match infer_expr_type env lhs, infer_expr_type env rhs with
-     | Some lt, Some rt -> if not (types_equal lt rt) then
+     | Some lt, Some rt -> if not (types_assignable ~target:lt ~source:rt) then
          add_error env (Printf.sprintf "Assignment type mismatch: %s vs %s" (Ast.show_typ lt) (Ast.show_typ rt))
      | _ -> ());
     (* Check for const reassignment *)
