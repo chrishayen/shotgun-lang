@@ -574,6 +574,80 @@ content := <span class="fn">read_file</span>(<span class="st">"input.txt"</span>
 <span class="cm">// Write to a file</span>
 <span class="fn">write_file</span>(<span class="st">"output.txt"</span>, <span class="st">"Hello, World!"</span>)</code></pre>
 
+        <h2>Testing</h2>
+
+        <p>shotgun has a built-in testing framework with assertion functions and a test runner.</p>
+
+        <h3>Assertion Functions</h3>
+
+        <p>Use these built-in functions to write tests:</p>
+
+        <pre><code><span class="cm">// Assert with custom message</span>
+<span class="fn">assert</span>(x > <span class="nu">0</span>, <span class="st">"x must be positive"</span>)
+
+<span class="cm">// Assert equality</span>
+<span class="fn">assert_eq</span>(<span class="nu">1</span> + <span class="nu">1</span>, <span class="nu">2</span>)
+<span class="fn">assert_eq</span>(name, <span class="st">"Alice"</span>)
+
+<span class="cm">// Assert inequality</span>
+<span class="fn">assert_ne</span>(x, <span class="nu">0</span>)
+
+<span class="cm">// Assert boolean conditions</span>
+<span class="fn">assert_true</span>(<span class="nu">5</span> > <span class="nu">3</span>)
+<span class="fn">assert_false</span>(<span class="nu">3</span> > <span class="nu">5</span>)</code></pre>
+
+        <p>On failure, assertions print the file and line number, then exit with code 1:</p>
+
+        <pre><code>Assertion failed at tests/math.bs:15: values not equal
+Assertion failed at tests/math.bs:20: x must be positive</code></pre>
+
+        <h3>Writing Tests</h3>
+
+        <p>Test functions start with <code>test_</code>:</p>
+
+        <pre><code><span class="cm">// tests/test_math.bs</span>
+
+<span class="kw">fn</span> <span class="fn">test_addition</span>() {
+    <span class="fn">assert_eq</span>(<span class="nu">1</span> + <span class="nu">1</span>, <span class="nu">2</span>)
+    <span class="fn">assert_eq</span>(<span class="nu">-5</span> + <span class="nu">5</span>, <span class="nu">0</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">test_comparison</span>() {
+    <span class="fn">assert_true</span>(<span class="nu">10</span> > <span class="nu">5</span>)
+    <span class="fn">assert_false</span>(<span class="nu">5</span> > <span class="nu">10</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">test_custom_logic</span>() {
+    x := <span class="nu">42</span>
+    <span class="fn">assert</span>(x >= <span class="nu">0</span> && x <= <span class="nu">100</span>, <span class="st">"x must be in range 0-100"</span>)
+}</code></pre>
+
+        <h3>Running Tests</h3>
+
+        <p>Run tests with the <code>shotgun test</code> command:</p>
+
+        <pre><code>$ shotgun test
+========================================
+Shotgun Test Runner
+========================================
+
+[PASS] tests/test_math.bs::test_addition
+[PASS] tests/test_math.bs::test_comparison
+[PASS] tests/test_math.bs::test_custom_logic
+
+========================================
+Results: 3 passed, 3 total
+========================================</code></pre>
+
+        <p>By default, tests are discovered in the <code>tests/</code> directory. Configure a different directory in <code>shotgun.toml</code>:</p>
+
+        <pre><code>name = "myapp"
+tests_dir = "spec"</code></pre>
+
+        <p>Or specify the directory on the command line:</p>
+
+        <pre><code>$ shotgun test my_tests/</code></pre>
+
         <h2>Operators</h2>
 
         <h3>Arithmetic</h3>

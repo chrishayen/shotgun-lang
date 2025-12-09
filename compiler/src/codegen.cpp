@@ -267,6 +267,35 @@ void CodeGen::gen_runtime_decls() {
     );
     llvm::Function::Create(snprintf_type, llvm::Function::ExternalLinkage,
                            "snprintf", module_.get());
+
+    // exit for assertion failures
+    auto* exit_type = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*context_),
+        {llvm::Type::getInt32Ty(*context_)},
+        false
+    );
+    llvm::Function::Create(exit_type, llvm::Function::ExternalLinkage,
+                           "exit", module_.get());
+
+    // fprintf for assertion error output
+    auto* fprintf_type = llvm::FunctionType::get(
+        llvm::Type::getInt32Ty(*context_),
+        {llvm::PointerType::get(*context_, 0),  // FILE* stream
+         llvm::PointerType::get(*context_, 0)}, // format
+        true  // vararg
+    );
+    llvm::Function::Create(fprintf_type, llvm::Function::ExternalLinkage,
+                           "fprintf", module_.get());
+
+    // Declare stderr as external global variable
+    new llvm::GlobalVariable(
+        *module_,
+        llvm::PointerType::get(*context_, 0),
+        false,
+        llvm::GlobalValue::ExternalLinkage,
+        nullptr,
+        "stderr"
+    );
 }
 
 // Declaration generation
@@ -1077,6 +1106,23 @@ llvm::Value* CodeGen::gen_call(const Expr::Call& call) {
 
             return builder_->CreateCall(printf_fn, printf_args);
         }
+
+        // Assertion built-ins
+        if (ident->name == "assert") {
+            return gen_assert(call);
+        }
+        if (ident->name == "assert_eq") {
+            return gen_assert_eq(call);
+        }
+        if (ident->name == "assert_ne") {
+            return gen_assert_ne(call);
+        }
+        if (ident->name == "assert_true") {
+            return gen_assert_true(call);
+        }
+        if (ident->name == "assert_false") {
+            return gen_assert_false(call);
+        }
     }
 
     // Check for method call (field.name())
@@ -1136,13 +1182,20 @@ llvm::Value* CodeGen::gen_index(const Expr::Index& idx) {
     // Get data pointer (second element)
     llvm::Value* data_ptr = builder_->CreateExtractValue(obj, 1, "data");
 
-    // With opaque pointers, we need to know the element type
-    // For now, assume i64 elements
-    llvm::Type* elem_type = llvm::Type::getInt64Ty(*context_);
+    // Determine element type from the indexed object
+    llvm::Type* elem_type = llvm::Type::getInt64Ty(*context_);  // default
+
+    // If object is an identifier, look up its type
+    if (auto* ident = std::get_if<Expr::Ident>(&idx.object->kind)) {
+        if (auto var = symbols_->lookup_var(ident->name)) {
+            if (var->type->kind == ResolvedType::Kind::Array && var->type->element_type) {
+                elem_type = get_llvm_type(var->type->element_type);
+            }
+        }
+    }
 
     // GEP to index
     llvm::Value* elem_ptr = builder_->CreateGEP(elem_type, data_ptr, index, "elemptr");
-
     return builder_->CreateLoad(elem_type, elem_ptr, "elem");
 }
 
@@ -1462,6 +1515,228 @@ void CodeGen::error_at(const SourceLoc& loc, const std::string& msg) {
     std::stringstream ss;
     ss << loc.file << ":" << loc.line << ":" << loc.column << ": " << msg;
     errors_.push_back(ss.str());
+}
+
+// Assertion implementations
+
+llvm::Value* CodeGen::gen_assert(const Expr::Call& call) {
+    // assert(condition, message)
+    llvm::Value* cond = gen_expr(call.args[0]);
+    llvm::Value* msg = gen_expr(call.args[1]);
+    if (!cond || !msg) return nullptr;
+
+    llvm::Function* func = current_function_;
+    llvm::BasicBlock* fail_bb = llvm::BasicBlock::Create(*context_, "assert_fail", func);
+    llvm::BasicBlock* pass_bb = llvm::BasicBlock::Create(*context_, "assert_pass");
+
+    builder_->CreateCondBr(cond, pass_bb, fail_bb);
+
+    // Fail block - print error and exit(1)
+    builder_->SetInsertPoint(fail_bb);
+
+    llvm::Function* fprintf_fn = module_->getFunction("fprintf");
+    llvm::GlobalVariable* stderr_var = module_->getGlobalVariable("stderr");
+    llvm::Value* stderr_val = builder_->CreateLoad(
+        llvm::PointerType::get(*context_, 0), stderr_var, "stderr_load");
+
+    // Format: "Assertion failed at file:line: message\n"
+    std::string loc_str = call.callee->loc.file + ":" + std::to_string(call.callee->loc.line);
+    llvm::Value* fmt = builder_->CreateGlobalString("Assertion failed at " + loc_str + ": %s\n");
+    builder_->CreateCall(fprintf_fn, {stderr_val, fmt, msg});
+
+    llvm::Function* exit_fn = module_->getFunction("exit");
+    builder_->CreateCall(exit_fn, {
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)
+    });
+    builder_->CreateUnreachable();
+
+    // Pass block - continue execution
+    func->insert(func->end(), pass_bb);
+    builder_->SetInsertPoint(pass_bb);
+
+    return nullptr;
+}
+
+llvm::Value* CodeGen::gen_assert_eq(const Expr::Call& call) {
+    // assert_eq(a, b)
+    llvm::Value* left = gen_expr(call.args[0]);
+    llvm::Value* right = gen_expr(call.args[1]);
+    if (!left || !right) return nullptr;
+
+    // Generate comparison based on type
+    llvm::Value* cmp;
+    if (left->getType()->isIntegerTy()) {
+        cmp = builder_->CreateICmpEQ(left, right, "assert_eq_cmp");
+    } else if (left->getType()->isFloatingPointTy()) {
+        cmp = builder_->CreateFCmpOEQ(left, right, "assert_eq_cmp");
+    } else if (left->getType()->isPointerTy()) {
+        // String comparison - use strcmp
+        // For now, compare pointers (works for identical string literals)
+        cmp = builder_->CreateICmpEQ(
+            builder_->CreatePtrToInt(left, llvm::Type::getInt64Ty(*context_)),
+            builder_->CreatePtrToInt(right, llvm::Type::getInt64Ty(*context_)),
+            "assert_eq_cmp");
+    } else {
+        cmp = builder_->CreateICmpEQ(left, right, "assert_eq_cmp");
+    }
+
+    llvm::Function* func = current_function_;
+    llvm::BasicBlock* fail_bb = llvm::BasicBlock::Create(*context_, "assert_fail", func);
+    llvm::BasicBlock* pass_bb = llvm::BasicBlock::Create(*context_, "assert_pass");
+
+    builder_->CreateCondBr(cmp, pass_bb, fail_bb);
+
+    // Fail block
+    builder_->SetInsertPoint(fail_bb);
+
+    llvm::Function* fprintf_fn = module_->getFunction("fprintf");
+    llvm::GlobalVariable* stderr_var = module_->getGlobalVariable("stderr");
+    llvm::Value* stderr_val = builder_->CreateLoad(
+        llvm::PointerType::get(*context_, 0), stderr_var, "stderr_load");
+
+    std::string loc_str = call.callee->loc.file + ":" + std::to_string(call.callee->loc.line);
+    llvm::Value* fmt = builder_->CreateGlobalString(
+        "Assertion failed at " + loc_str + ": values not equal\n");
+    builder_->CreateCall(fprintf_fn, {stderr_val, fmt});
+
+    llvm::Function* exit_fn = module_->getFunction("exit");
+    builder_->CreateCall(exit_fn, {
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)
+    });
+    builder_->CreateUnreachable();
+
+    // Pass block
+    func->insert(func->end(), pass_bb);
+    builder_->SetInsertPoint(pass_bb);
+
+    return nullptr;
+}
+
+llvm::Value* CodeGen::gen_assert_ne(const Expr::Call& call) {
+    // assert_ne(a, b)
+    llvm::Value* left = gen_expr(call.args[0]);
+    llvm::Value* right = gen_expr(call.args[1]);
+    if (!left || !right) return nullptr;
+
+    llvm::Value* cmp;
+    if (left->getType()->isIntegerTy()) {
+        cmp = builder_->CreateICmpNE(left, right, "assert_ne_cmp");
+    } else if (left->getType()->isFloatingPointTy()) {
+        cmp = builder_->CreateFCmpONE(left, right, "assert_ne_cmp");
+    } else if (left->getType()->isPointerTy()) {
+        cmp = builder_->CreateICmpNE(
+            builder_->CreatePtrToInt(left, llvm::Type::getInt64Ty(*context_)),
+            builder_->CreatePtrToInt(right, llvm::Type::getInt64Ty(*context_)),
+            "assert_ne_cmp");
+    } else {
+        cmp = builder_->CreateICmpNE(left, right, "assert_ne_cmp");
+    }
+
+    llvm::Function* func = current_function_;
+    llvm::BasicBlock* fail_bb = llvm::BasicBlock::Create(*context_, "assert_fail", func);
+    llvm::BasicBlock* pass_bb = llvm::BasicBlock::Create(*context_, "assert_pass");
+
+    builder_->CreateCondBr(cmp, pass_bb, fail_bb);
+
+    // Fail block
+    builder_->SetInsertPoint(fail_bb);
+
+    llvm::Function* fprintf_fn = module_->getFunction("fprintf");
+    llvm::GlobalVariable* stderr_var = module_->getGlobalVariable("stderr");
+    llvm::Value* stderr_val = builder_->CreateLoad(
+        llvm::PointerType::get(*context_, 0), stderr_var, "stderr_load");
+
+    std::string loc_str = call.callee->loc.file + ":" + std::to_string(call.callee->loc.line);
+    llvm::Value* fmt = builder_->CreateGlobalString(
+        "Assertion failed at " + loc_str + ": values should not be equal\n");
+    builder_->CreateCall(fprintf_fn, {stderr_val, fmt});
+
+    llvm::Function* exit_fn = module_->getFunction("exit");
+    builder_->CreateCall(exit_fn, {
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)
+    });
+    builder_->CreateUnreachable();
+
+    // Pass block
+    func->insert(func->end(), pass_bb);
+    builder_->SetInsertPoint(pass_bb);
+
+    return nullptr;
+}
+
+llvm::Value* CodeGen::gen_assert_true(const Expr::Call& call) {
+    // assert_true(value)
+    llvm::Value* val = gen_expr(call.args[0]);
+    if (!val) return nullptr;
+
+    llvm::Function* func = current_function_;
+    llvm::BasicBlock* fail_bb = llvm::BasicBlock::Create(*context_, "assert_fail", func);
+    llvm::BasicBlock* pass_bb = llvm::BasicBlock::Create(*context_, "assert_pass");
+
+    builder_->CreateCondBr(val, pass_bb, fail_bb);
+
+    // Fail block
+    builder_->SetInsertPoint(fail_bb);
+
+    llvm::Function* fprintf_fn = module_->getFunction("fprintf");
+    llvm::GlobalVariable* stderr_var = module_->getGlobalVariable("stderr");
+    llvm::Value* stderr_val = builder_->CreateLoad(
+        llvm::PointerType::get(*context_, 0), stderr_var, "stderr_load");
+
+    std::string loc_str = call.callee->loc.file + ":" + std::to_string(call.callee->loc.line);
+    llvm::Value* fmt = builder_->CreateGlobalString(
+        "Assertion failed at " + loc_str + ": expected true, got false\n");
+    builder_->CreateCall(fprintf_fn, {stderr_val, fmt});
+
+    llvm::Function* exit_fn = module_->getFunction("exit");
+    builder_->CreateCall(exit_fn, {
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)
+    });
+    builder_->CreateUnreachable();
+
+    // Pass block
+    func->insert(func->end(), pass_bb);
+    builder_->SetInsertPoint(pass_bb);
+
+    return nullptr;
+}
+
+llvm::Value* CodeGen::gen_assert_false(const Expr::Call& call) {
+    // assert_false(value)
+    llvm::Value* val = gen_expr(call.args[0]);
+    if (!val) return nullptr;
+
+    llvm::Function* func = current_function_;
+    llvm::BasicBlock* fail_bb = llvm::BasicBlock::Create(*context_, "assert_fail", func);
+    llvm::BasicBlock* pass_bb = llvm::BasicBlock::Create(*context_, "assert_pass");
+
+    // Note: inverted - fail if true, pass if false
+    builder_->CreateCondBr(val, fail_bb, pass_bb);
+
+    // Fail block
+    builder_->SetInsertPoint(fail_bb);
+
+    llvm::Function* fprintf_fn = module_->getFunction("fprintf");
+    llvm::GlobalVariable* stderr_var = module_->getGlobalVariable("stderr");
+    llvm::Value* stderr_val = builder_->CreateLoad(
+        llvm::PointerType::get(*context_, 0), stderr_var, "stderr_load");
+
+    std::string loc_str = call.callee->loc.file + ":" + std::to_string(call.callee->loc.line);
+    llvm::Value* fmt = builder_->CreateGlobalString(
+        "Assertion failed at " + loc_str + ": expected false, got true\n");
+    builder_->CreateCall(fprintf_fn, {stderr_val, fmt});
+
+    llvm::Function* exit_fn = module_->getFunction("exit");
+    builder_->CreateCall(exit_fn, {
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)
+    });
+    builder_->CreateUnreachable();
+
+    // Pass block
+    func->insert(func->end(), pass_bb);
+    builder_->SetInsertPoint(pass_bb);
+
+    return nullptr;
 }
 
 } // namespace shotgun

@@ -1,15 +1,18 @@
 // Test: Array literals and operations
-fn main {
+
+fn test_int_array_access() {
     int[] numbers = [1, 2, 3, 4, 5]
-    str[] names = ["Alice", "Bob", "Charlie"]
+    assert_eq(numbers[0], 1)
+    assert_eq(numbers[2], 3)
+    assert_eq(numbers[4], 5)
+}
 
-    int first = numbers[0]
-    str second_name = names[1]
-
-    print("First number: {first}")
-    print("Second name: {second_name}")
-
-    for n in numbers {
-        print("Number: {n}")
-    }
+fn test_int_array_multiple() {
+    int[] nums = [10, 20, 30]
+    int first = nums[0]
+    int second = nums[1]
+    int third = nums[2]
+    assert_eq(first, 10)
+    assert_eq(second, 20)
+    assert_eq(third, 30)
 }

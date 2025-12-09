@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <set>
 #include <filesystem>
+#include <algorithm>
 
 void print_usage() {
     std::cerr << "Usage: shotgun <command> [options] <file>\n";
@@ -28,6 +29,7 @@ void print_usage() {
     std::cerr << "  check <file>           Type check only\n";
     std::cerr << "  emit-ir <file>         Output LLVM IR\n";
     std::cerr << "  parse <file>           Parse and show AST\n";
+    std::cerr << "  test [dir]             Run tests (default: tests/)\n";
 }
 
 std::string read_file(const std::string& path) {
@@ -70,6 +72,59 @@ std::vector<std::string> find_bs_files(const std::string& dir) {
     }
     std::sort(files.begin(), files.end());
     return files;
+}
+
+// Find all .bs files recursively in a directory
+std::vector<std::string> find_test_files(const std::string& dir) {
+    std::vector<std::string> files;
+    if (!std::filesystem::exists(dir)) {
+        return files;
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".bs") {
+            files.push_back(entry.path().string());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+// Find all test_* functions in a parsed program
+std::vector<std::string> find_test_functions(const shotgun::Program& prog) {
+    std::vector<std::string> tests;
+    for (const auto& decl : prog.decls) {
+        if (auto* fn = std::get_if<shotgun::FnDecl>(&decl)) {
+            if (fn->name.rfind("test_", 0) == 0) {  // starts with "test_"
+                tests.push_back(fn->name);
+            }
+        }
+    }
+    return tests;
+}
+
+// Read tests_dir from shotgun.toml if present
+std::string read_tests_dir_config(const std::string& project_root) {
+    std::filesystem::path toml_path = std::filesystem::path(project_root) / "shotgun.toml";
+    if (!std::filesystem::exists(toml_path)) {
+        return "tests";  // default
+    }
+
+    std::ifstream f(toml_path);
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.find("tests_dir") == 0) {
+            size_t eq = line.find('=');
+            if (eq != std::string::npos) {
+                std::string val = line.substr(eq + 1);
+                size_t start = val.find_first_not_of(" \t\"");
+                size_t end = val.find_last_not_of(" \t\"");
+                if (start != std::string::npos && end != std::string::npos) {
+                    return val.substr(start, end - start + 1);
+                }
+            }
+        }
+    }
+    return "tests";  // default
 }
 
 // Find shotgun.toml and get package name
@@ -267,6 +322,7 @@ int cmd_parse(const std::string& filename, const std::string& source);
 int cmd_check(const std::string& filename, const std::string& source);
 int cmd_emit_ir(const std::string& filename, const std::string& source);
 int cmd_build(const std::string& filename, const std::string& source, const std::string& output);
+int cmd_test(const std::string& tests_dir);
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -279,6 +335,24 @@ int main(int argc, char* argv[]) {
     if (command == "help" || command == "--help" || command == "-h") {
         print_usage();
         return 0;
+    }
+
+    // Handle test command specially - doesn't require a file argument
+    if (command == "test") {
+        std::string project_root = find_project_root("");
+        std::string tests_dir = read_tests_dir_config(project_root);
+
+        // Allow command-line override
+        if (argc >= 3) {
+            tests_dir = argv[2];
+        }
+
+        // Make path absolute if relative
+        if (!std::filesystem::path(tests_dir).is_absolute()) {
+            tests_dir = project_root + "/" + tests_dir;
+        }
+
+        return cmd_test(tests_dir);
     }
 
     if (argc < 3) {
@@ -518,4 +592,220 @@ int cmd_build(const std::string& filename, const std::string& source, const std:
 
     std::cout << "Built: " << output << "\n";
     return 0;
+}
+
+int cmd_test(const std::string& tests_dir) {
+    // Initialize LLVM targets
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+
+    std::cout << "========================================\n";
+    std::cout << "Shotgun Test Runner\n";
+    std::cout << "========================================\n\n";
+
+    // Find all test files
+    auto test_files = find_test_files(tests_dir);
+    if (test_files.empty()) {
+        std::cerr << "No test files found in " << tests_dir << "/\n";
+        return 1;
+    }
+
+    int total_tests = 0;
+    int passed_tests = 0;
+    int failed_tests = 0;
+
+    // Temp directory for compiled tests
+    std::string temp_dir = "/tmp/shotgun_tests";
+    std::filesystem::create_directories(temp_dir);
+
+    for (const auto& file : test_files) {
+        std::string source = read_file(file);
+        if (source.empty()) continue;
+
+        // Parse the file
+        shotgun::Lexer lexer(source, file);
+        shotgun::Parser parser(lexer);
+        auto program = parser.parse();
+
+        if (parser.has_errors()) {
+            std::cerr << "Parse errors in " << file << ":\n";
+            for (const auto& err : parser.errors()) {
+                std::cerr << "  " << err << "\n";
+            }
+            continue;
+        }
+
+        // Find test functions in this file
+        auto test_funcs = find_test_functions(program);
+        if (test_funcs.empty()) continue;
+
+        // Run each test function
+        for (const auto& test_name : test_funcs) {
+            total_tests++;
+
+            // Re-parse for fresh AST
+            shotgun::Lexer test_lexer(source, file);
+            shotgun::Parser test_parser(test_lexer);
+            auto test_prog = test_parser.parse();
+
+            // Process imports
+            std::set<std::string> test_imported;
+            test_imported.insert(std::filesystem::absolute(file).string());
+            std::vector<std::string> test_import_errors;
+            process_imports(test_prog, get_directory(file), test_imported, test_import_errors, true);
+
+            // Remove existing main() and add test harness
+            test_prog.decls.erase(
+                std::remove_if(test_prog.decls.begin(), test_prog.decls.end(),
+                    [](const shotgun::Decl& d) {
+                        if (auto* fn = std::get_if<shotgun::FnDecl>(&d)) {
+                            return fn->name == "main";
+                        }
+                        return false;
+                    }),
+                test_prog.decls.end()
+            );
+
+            // Create main() that calls the test function and returns 0
+            shotgun::FnDecl main_fn;
+            main_fn.name = "main";
+            main_fn.loc = {file, 0, 0};
+            main_fn.return_type = std::make_unique<shotgun::Type>();
+            main_fn.return_type->kind = shotgun::Type::Named{"int"};
+
+            // Create call expression: test_name()
+            auto callee_expr = std::make_unique<shotgun::Expr>();
+            callee_expr->kind = shotgun::Expr::Ident{test_name};
+            callee_expr->loc = {file, 0, 0};
+
+            auto call_expr = std::make_unique<shotgun::Expr>();
+            call_expr->kind = shotgun::Expr::Call{std::move(callee_expr), {}, {}};
+            call_expr->loc = {file, 0, 0};
+
+            auto call_stmt = std::make_unique<shotgun::Stmt>();
+            call_stmt->kind = shotgun::Stmt::ExprStmt{std::move(call_expr)};
+            call_stmt->loc = {file, 0, 0};
+            main_fn.body.push_back(std::move(call_stmt));
+
+            // Create return 0
+            auto zero_expr = std::make_unique<shotgun::Expr>();
+            zero_expr->kind = shotgun::Expr::IntLit{0};
+            zero_expr->loc = {file, 0, 0};
+
+            auto ret_stmt = std::make_unique<shotgun::Stmt>();
+            ret_stmt->kind = shotgun::Stmt::Return{std::move(zero_expr)};
+            ret_stmt->loc = {file, 0, 0};
+            main_fn.body.push_back(std::move(ret_stmt));
+
+            test_prog.decls.push_back(std::move(main_fn));
+
+            // Semantic analysis
+            shotgun::Sema sema;
+            if (!sema.analyze(test_prog)) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (type error)\n";
+                for (const auto& err : sema.errors()) {
+                    std::cerr << "       " << err << "\n";
+                }
+                failed_tests++;
+                continue;
+            }
+
+            // Code generation
+            shotgun::CodeGen codegen(file);
+            if (!codegen.generate(test_prog, sema.symbols())) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (codegen error)\n";
+                for (const auto& err : codegen.errors()) {
+                    std::cerr << "       " << err << "\n";
+                }
+                failed_tests++;
+                continue;
+            }
+
+            // Compile to executable
+            std::string safe_name = test_name;
+            std::replace(safe_name.begin(), safe_name.end(), '/', '_');
+            std::string temp_exe = temp_dir + "/" + safe_name;
+            std::string temp_obj = temp_exe + ".o";
+
+            llvm::Triple target_triple(llvm::sys::getDefaultTargetTriple());
+            codegen.module()->setTargetTriple(target_triple);
+
+            std::string error;
+            auto target = llvm::TargetRegistry::lookupTarget(target_triple.str(), error);
+            if (!target) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (target error: " << error << ")\n";
+                failed_tests++;
+                continue;
+            }
+
+            llvm::TargetOptions opt;
+            auto target_machine = target->createTargetMachine(
+                target_triple, "generic", "", opt, llvm::Reloc::PIC_);
+            codegen.module()->setDataLayout(target_machine->createDataLayout());
+
+            std::error_code ec;
+            llvm::raw_fd_ostream dest(temp_obj, ec, llvm::sys::fs::OF_None);
+            if (ec) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (file error)\n";
+                failed_tests++;
+                continue;
+            }
+
+            llvm::legacy::PassManager pass;
+            if (target_machine->addPassesToEmitFile(pass, dest, nullptr,
+                llvm::CodeGenFileType::ObjectFile)) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (emit error)\n";
+                failed_tests++;
+                continue;
+            }
+
+            pass.run(*codegen.module());
+            dest.flush();
+
+            // Link
+            std::string link_cmd = "cc " + temp_obj + " -o " + temp_exe + " -lm 2>/dev/null";
+            if (std::system(link_cmd.c_str()) != 0) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (link error)\n";
+                std::remove(temp_obj.c_str());
+                failed_tests++;
+                continue;
+            }
+            std::remove(temp_obj.c_str());
+
+            // Execute the test
+            int result = std::system((temp_exe + " 2>&1").c_str());
+            std::remove(temp_exe.c_str());
+
+            if (result == 0) {
+                std::cout << "\033[0;32m[PASS]\033[0m " << file << "::" << test_name << "\n";
+                passed_tests++;
+            } else {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name << "\n";
+                failed_tests++;
+            }
+        }
+    }
+
+    // Summary
+    std::cout << "\n========================================\n";
+    if (failed_tests == 0) {
+        std::cout << "Results: \033[0;32m" << passed_tests << " passed\033[0m, ";
+        std::cout << total_tests << " total\n";
+    } else {
+        std::cout << "Results: \033[0;32m" << passed_tests << " passed\033[0m, ";
+        std::cout << "\033[0;31m" << failed_tests << " failed\033[0m, ";
+        std::cout << total_tests << " total\n";
+    }
+    std::cout << "========================================\n";
+
+    return (failed_tests > 0) ? 1 : 0;
 }

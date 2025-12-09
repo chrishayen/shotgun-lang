@@ -1,0 +1,21 @@
+// Test: String interpolation comparison
+// BUG: assert_eq uses pointer comparison, not strcmp for strings
+
+fn test_string_interpolation_equality() {
+    str name = "World"
+    str greeting = "Hello, {name}!"
+    assert_eq(greeting, "Hello, World!")
+}
+
+fn test_int_interpolation_equality() {
+    int x = 42
+    str msg = "Value: {x}"
+    assert_eq(msg, "Value: 42")
+}
+
+fn test_multi_interpolation() {
+    str a = "foo"
+    str b = "bar"
+    str result = "{a}-{b}"
+    assert_eq(result, "foo-bar")
+}

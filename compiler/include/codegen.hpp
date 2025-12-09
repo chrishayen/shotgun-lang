@@ -105,6 +105,13 @@ private:
     llvm::Value* gen_cast(const Expr::Cast& cast);
     llvm::Value* gen_block_expr(const Expr::Block& block);
 
+    // Assertion generation
+    llvm::Value* gen_assert(const Expr::Call& call);
+    llvm::Value* gen_assert_eq(const Expr::Call& call);
+    llvm::Value* gen_assert_ne(const Expr::Call& call);
+    llvm::Value* gen_assert_true(const Expr::Call& call);
+    llvm::Value* gen_assert_false(const Expr::Call& call);
+
     // Helper: create alloca in entry block
     llvm::AllocaInst* create_entry_alloca(llvm::Function* fn,
                                           const std::string& name,

@@ -1,0 +1,14 @@
+// Test: String array indexing
+// BUG: gen_index assumes i64 element type, but str[] has pointer elements
+
+fn test_string_array_access() {
+    str[] names = ["Alice", "Bob", "Charlie"]
+    str first = names[0]
+    assert_eq(first, "Alice")
+}
+
+fn test_string_array_second_element() {
+    str[] names = ["Alice", "Bob", "Charlie"]
+    str second = names[1]
+    assert_eq(second, "Bob")
+}

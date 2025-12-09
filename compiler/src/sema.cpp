@@ -705,6 +705,86 @@ ResolvedTypePtr Sema::check_call(const Expr::Call& call) {
             }
             return ResolvedType::make_void();
         }
+
+        // assert(bool, str) - assert with custom message
+        if (ident->name == "assert") {
+            if (call.args.size() != 2) {
+                error("assert expects 2 arguments (condition, message), got " + std::to_string(call.args.size()));
+            }
+            if (call.args.size() >= 1) {
+                auto cond_type = check_expr(call.args[0]);
+                if (cond_type->kind != ResolvedType::Kind::Bool) {
+                    error("assert condition must be bool, got " + cond_type->to_string());
+                }
+            }
+            if (call.args.size() >= 2) {
+                auto msg_type = check_expr(call.args[1]);
+                if (msg_type->kind != ResolvedType::Kind::Str) {
+                    error("assert message must be str, got " + msg_type->to_string());
+                }
+            }
+            return ResolvedType::make_void();
+        }
+
+        // assert_eq(a, b) - assert equality
+        if (ident->name == "assert_eq") {
+            if (call.args.size() != 2) {
+                error("assert_eq expects 2 arguments, got " + std::to_string(call.args.size()));
+            }
+            if (call.args.size() >= 2) {
+                auto type_a = check_expr(call.args[0]);
+                auto type_b = check_expr(call.args[1]);
+                if (!types_equal(type_a, type_b)) {
+                    error("assert_eq arguments must have same type, got " +
+                          type_a->to_string() + " and " + type_b->to_string());
+                }
+            }
+            return ResolvedType::make_void();
+        }
+
+        // assert_ne(a, b) - assert not equal
+        if (ident->name == "assert_ne") {
+            if (call.args.size() != 2) {
+                error("assert_ne expects 2 arguments, got " + std::to_string(call.args.size()));
+            }
+            if (call.args.size() >= 2) {
+                auto type_a = check_expr(call.args[0]);
+                auto type_b = check_expr(call.args[1]);
+                if (!types_equal(type_a, type_b)) {
+                    error("assert_ne arguments must have same type, got " +
+                          type_a->to_string() + " and " + type_b->to_string());
+                }
+            }
+            return ResolvedType::make_void();
+        }
+
+        // assert_true(bool) - assert is true
+        if (ident->name == "assert_true") {
+            if (call.args.size() != 1) {
+                error("assert_true expects 1 argument, got " + std::to_string(call.args.size()));
+            }
+            if (!call.args.empty()) {
+                auto type = check_expr(call.args[0]);
+                if (type->kind != ResolvedType::Kind::Bool) {
+                    error("assert_true expects bool, got " + type->to_string());
+                }
+            }
+            return ResolvedType::make_void();
+        }
+
+        // assert_false(bool) - assert is false
+        if (ident->name == "assert_false") {
+            if (call.args.size() != 1) {
+                error("assert_false expects 1 argument, got " + std::to_string(call.args.size()));
+            }
+            if (!call.args.empty()) {
+                auto type = check_expr(call.args[0]);
+                if (type->kind != ResolvedType::Kind::Bool) {
+                    error("assert_false expects bool, got " + type->to_string());
+                }
+            }
+            return ResolvedType::make_void();
+        }
     }
 
     // Check for method call BEFORE evaluating callee as expression

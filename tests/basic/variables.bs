@@ -1,10 +1,25 @@
 // Test: Variable declarations with types
-fn main {
-    int x = 42
-    str name = "Alice"
-    bool active = true
-    f64 pi = 3.14159
 
-    print("x = {x}")
-    print("name = {name}")
+fn test_int_variable() {
+    int x = 42
+    assert_eq(x, 42)
+}
+
+fn test_string_variable() {
+    str name = "Alice"
+    assert_eq(name, "Alice")
+}
+
+fn test_bool_variable() {
+    bool active = true
+    assert_true(active)
+
+    bool inactive = false
+    assert_false(inactive)
+}
+
+fn test_float_variable() {
+    f64 pi = 3.14159
+    assert_true(pi > 3.14)
+    assert_true(pi < 3.15)
 }

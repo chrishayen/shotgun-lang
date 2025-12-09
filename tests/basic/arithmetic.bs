@@ -1,17 +1,36 @@
 // Test: Arithmetic operations
-fn main {
+
+fn test_addition() {
     int a = 10
     int b = 3
-
     int sum = a + b
-    int diff = a - b
-    int prod = a * b
-    int quot = a / b
-    int rem = a % b
+    assert_eq(sum, 13)
+}
 
-    print("Sum: {sum}")
-    print("Diff: {diff}")
-    print("Prod: {prod}")
-    print("Quot: {quot}")
-    print("Rem: {rem}")
+fn test_subtraction() {
+    int a = 10
+    int b = 3
+    int diff = a - b
+    assert_eq(diff, 7)
+}
+
+fn test_multiplication() {
+    int a = 10
+    int b = 3
+    int prod = a * b
+    assert_eq(prod, 30)
+}
+
+fn test_division() {
+    int a = 10
+    int b = 3
+    int quot = a / b
+    assert_eq(quot, 3)
+}
+
+fn test_modulo() {
+    int a = 10
+    int b = 3
+    int rem = a % b
+    assert_eq(rem, 1)
 }
