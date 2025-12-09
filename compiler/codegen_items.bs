@@ -1,0 +1,335 @@
+// Top-level item code generation for the Shotgun self-hosted compiler
+
+// Generate a struct definition
+fn gen_struct(CodegenState state, str name, Field[] fields) {
+    newline(state)
+    emit(state, "typedef struct ")
+    emit(state, name)
+    emitln(state, " \{")
+
+    state.indent += 1
+    i := 0
+    while i < fields.len() {
+        emit_indent(state)
+        emit(state, c_type(fields[i].typ))
+        emit(state, " ")
+        emit(state, fields[i].name)
+        emitln(state, ";")
+        i += 1
+    }
+    state.indent -= 1
+
+    emit(state, "} ")
+    emit(state, name)
+    emitln(state, ";")
+}
+
+// Generate an enum (variant) as a C tagged union
+fn gen_enum(CodegenState state, str name, EnumVariant[] variants) {
+    newline(state)
+
+    // Generate tag enum
+    emit(state, "typedef enum \{ ")
+    i := 0
+    while i < variants.len() {
+        if i > 0 {
+            emit(state, ", ")
+        }
+        emit(state, name)
+        emit(state, "_")
+        emit(state, variants[i].name)
+        i += 1
+    }
+    emit(state, " } ")
+    emit(state, name)
+    emitln(state, "_tag;")
+    newline(state)
+
+    // Generate data struct for each variant with fields
+    i = 0
+    while i < variants.len() {
+        v := variants[i]
+        if v.fields.items.len() > 0 {
+            emit(state, "typedef struct \{ ")
+            j := 0
+            while j < v.fields.items.len() {
+                f := v.fields.items[j]
+                emit(state, c_type(f.typ))
+                emit(state, " ")
+                emit(state, f.name)
+                emit(state, "; ")
+                j += 1
+            }
+            emit(state, "} ")
+            emit(state, name)
+            emit(state, "_")
+            emit(state, v.name)
+            emitln(state, "_data;")
+        }
+        i += 1
+    }
+
+    // Generate the main enum struct with union
+    emit(state, "typedef struct ")
+    emit(state, name)
+    emitln(state, " \{")
+
+    state.indent += 1
+    emit_indent(state)
+    emit(state, name)
+    emitln(state, "_tag tag;")
+
+    // Only generate union if there are variants with data
+    has_data := false
+    i = 0
+    while i < variants.len() {
+        if variants[i].fields.items.len() > 0 {
+            has_data = true
+            break
+        }
+        i += 1
+    }
+
+    if has_data {
+        emit_indent(state)
+        emitln(state, "union \{")
+        state.indent += 1
+        i = 0
+        while i < variants.len() {
+            v := variants[i]
+            if v.fields.items.len() > 0 {
+                emit_indent(state)
+                emit(state, name)
+                emit(state, "_")
+                emit(state, v.name)
+                emit(state, "_data ")
+                emit(state, v.name)
+                emitln(state, ";")
+            }
+            i += 1
+        }
+        state.indent -= 1
+        emit_indent(state)
+        emitln(state, "} data;")
+    }
+    state.indent -= 1
+
+    emit(state, "} ")
+    emit(state, name)
+    emitln(state, ";")
+}
+
+// Generate a function
+fn gen_function(CodegenState state, str name, Param[] params, Stmt[] body, Type? ret) {
+    newline(state)
+
+    // main returns int in C
+    if name == "main" {
+        emit(state, "int")
+    } else if ret {
+        r := ret or Type.TInt{}
+        emit(state, c_type(r))
+    } else {
+        emit(state, "void")
+    }
+
+    emit(state, " ")
+    emit(state, name)
+    emit(state, "(")
+
+    first := true
+    i := 0
+    while i < params.len() {
+        p := params[i]
+        if p is PNamed {
+            if !first {
+                emit(state, ", ")
+            }
+            first = false
+            emit(state, c_type(p.typ))
+            emit(state, " ")
+            emit(state, p.name)
+        }
+        i += 1
+    }
+
+    if first {
+        emit(state, "void")
+    }
+
+    emitln(state, ") \{")
+
+    state.indent += 1
+    i = 0
+    while i < body.len() {
+        gen_stmt(state, body[i])
+        i += 1
+    }
+
+    // main needs return 0
+    if name == "main" {
+        emit_indent(state)
+        emitln(state, "return 0;")
+    }
+
+    state.indent -= 1
+    emitln(state, "}")
+}
+
+// Generate a method
+fn gen_method(CodegenState state, str type_name, str method_name, Param[] params, Stmt[] body, Type? ret) {
+    newline(state)
+
+    if ret {
+        r := ret or Type.TInt{}
+        emit(state, c_type(r))
+    } else {
+        emit(state, "void")
+    }
+
+    emit(state, " ")
+    emit(state, type_name)
+    emit(state, "_")
+    emit(state, method_name)
+    emit(state, "(")
+    emit(state, type_name)
+    emit(state, "* self")
+
+    i := 0
+    while i < params.len() {
+        p := params[i]
+        if p is PNamed {
+            emit(state, ", ")
+            emit(state, c_type(p.typ))
+            emit(state, " ")
+            emit(state, p.name)
+        }
+        i += 1
+    }
+
+    emitln(state, ") \{")
+
+    state.indent += 1
+    i = 0
+    while i < body.len() {
+        gen_stmt(state, body[i])
+        i += 1
+    }
+    state.indent -= 1
+
+    emitln(state, "}")
+}
+
+// Generate impl block
+fn gen_impl(CodegenState state, str type_name, str trait_name, ImplMethod[] methods) {
+    newline(state)
+    emit(state, "/* impl ")
+    emit(state, trait_name)
+    emit(state, " for ")
+    emit(state, type_name)
+    emitln(state, " */")
+
+    i := 0
+    while i < methods.len() {
+        m := methods[i]
+        gen_method(state, type_name, m.name, m.params.items, m.body.items, m.ret)
+        i += 1
+    }
+}
+
+// Generate forward declaration for a function
+fn gen_function_decl(CodegenState state, str name, Param[] params, Type? ret) {
+    if name == "main" {
+        emit(state, "int")
+    } else if ret {
+        r := ret or Type.TInt{}
+        emit(state, c_type(r))
+    } else {
+        emit(state, "void")
+    }
+
+    emit(state, " ")
+    emit(state, name)
+    emit(state, "(")
+
+    first := true
+    i := 0
+    while i < params.len() {
+        p := params[i]
+        if p is PNamed {
+            if !first {
+                emit(state, ", ")
+            }
+            first = false
+            emit(state, c_type(p.typ))
+            emit(state, " ")
+            emit(state, p.name)
+        }
+        i += 1
+    }
+
+    if first {
+        emit(state, "void")
+    }
+
+    emitln(state, ");")
+}
+
+// Generate forward declaration for a method
+fn gen_method_decl(CodegenState state, str type_name, str method_name, Param[] params, Type? ret) {
+    if ret {
+        r := ret or Type.TInt{}
+        emit(state, c_type(r))
+    } else {
+        emit(state, "void")
+    }
+
+    emit(state, " ")
+    emit(state, type_name)
+    emit(state, "_")
+    emit(state, method_name)
+    emit(state, "(")
+    emit(state, type_name)
+    emit(state, "* self")
+
+    i := 0
+    while i < params.len() {
+        p := params[i]
+        if p is PNamed {
+            emit(state, ", ")
+            emit(state, c_type(p.typ))
+            emit(state, " ")
+            emit(state, p.name)
+        }
+        i += 1
+    }
+
+    emitln(state, ");")
+}
+
+// Generate forward declaration for struct
+fn gen_struct_fwd(CodegenState state, str name) {
+    emit(state, "typedef struct ")
+    emit(state, name)
+    emit(state, " ")
+    emit(state, name)
+    emitln(state, ";")
+}
+
+// Generate forward declaration for enum
+fn gen_enum_fwd(CodegenState state, str name) {
+    emit(state, "typedef struct ")
+    emit(state, name)
+    emit(state, " ")
+    emit(state, name)
+    emitln(state, ";")
+}
+
+// Generate array typedef for a user type
+fn gen_array_typedef(CodegenState state, str name) {
+    emit(state, "typedef struct \{ ")
+    emit(state, name)
+    emit(state, "* data; size_t len; size_t cap; } Array_")
+    emit(state, name)
+    emitln(state, ";")
+}

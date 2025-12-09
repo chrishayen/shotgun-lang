@@ -1,0 +1,344 @@
+// Type conversion utilities for C code generation
+//
+// Converts Shotgun types to C type strings and identifiers.
+
+// Convert a Shotgun type to a C type string
+fn c_type(Type t) str {
+    if t is TInt {
+        return "int64_t"
+    }
+    if t is TStr {
+        return "char*"
+    }
+    if t is TBool {
+        return "bool"
+    }
+    if t is TChar {
+        return "char"
+    }
+    if t is TF32 {
+        return "float"
+    }
+    if t is TF64 {
+        return "double"
+    }
+    if t is TU32 {
+        return "uint32_t"
+    }
+    if t is TU64 {
+        return "uint64_t"
+    }
+    if t is TOptional {
+        // Optional uses same type, NULL = none
+        inner := get_optional_inner(t)
+        if inner {
+            inner_t := inner or Type.TInt{}
+            return c_type(inner_t)
+        }
+        return "void*"
+    }
+    if t is TArray {
+        elem := get_elem_type(t)
+        if elem {
+            elem_t := elem or Type.TInt{}
+            return "Array_" + c_type_name(elem_t) + "*"
+        }
+        return "void*"
+    }
+    if t is TChan {
+        elem := get_elem_type(t)
+        if elem {
+            elem_t := elem or Type.TInt{}
+            return "Chan_" + c_type_name(elem_t) + "*"
+        }
+        return "ShotgunChan*"
+    }
+    if t is TUser {
+        name := get_type_name(t)
+        return name
+    }
+    if t is TResult {
+        // Simplified: just return the value type
+        value := get_result_value(t)
+        if value {
+            v := value or Type.TInt{}
+            return c_type(v)
+        }
+        return "void*"
+    }
+    if t is TVoid {
+        return "void"
+    }
+    if t is TParam {
+        // Type parameter - should be substituted before codegen
+        name := get_type_name(t)
+        return name
+    }
+    if t is TApply {
+        name := get_type_name(t)
+        if name == "Map" {
+            return "ShotgunMap*"
+        }
+        args := get_apply_args(t)
+        return mangle_generic_name(name, args)
+    }
+    if t is TFunc {
+        // For function types, use closure struct type
+        params := get_func_params_list(t)
+        ret := get_func_ret(t)
+        param_names := ""
+        i := 0
+        while i < params.len() {
+            if i > 0 {
+                param_names = param_names + "_"
+            }
+            param_names = param_names + c_type_name(params[i])
+            i += 1
+        }
+        ret_name := "void"
+        if ret {
+            r := ret or Type.TInt{}
+            ret_name = c_type_name(r)
+        }
+        if param_names.len() > 0 {
+            return "Closure_" + param_names + "_" + ret_name
+        }
+        return "Closure_" + ret_name
+    }
+    return "/* unknown type */"
+}
+
+// Get a safe C identifier name for a type
+fn c_type_name(Type t) str {
+    if t is TInt {
+        return "int64"
+    }
+    if t is TStr {
+        return "str"
+    }
+    if t is TBool {
+        return "bool"
+    }
+    if t is TChar {
+        return "char"
+    }
+    if t is TF32 {
+        return "f32"
+    }
+    if t is TF64 {
+        return "f64"
+    }
+    if t is TU32 {
+        return "u32"
+    }
+    if t is TU64 {
+        return "u64"
+    }
+    if t is TOptional {
+        inner := get_optional_inner(t)
+        if inner {
+            inner_t := inner or Type.TInt{}
+            return "opt_" + c_type_name(inner_t)
+        }
+        return "opt"
+    }
+    if t is TArray {
+        elem := get_elem_type(t)
+        if elem {
+            elem_t := elem or Type.TInt{}
+            return "arr_" + c_type_name(elem_t)
+        }
+        return "arr"
+    }
+    if t is TChan {
+        elem := get_elem_type(t)
+        if elem {
+            elem_t := elem or Type.TInt{}
+            return "chan_" + c_type_name(elem_t)
+        }
+        return "chan"
+    }
+    if t is TUser {
+        return get_type_name(t)
+    }
+    if t is TResult {
+        value := get_result_value(t)
+        if value {
+            v := value or Type.TInt{}
+            return c_type_name(v)
+        }
+        return "result"
+    }
+    if t is TVoid {
+        return "void"
+    }
+    if t is TParam {
+        return get_type_name(t)
+    }
+    if t is TApply {
+        name := get_type_name(t)
+        args := get_apply_args(t)
+        return mangle_generic_name(name, args)
+    }
+    if t is TFunc {
+        params := get_func_params_list(t)
+        ret := get_func_ret(t)
+        param_names := ""
+        i := 0
+        while i < params.len() {
+            if i > 0 {
+                param_names = param_names + "_"
+            }
+            param_names = param_names + c_type_name(params[i])
+            i += 1
+        }
+        ret_name := "void"
+        if ret {
+            r := ret or Type.TInt{}
+            ret_name = c_type_name(r)
+        }
+        return "fn_" + param_names + "_" + ret_name
+    }
+    return "unknown"
+}
+
+// Mangle a generic type name: List<int> -> List_int64
+fn mangle_generic_name(str name, Type[] args) str {
+    result := name
+    i := 0
+    while i < args.len() {
+        result = result + "_" + c_type_name(args[i])
+        i += 1
+    }
+    return result
+}
+
+// Convert binary operator to C
+fn c_binop(Binop op) str {
+    if op is Add {
+        return "+"
+    }
+    if op is Sub {
+        return "-"
+    }
+    if op is Mul {
+        return "*"
+    }
+    if op is Div {
+        return "/"
+    }
+    if op is Mod {
+        return "%"
+    }
+    if op is Eq {
+        return "=="
+    }
+    if op is Neq {
+        return "!="
+    }
+    if op is Lt {
+        return "<"
+    }
+    if op is Gt {
+        return ">"
+    }
+    if op is Lte {
+        return "<="
+    }
+    if op is Gte {
+        return ">="
+    }
+    if op is And {
+        return "&&"
+    }
+    if op is Or {
+        return "||"
+    }
+    // In operator requires special handling
+    return "/* in */"
+}
+
+// Convert assignment operator to C
+fn c_assignop(Assignop op) str {
+    if op is Assign {
+        return "="
+    }
+    if op is AddAssign {
+        return "+="
+    }
+    if op is SubAssign {
+        return "-="
+    }
+    if op is MulAssign {
+        return "*="
+    }
+    if op is DivAssign {
+        return "/="
+    }
+    return "="
+}
+
+// Get printf format specifier for a type
+fn format_spec(Type t) str {
+    if t is TInt {
+        return "%\" PRId64 \""
+    }
+    if t is TStr {
+        return "%s"
+    }
+    if t is TBool {
+        return "%d"
+    }
+    if t is TChar {
+        return "%c"
+    }
+    if t is TF32 {
+        return "%f"
+    }
+    if t is TF64 {
+        return "%f"
+    }
+    if t is TU32 {
+        return "%\" PRIu32 \""
+    }
+    if t is TU64 {
+        return "%\" PRIu64 \""
+    }
+    // Default to string
+    return "%s"
+}
+
+// Helper to get optional inner type
+fn get_optional_inner(Type t) Type? {
+    return t.inner
+}
+
+// Helper to get elem type from array/chan
+fn get_elem_type(Type t) Type? {
+    return t.elem
+}
+
+// Helper to get type name from TUser/TParam/TApply
+fn get_type_name(Type t) str {
+    return t.name
+}
+
+// Helper to get type args from TApply
+fn get_apply_args(Type t) Type[] {
+    return t.args.items
+}
+
+// Helper to get result value type
+fn get_result_value(Type t) Type? {
+    return t.value
+}
+
+// Helper to get function params from TFunc
+fn get_func_params_list(Type t) Type[] {
+    return t.params.items
+}
+
+// Helper to get function return type from TFunc
+fn get_func_ret(Type t) Type? {
+    return t.ret
+}

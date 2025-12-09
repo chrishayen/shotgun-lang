@@ -1,0 +1,682 @@
+// Expression code generation for the Shotgun self-hosted compiler
+
+// Generate code for an expression
+fn gen_expr(CodegenState state, Expr expr) {
+    if expr is EInt {
+        emit(state, "{expr.value}")
+        return
+    }
+
+    if expr is EFloat {
+        emit(state, "{expr.value}")
+        return
+    }
+
+    if expr is EBool {
+        if expr.value {
+            emit(state, "true")
+        } else {
+            emit(state, "false")
+        }
+        return
+    }
+
+    if expr is EChar {
+        c := expr.value
+        // Handle escape sequences
+        if c == '\n' {
+            emit(state, "'\\n'")
+        } else if c == '\r' {
+            emit(state, "'\\r'")
+        } else if c == '\t' {
+            emit(state, "'\\t'")
+        } else if c == '\\' {
+            emit(state, "'\\\\'")
+        } else if c == '\'' {
+            emit(state, "'\\''")
+        } else {
+            emit(state, "'{c}'")
+        }
+        return
+    }
+
+    if expr is ENone {
+        emit(state, "NULL")
+        return
+    }
+
+    if expr is EIdent {
+        emit(state, expr.name)
+        return
+    }
+
+    if expr is EString {
+        gen_string_parts(state, expr.parts.items)
+        return
+    }
+
+    if expr is EBinary {
+        gen_binary(state, expr)
+        return
+    }
+
+    if expr is EUnary {
+        emit(state, "(!")
+        gen_expr(state, expr.expr)
+        emit(state, ")")
+        return
+    }
+
+    if expr is ECall {
+        gen_call(state, expr.callee, expr.args.items)
+        return
+    }
+
+    if expr is EMember {
+        gen_member(state, expr.expr, expr.member)
+        return
+    }
+
+    if expr is EIndex {
+        gen_index(state, expr.expr, expr.index)
+        return
+    }
+
+    if expr is EOr {
+        gen_or(state, expr.expr, expr.clause)
+        return
+    }
+
+    if expr is EStructLit {
+        gen_struct_lit(state, expr.name, expr.type_args.items, expr.fields.items)
+        return
+    }
+
+    if expr is EEnumVariant {
+        gen_enum_lit(state, expr.enum_name, expr.type_args.items, expr.variant_name, expr.fields.items)
+        return
+    }
+
+    if expr is EArrayLit {
+        gen_array_lit(state, expr.elements.items)
+        return
+    }
+
+    if expr is EChan {
+        emit(state, "chan_create()")
+        return
+    }
+
+    if expr is EParen {
+        emit(state, "(")
+        gen_expr(state, expr.expr)
+        emit(state, ")")
+        return
+    }
+
+    if expr is EAssign {
+        gen_assign(state, expr.op, expr.target, expr.value)
+        return
+    }
+
+    if expr is EMatch {
+        gen_match_expr(state, expr.exprs.items, expr.arms.items, expr.using_type)
+        return
+    }
+
+    if expr is EAnonFn {
+        // TODO: Closures
+        emit(state, "/* closure */NULL")
+        return
+    }
+
+    emit(state, "/* unknown expr */")
+}
+
+// Generate string parts (interpolation)
+fn gen_string_parts(CodegenState state, StringPart[] parts) {
+    // Check if it's a simple string with no interpolation
+    if parts.len() == 1 {
+        part := parts[0]
+        if part is SLiteral {
+            emit(state, "\"")
+            emit_escaped_string(state, part.value)
+            emit(state, "\"")
+            return
+        }
+    }
+
+    // Interpolated string - use shotgun_format
+    format_str := ""
+    Expr[] exprs = []
+
+    i := 0
+    while i < parts.len() {
+        part := parts[i]
+        if part is SLiteral {
+            // Escape for C string and for printf
+            j := 0
+            s := part.value
+            while j < s.len() {
+                c := s.at(j)
+                if c == '\n' {
+                    format_str = format_str + "\\n"
+                } else if c == '\r' {
+                    format_str = format_str + "\\r"
+                } else if c == '\t' {
+                    format_str = format_str + "\\t"
+                } else if c == '"' {
+                    format_str = format_str + "\\\""
+                } else if c == '\\' {
+                    format_str = format_str + "\\\\"
+                } else if c == '%' {
+                    format_str = format_str + "%%"
+                } else {
+                    format_str = format_str + c.to_string()
+                }
+                j += 1
+            }
+        } else {
+            // SInterp - add format specifier and collect expression
+            // For now, use %s for everything (simplified)
+            format_str = format_str + "%s"
+            exprs.push(part.expr)
+        }
+        i += 1
+    }
+
+    emit(state, "shotgun_format(\"")
+    emit(state, format_str)
+    emit(state, "\"")
+
+    i = 0
+    while i < exprs.len() {
+        emit(state, ", ")
+        gen_expr(state, exprs[i])
+        i += 1
+    }
+    emit(state, ")")
+}
+
+// Emit an escaped C string literal content (without quotes)
+fn emit_escaped_string(CodegenState state, str s) {
+    i := 0
+    while i < s.len() {
+        c := s.at(i)
+        if c == '\n' {
+            emit(state, "\\n")
+        } else if c == '\r' {
+            emit(state, "\\r")
+        } else if c == '\t' {
+            emit(state, "\\t")
+        } else if c == '"' {
+            emit(state, "\\\"")
+        } else if c == '\\' {
+            emit(state, "\\\\")
+        } else {
+            emit(state, c.to_string())
+        }
+        i += 1
+    }
+}
+
+// Generate binary expression
+fn gen_binary(CodegenState state, Expr expr) {
+    op := expr.op
+    left := expr.left
+    right := expr.right
+
+    // TODO: Handle special cases (string compare, string concat, in operator)
+    // For now, just emit the C operator
+    emit(state, "(")
+    gen_expr(state, left)
+    emit(state, " ")
+    emit(state, c_binop(op))
+    emit(state, " ")
+    gen_expr(state, right)
+    emit(state, ")")
+}
+
+// Generate function/method call
+fn gen_call(CodegenState state, Expr callee, Expr[] args) {
+    // Handle method calls
+    if callee is EMember {
+        gen_method_call(state, callee.expr, callee.member, args)
+        return
+    }
+
+    // Handle direct function calls
+    if callee is EIdent {
+        name := callee.name
+
+        // Built-in print
+        if name == "print" {
+            if args.len() > 0 {
+                arg := args[0]
+                // For now, assume string argument
+                emit(state, "printf(\"%s\\n\", ")
+                gen_expr(state, arg)
+                emit(state, ")")
+            } else {
+                emit(state, "printf(\"\\n\")")
+            }
+            return
+        }
+
+        // Built-in read_file
+        if name == "read_file" {
+            emit(state, "shotgun_read_file(")
+            if args.len() > 0 {
+                gen_expr(state, args[0])
+            }
+            emit(state, ")")
+            return
+        }
+
+        // Built-in write_file
+        if name == "write_file" {
+            emit(state, "shotgun_write_file(")
+            if args.len() >= 2 {
+                gen_expr(state, args[0])
+                emit(state, ", ")
+                gen_expr(state, args[1])
+            }
+            emit(state, ")")
+            return
+        }
+
+        // Built-in chr
+        if name == "chr" {
+            emit(state, "(char)(")
+            if args.len() > 0 {
+                gen_expr(state, args[0])
+            }
+            emit(state, ")")
+            return
+        }
+
+        // Built-in ord
+        if name == "ord" {
+            emit(state, "(int64_t)(")
+            if args.len() > 0 {
+                gen_expr(state, args[0])
+            }
+            emit(state, ")")
+            return
+        }
+
+        // Regular function call
+        emit(state, name)
+        emit(state, "(")
+        i := 0
+        while i < args.len() {
+            if i > 0 {
+                emit(state, ", ")
+            }
+            gen_expr(state, args[i])
+            i += 1
+        }
+        emit(state, ")")
+        return
+    }
+
+    // Fallback for other callee types
+    emit(state, "/* complex call */")
+    gen_expr(state, callee)
+    emit(state, "(")
+    i := 0
+    while i < args.len() {
+        if i > 0 {
+            emit(state, ", ")
+        }
+        gen_expr(state, args[i])
+        i += 1
+    }
+    emit(state, ")")
+}
+
+// Generate method call
+fn gen_method_call(CodegenState state, Expr obj, str method_name, Expr[] args) {
+    // String methods
+    if method_name == "len" {
+        emit(state, "(int64_t)strlen(")
+        gen_expr(state, obj)
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "at" {
+        emit(state, "(char)(")
+        gen_expr(state, obj)
+        emit(state, ")[")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, "]")
+        return
+    }
+
+    if method_name == "contains" {
+        emit(state, "(strstr(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, ") != NULL)")
+        return
+    }
+
+    if method_name == "starts_with" {
+        emit(state, "(strncmp(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+            emit(state, ", strlen(")
+            gen_expr(state, args[0])
+            emit(state, ")) == 0)")
+        }
+        return
+    }
+
+    if method_name == "ends_with" {
+        emit(state, "shotgun_str_ends_with(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "find" {
+        emit(state, "shotgun_str_find(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "slice" {
+        emit(state, "shotgun_str_slice(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() >= 2 {
+            gen_expr(state, args[0])
+            emit(state, ", ")
+            gen_expr(state, args[1])
+        }
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "split" {
+        emit(state, "shotgun_str_split(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "trim" {
+        emit(state, "shotgun_str_trim(")
+        gen_expr(state, obj)
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "replace" {
+        emit(state, "shotgun_str_replace(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() >= 2 {
+            gen_expr(state, args[0])
+            emit(state, ", ")
+            gen_expr(state, args[1])
+        }
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "to_upper" {
+        emit(state, "shotgun_str_to_upper(")
+        gen_expr(state, obj)
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "to_lower" {
+        emit(state, "shotgun_str_to_lower(")
+        gen_expr(state, obj)
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "to_string" {
+        emit(state, "shotgun_char_to_string(")
+        gen_expr(state, obj)
+        emit(state, ")")
+        return
+    }
+
+    // Array methods
+    if method_name == "push" {
+        // TODO: Proper array push with type info
+        emit(state, "/* push */")
+        return
+    }
+
+    // Map methods
+    if method_name == "has" {
+        emit(state, "shotgun_map_has(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, ")")
+        return
+    }
+
+    if method_name == "delete" {
+        emit(state, "shotgun_map_delete(")
+        gen_expr(state, obj)
+        emit(state, ", ")
+        if args.len() > 0 {
+            gen_expr(state, args[0])
+        }
+        emit(state, ")")
+        return
+    }
+
+    // Channel methods
+    if method_name == "send" {
+        emit(state, "/* send */")
+        return
+    }
+
+    if method_name == "recv" {
+        emit(state, "/* recv */")
+        return
+    }
+
+    // User-defined method call: Type_method(&obj, args...)
+    // TODO: Need type info to get the type name
+    emit(state, "/* method call: ")
+    emit(state, method_name)
+    emit(state, " */")
+}
+
+// Generate member access (field access)
+fn gen_member(CodegenState state, Expr obj, str field) {
+    gen_expr(state, obj)
+
+    // Use -> for self, optional, array, chan
+    // Use . for everything else
+    if obj is EIdent {
+        if obj.name == "self" {
+            emit(state, "->")
+            emit(state, field)
+            return
+        }
+    }
+
+    // TODO: Check type for optional/array/chan
+    emit(state, ".")
+    emit(state, field)
+}
+
+// Generate index expression (array/map indexing)
+fn gen_index(CodegenState state, Expr arr, Expr idx) {
+    // TODO: Check if it's a map or array
+    gen_expr(state, arr)
+    emit(state, "->data[")
+    gen_expr(state, idx)
+    emit(state, "]")
+}
+
+// Generate or expression
+fn gen_or(CodegenState state, Expr e, OrClause clause) {
+    if clause is OrExpr {
+        emit(state, "((")
+        gen_expr(state, e)
+        emit(state, ") ? (")
+        gen_expr(state, e)
+        emit(state, ") : (")
+        gen_expr(state, clause.expr)
+        emit(state, "))")
+        return
+    }
+
+    if clause is OrReturn {
+        // Simplified - just evaluate
+        emit(state, "(")
+        gen_expr(state, e)
+        emit(state, ")")
+        return
+    }
+
+    // OrError, OrWait - simplified
+    emit(state, "(")
+    gen_expr(state, e)
+    emit(state, ")")
+}
+
+// Generate struct literal
+fn gen_struct_lit(CodegenState state, str name, Type[] type_args, FieldInit[] fields) {
+    mangled := name
+    if type_args.len() > 0 {
+        mangled = mangle_generic_name(name, type_args)
+    }
+
+    // Handle Map<K,V>{} specially
+    if name == "Map" {
+        emit(state, "shotgun_map_create(sizeof(int64_t))")
+        return
+    }
+
+    emit(state, "(")
+    emit(state, mangled)
+    emit(state, ")\{ ")
+    i := 0
+    while i < fields.len() {
+        if i > 0 {
+            emit(state, ", ")
+        }
+        emit(state, ".")
+        emit(state, fields[i].name)
+        emit(state, " = ")
+        gen_expr(state, fields[i].value)
+        i += 1
+    }
+    emit(state, " }")
+}
+
+// Generate enum variant literal
+fn gen_enum_lit(CodegenState state, str enum_name, Type[] type_args, str variant_name, FieldInit[] fields) {
+    mangled := enum_name
+    if type_args.len() > 0 {
+        mangled = mangle_generic_name(enum_name, type_args)
+    }
+
+    emit(state, "(")
+    emit(state, mangled)
+    emit(state, ")\{ .tag = ")
+    emit(state, mangled)
+    emit(state, "_")
+    emit(state, variant_name)
+
+    if fields.len() > 0 {
+        emit(state, ", .data.")
+        emit(state, variant_name)
+        emit(state, " = (")
+        emit(state, mangled)
+        emit(state, "_")
+        emit(state, variant_name)
+        emit(state, "_data)\{ ")
+        i := 0
+        while i < fields.len() {
+            if i > 0 {
+                emit(state, ", ")
+            }
+            emit(state, ".")
+            emit(state, fields[i].name)
+            emit(state, " = ")
+            gen_expr(state, fields[i].value)
+            i += 1
+        }
+        emit(state, " }")
+    }
+    emit(state, " }")
+}
+
+// Generate array literal
+fn gen_array_lit(CodegenState state, Expr[] elems) {
+    if elems.len() == 0 {
+        emit(state, "NULL")
+        return
+    }
+
+    // TODO: Need type info for proper array type
+    n := elems.len()
+    emit(state, "(\{ Array_int64* _lit = malloc(sizeof(Array_int64)); _lit->data = malloc(")
+    emit(state, "{n}")
+    emit(state, " * sizeof(int64_t)); _lit->len = ")
+    emit(state, "{n}")
+    emit(state, "; _lit->cap = ")
+    emit(state, "{n}")
+    emit(state, "; ")
+
+    i := 0
+    while i < n {
+        emit(state, "_lit->data[")
+        emit(state, "{i}")
+        emit(state, "] = ")
+        gen_expr(state, elems[i])
+        emit(state, "; ")
+        i += 1
+    }
+    emit(state, "_lit; })")
+}
+
+// Generate assignment expression
+fn gen_assign(CodegenState state, Assignop op, Expr target, Expr value) {
+    gen_expr(state, target)
+    emit(state, " ")
+    emit(state, c_assignop(op))
+    emit(state, " ")
+    gen_expr(state, value)
+}
+
+// Generate match expression (placeholder - will be expanded later)
+fn gen_match_expr(CodegenState state, Expr[] exprs, MatchArm[] arms, Type? using_type) {
+    emit(state, "/* match expr */0")
+}

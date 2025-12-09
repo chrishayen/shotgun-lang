@@ -1,0 +1,253 @@
+// Statement code generation for the Shotgun self-hosted compiler
+
+// Generate code for a statement
+fn gen_stmt(CodegenState state, Stmt stmt) {
+    emit_indent(state)
+
+    if stmt is SVarDecl {
+        gen_var_decl(state, stmt.typ, stmt.name, stmt.init)
+        return
+    }
+
+    if stmt is SVarDeclInfer {
+        gen_var_decl_infer(state, stmt.name, stmt.init)
+        return
+    }
+
+    if stmt is SConstDecl {
+        gen_const_decl(state, stmt.name, stmt.init)
+        return
+    }
+
+    if stmt is SReturn {
+        gen_return(state, stmt.expr)
+        return
+    }
+
+    if stmt is SBreak {
+        emitln(state, "break;")
+        return
+    }
+
+    if stmt is SContinue {
+        emitln(state, "continue;")
+        return
+    }
+
+    if stmt is SIf {
+        gen_if(state, stmt.cond, stmt.then_block.items, stmt.else_block)
+        return
+    }
+
+    if stmt is SFor {
+        gen_for(state, stmt.var, stmt.iter, stmt.body.items, stmt.var2)
+        return
+    }
+
+    if stmt is SWhile {
+        gen_while(state, stmt.cond, stmt.body.items)
+        return
+    }
+
+    if stmt is SGo {
+        gen_go(state, stmt.expr)
+        return
+    }
+
+    if stmt is SExpr {
+        gen_expr(state, stmt.expr)
+        emitln(state, ";")
+        return
+    }
+
+    emitln(state, "/* unknown stmt */")
+}
+
+// Generate variable declaration with explicit type
+fn gen_var_decl(CodegenState state, Type typ, str name, Expr init) {
+    emit(state, c_type(typ))
+    emit(state, " ")
+    emit(state, name)
+    emit(state, " = ")
+    gen_expr(state, init)
+    emitln(state, ";")
+}
+
+// Generate variable declaration with type inference
+fn gen_var_decl_infer(CodegenState state, str name, Expr init) {
+    // Infer type from expression
+    typ := infer_expr_type(state.env, init)
+    if typ {
+        t := typ or Type.TInt{}
+        emit(state, c_type(t))
+    } else {
+        // Fallback to int64_t
+        emit(state, "int64_t")
+    }
+    emit(state, " ")
+    emit(state, name)
+    emit(state, " = ")
+    gen_expr(state, init)
+    emitln(state, ";")
+}
+
+// Generate const declaration
+fn gen_const_decl(CodegenState state, str name, Expr init) {
+    // Infer type from expression
+    typ := infer_expr_type(state.env, init)
+    emit(state, "const ")
+    if typ {
+        t := typ or Type.TInt{}
+        emit(state, c_type(t))
+    } else {
+        emit(state, "int64_t")
+    }
+    emit(state, " ")
+    emit(state, name)
+    emit(state, " = ")
+    gen_expr(state, init)
+    emitln(state, ";")
+}
+
+// Generate return statement
+fn gen_return(CodegenState state, Expr? expr) {
+    if expr {
+        e := expr or Expr.ENone{}
+        emit(state, "return ")
+        gen_expr(state, e)
+        emitln(state, ";")
+    } else {
+        emitln(state, "return;")
+    }
+}
+
+// Generate if statement
+fn gen_if(CodegenState state, Expr cond, Stmt[] then_block, StmtList? else_block) {
+    emit(state, "if (")
+    gen_expr(state, cond)
+    emitln(state, ") \{")
+
+    state.indent += 1
+    i := 0
+    while i < then_block.len() {
+        gen_stmt(state, then_block[i])
+        i += 1
+    }
+    state.indent -= 1
+
+    emit_indent(state)
+    if else_block {
+        eb := else_block or StmtList { items: [] }
+        emitln(state, "} else {")
+        state.indent += 1
+        j := 0
+        while j < eb.items.len() {
+            gen_stmt(state, eb.items[j])
+            j += 1
+        }
+        state.indent -= 1
+        emit_indent(state)
+        emitln(state, "}")
+    } else {
+        emitln(state, "}")
+    }
+}
+
+// Generate for loop
+fn gen_for(CodegenState state, str var_name, Expr iter, Stmt[] body, str? var2) {
+    // For now, assume array iteration
+    // TODO: Handle map iteration when var2 is present
+
+    if var2 {
+        // Map iteration: for k, v in map
+        key_var := var_name
+        val_var := var2 or ""
+        emitln(state, "\{")
+        state.indent += 1
+        emit_indent(state)
+        emit(state, "ShotgunMap* _map = ")
+        gen_expr(state, iter)
+        emitln(state, ";")
+        emit_indent(state)
+        emitln(state, "for (size_t _bucket = 0; _bucket < _map->capacity; _bucket++) \{")
+        state.indent += 1
+        emit_indent(state)
+        emitln(state, "if (_map->buckets[_bucket].occupied && !_map->buckets[_bucket].deleted) \{")
+        state.indent += 1
+        emit_indent(state)
+        emit(state, "char* ")
+        emit(state, key_var)
+        emitln(state, " = _map->buckets[_bucket].key;")
+        emit_indent(state)
+        emit(state, "int64_t ")
+        emit(state, val_var)
+        emitln(state, " = *(int64_t*)_map->buckets[_bucket].value;")
+
+        i := 0
+        while i < body.len() {
+            gen_stmt(state, body[i])
+            i += 1
+        }
+
+        state.indent -= 1
+        emit_indent(state)
+        emitln(state, "}")
+        state.indent -= 1
+        emit_indent(state)
+        emitln(state, "}")
+        state.indent -= 1
+        emit_indent(state)
+        emitln(state, "}")
+    } else {
+        // Array iteration: for x in arr
+        emit(state, "for (size_t _i = 0; _i < ")
+        gen_expr(state, iter)
+        emitln(state, "->len; _i++) \{")
+        state.indent += 1
+
+        // Declare loop variable
+        // TODO: Get proper element type
+        emit_indent(state)
+        emit(state, "int64_t ")
+        emit(state, var_name)
+        emit(state, " = ")
+        gen_expr(state, iter)
+        emitln(state, "->data[_i];")
+
+        i := 0
+        while i < body.len() {
+            gen_stmt(state, body[i])
+            i += 1
+        }
+
+        state.indent -= 1
+        emit_indent(state)
+        emitln(state, "}")
+    }
+}
+
+// Generate while loop
+fn gen_while(CodegenState state, Expr cond, Stmt[] body) {
+    emit(state, "while (")
+    gen_expr(state, cond)
+    emitln(state, ") \{")
+
+    state.indent += 1
+    i := 0
+    while i < body.len() {
+        gen_stmt(state, body[i])
+        i += 1
+    }
+    state.indent -= 1
+
+    emit_indent(state)
+    emitln(state, "}")
+}
+
+// Generate go statement (goroutine)
+fn gen_go(CodegenState state, Expr expr) {
+    // TODO: Proper goroutine wrapper generation
+    emit(state, "/* go */ ")
+    gen_expr(state, expr)
+    emitln(state, ";")
+}
