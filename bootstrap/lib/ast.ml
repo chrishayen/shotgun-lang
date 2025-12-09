@@ -108,7 +108,7 @@ and stmt =
   | SBreak
   | SContinue
   | SIf of expr * stmt list * stmt list option
-  | SFor of string * expr * stmt list
+  | SFor of string list * expr * stmt list  (* var_names (1 for array, 2 for map), iter, body *)
   | SWhile of expr * stmt list  (* condition, body *)
   | SGo of expr
   | SExpr of expr

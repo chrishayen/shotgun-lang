@@ -1,0 +1,77 @@
+// Semantic analysis environment and symbol table
+
+// Symbol table entry
+Symbol :: variant {
+    SVar {
+        typ Type
+        is_const bool
+    }
+    SFunc {
+        params ParamList
+        ret Type?
+    }
+}
+
+// Semantic analysis environment
+Env :: struct {
+    symbols               Map<str, Symbol>
+    structs               Map<str, FieldList>
+    enums                 Map<str, EnumVariantList>
+    traits                Map<str, TraitMethodList>
+    errors                Map<str, FieldList>
+    methods               Map<str, ParamList>       // "Type.method" -> params
+    method_rets           Map<str, Type>            // "Type.method" -> return type (if any)
+    generic_struct_params Map<str, StringList>
+    generic_enum_params   Map<str, StringList>
+    in_method             bool
+    current_type          str?
+    error_list            str[]
+}
+
+// Create a new empty environment
+fn create_env() Env {
+    return Env {
+        symbols: Map<str, Symbol>{},
+        structs: Map<str, FieldList>{},
+        enums: Map<str, EnumVariantList>{},
+        traits: Map<str, TraitMethodList>{},
+        errors: Map<str, FieldList>{},
+        methods: Map<str, ParamList>{},
+        method_rets: Map<str, Type>{},
+        generic_struct_params: Map<str, StringList>{},
+        generic_enum_params: Map<str, StringList>{},
+        in_method: false,
+        current_type: none,
+        error_list: []
+    }
+}
+
+// Create a child scope
+// Note: symbols map is shared - local variables shadow but don't need full copy
+// since we only add to scopes, never remove
+fn push_scope(Env env) Env {
+    return Env {
+        symbols: env.symbols,
+        structs: env.structs,
+        enums: env.enums,
+        traits: env.traits,
+        errors: env.errors,
+        methods: env.methods,
+        method_rets: env.method_rets,
+        generic_struct_params: env.generic_struct_params,
+        generic_enum_params: env.generic_enum_params,
+        in_method: env.in_method,
+        current_type: env.current_type,
+        error_list: env.error_list
+    }
+}
+
+// Add an error message to the environment
+fn add_error(Env env, str msg) {
+    env.error_list.push(msg)
+}
+
+// Get method key for lookup
+fn method_key(str type_name, str method_name) str {
+    return "{type_name}.{method_name}"
+}

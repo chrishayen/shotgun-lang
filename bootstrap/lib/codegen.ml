@@ -904,9 +904,9 @@ and collect_stmt_idents (used, declared) stmt =
     (match else_stmts with
      | Some stmts -> List.fold_left collect_stmt_idents (used'', declared') stmts
      | None -> (used'', declared'))
-  | SFor (var, iter, body_stmts) ->
+  | SFor (vars, iter, body_stmts) ->
     let used' = collect_expr_idents used iter in
-    List.fold_left collect_stmt_idents (used', var :: declared) body_stmts
+    List.fold_left collect_stmt_idents (used', vars @ declared) body_stmts
   | SWhile (cond, body_stmts) ->
     let used' = collect_expr_idents used cond in
     List.fold_left collect_stmt_idents (used', declared) body_stmts
@@ -1727,27 +1727,60 @@ and gen_stmt ctx indent stmt =
        List.iter (gen_stmt ctx (indent + 1)) stmts;
        emit_indent indent;
        emitln "}")
-  | SFor (var, iter, body) ->
-    (* Infer element type from iterator *)
-    let elem_type = match get_type ctx iter with
-      | Some (TArray t) -> t
-      | _ -> TInt  (* fallback *)
-    in
-    add_local ctx var elem_type;
-    emit "for (size_t _i = 0; _i < ";
-    gen_expr ctx indent iter;
-    emit "->len; _i++) {";
-    emitln "";
-    emit_indent (indent + 1);
-    emit (c_type elem_type);
-    emit " ";
-    emit var;
-    emit " = ";
-    gen_expr ctx indent iter;
-    emitln "->data[_i];";
-    List.iter (gen_stmt ctx (indent + 1)) body;
-    emit_indent indent;
-    emitln "}"
+  | SFor (vars, iter, body) ->
+    (match vars, get_type ctx iter with
+     | [var], Some (TArray elem_type) ->
+       (* Array iteration: for x in arr *)
+       add_local ctx var elem_type;
+       emit "for (size_t _i = 0; _i < ";
+       gen_expr ctx indent iter;
+       emit "->len; _i++) {";
+       emitln "";
+       emit_indent (indent + 1);
+       emit (c_type elem_type);
+       emit " ";
+       emit var;
+       emit " = ";
+       gen_expr ctx indent iter;
+       emitln "->data[_i];";
+       List.iter (gen_stmt ctx (indent + 1)) body;
+       emit_indent indent;
+       emitln "}"
+     | [key_var; val_var], Some (TApply ("Map", [key_t; val_t])) ->
+       (* Map iteration: for k, v in map *)
+       add_local ctx key_var key_t;
+       add_local ctx val_var val_t;
+       emitln "{";
+       emit_indent (indent + 1);
+       emit "ShotgunMap* _map = ";
+       gen_expr ctx indent iter;
+       emitln ";";
+       emit_indent (indent + 1);
+       emitln "for (size_t _bucket = 0; _bucket < _map->capacity; _bucket++) {";
+       emit_indent (indent + 2);
+       emitln "if (_map->buckets[_bucket].occupied && !_map->buckets[_bucket].deleted) {";
+       emit_indent (indent + 3);
+       emit (c_type key_t);
+       emit " ";
+       emit key_var;
+       emitln " = _map->buckets[_bucket].key;";
+       emit_indent (indent + 3);
+       emit (c_type val_t);
+       emit " ";
+       emit val_var;
+       emit " = *(";
+       emit (c_type val_t);
+       emitln "*)_map->buckets[_bucket].value;";
+       List.iter (gen_stmt ctx (indent + 3)) body;
+       emit_indent (indent + 2);
+       emitln "}";
+       emit_indent (indent + 1);
+       emitln "}";
+       emit_indent indent;
+       emitln "}"
+     | _ ->
+       (* Fallback - shouldn't happen if semantic analysis is correct *)
+       emitln "/* invalid for loop */")
   | SWhile (cond, body) ->
     emit "while (";
     gen_expr ctx indent cond;
@@ -2932,10 +2965,13 @@ let rec scan_stmt_for_go ctx stmt =
   | SIf (_, then_stmts, else_stmts) ->
     List.iter (scan_stmt_for_go ctx) then_stmts;
     (match else_stmts with Some stmts -> List.iter (scan_stmt_for_go ctx) stmts | None -> ())
-  | SFor (var, iter, body) ->
-    (* Add loop variable to scope *)
-    (match get_type ctx iter with
-     | Some (TArray t) -> add_local ctx var t
+  | SFor (vars, iter, body) ->
+    (* Add loop variable(s) to scope *)
+    (match vars, get_type ctx iter with
+     | [var], Some (TArray t) -> add_local ctx var t
+     | [key_var; val_var], Some (TApply ("Map", [key_t; val_t])) ->
+       add_local ctx key_var key_t;
+       add_local ctx val_var val_t
      | _ -> ());
     List.iter (scan_stmt_for_go ctx) body
   | SWhile (_, body) ->

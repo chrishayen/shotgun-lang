@@ -310,7 +310,8 @@ stmt_inner:
   | IF cond = expr then_block = block { SIf (cond, then_block, None) }
   | IF cond = expr then_block = block ELSE else_block = block { SIf (cond, then_block, Some else_block) }
   | IF cond = expr then_block = block ELSE else_if = if_stmt { SIf (cond, then_block, Some [else_if]) }
-  | FOR var = IDENT IN iter = expr body = block { SFor (var, iter, body) }
+  | FOR var = IDENT IN iter = expr body = block { SFor ([var], iter, body) }
+  | FOR var1 = IDENT COMMA var2 = IDENT IN iter = expr body = block { SFor ([var1; var2], iter, body) }
   | WHILE cond = expr body = block { SWhile (cond, body) }
   | GO e = expr { SGo e }
   | e = expr { SExpr e }

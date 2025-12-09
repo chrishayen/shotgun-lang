@@ -667,19 +667,24 @@ and check_stmt env stmt =
        let else_env = push_scope env in
        List.iter (check_stmt else_env) stmts
      | None -> ())
-  | SFor (var, iter, body) ->
+  | SFor (vars, iter, body) ->
     check_expr env iter;
     let body_env = push_scope env in
-    (* Infer type of loop variable from iterator *)
-    let var_type =
-      match infer_expr_type env iter with
-      | Some (TArray t) -> t
-      | Some _ ->
-        add_error env "For loop expects an array/iterable"; TUser "unknown"
-      | None ->
-        add_error env "For loop iterator type could not be inferred"; TUser "unknown"
-    in
-    Hashtbl.replace body_env.symbols var (SVar (var_type, false));
+    (* Infer type of loop variable(s) from iterator *)
+    (match vars, infer_expr_type env iter with
+     | [var], Some (TArray t) ->
+       Hashtbl.replace body_env.symbols var (SVar (t, false))
+     | [_; _], Some (TArray _) ->
+       add_error env "Array iteration requires one variable, not two"
+     | [key_var; val_var], Some (TApply ("Map", [key_t; val_t])) ->
+       Hashtbl.replace body_env.symbols key_var (SVar (key_t, false));
+       Hashtbl.replace body_env.symbols val_var (SVar (val_t, false))
+     | [_], Some (TApply ("Map", _)) ->
+       add_error env "Map iteration requires two variables: for key, value in map"
+     | _, Some _ ->
+       add_error env "For loop expects an array or map"
+     | _, None ->
+       add_error env "For loop iterator type could not be inferred");
     List.iter (check_stmt body_env) body
   | SWhile (cond, body) ->
     check_expr env cond;

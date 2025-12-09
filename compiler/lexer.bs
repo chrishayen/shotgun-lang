@@ -181,13 +181,33 @@ Lexer :: read_string(self) Token {
             self.advance()
             next := self.peek()
             match next {
-                'n' -> { result = result + "\n"; self.advance() }
-                'r' -> { result = result + "\r"; self.advance() }
-                't' -> { result = result + "\t"; self.advance() }
-                '\\' -> { result = result + "\\"; self.advance() }
-                '"' -> { result = result + "\""; self.advance() }
-                '{' -> { result = result + "\\" + "\{"; self.advance() }
-                _ -> { result = result + "\\" }
+                'n' -> {
+                    result = result + "\n"
+                    self.advance()
+                }
+                'r' -> {
+                    result = result + "\r"
+                    self.advance()
+                }
+                't' -> {
+                    result = result + "\t"
+                    self.advance()
+                }
+                '\\' -> {
+                    result = result + "\\"
+                    self.advance()
+                }
+                '"' -> {
+                    result = result + "\""
+                    self.advance()
+                }
+                '{' -> {
+                    result = result + "\\" + "\{"
+                    self.advance()
+                }
+                _ -> {
+                    result = result + "\\"
+                }
             }
         } else if ch == '{' {
             // Read until matching }

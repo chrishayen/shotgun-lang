@@ -184,7 +184,7 @@ let test_parser () =
   test "parser: for statement" (fun () ->
     let ast = parse "fn test() { for x in items { print(x) } }" in
     match ast with
-    | [Ast.IFunction (_, _, _, _, [Ast.SFor ("x", _, _)])] -> ()
+    | [Ast.IFunction (_, _, _, _, [Ast.SFor (["x"], _, _)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 

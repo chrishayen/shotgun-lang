@@ -1,0 +1,16 @@
+fn main() {
+    Map<str, int> counts = Map<str, int>{}
+    counts["apple"] = 5
+    counts["banana"] = 3
+    counts["cherry"] = 7
+
+    for key, value in counts {
+        print("{key}: {value}")
+    }
+
+    int sum = 0
+    for k, v in counts {
+        sum += v
+    }
+    print("Sum: {sum}")
+}

@@ -467,6 +467,20 @@ size := counts.<span class="fn">len</span>()
 <span class="cm">// Delete a key</span>
 counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre>
 
+        <h3>Map Iteration</h3>
+
+        <p>Iterate over maps using two loop variables for key and value:</p>
+
+        <pre><code><span class="kw">for</span> key, value <span class="kw">in</span> counts {
+    <span class="fn">print</span>(<span class="st">"{key}: {value}"</span>)
+}
+
+<span class="cm">// Sum all values</span>
+<span class="ty">int</span> total = <span class="nu">0</span>
+<span class="kw">for</span> k, v <span class="kw">in</span> counts {
+    total += v
+}</code></pre>
+
         <p>Maps currently support string keys only. Integer keys will be added in a future version.</p>
 
         <h2>Control Flow</h2>
