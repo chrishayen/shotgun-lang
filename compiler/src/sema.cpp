@@ -316,6 +316,17 @@ void Sema::check_var_decl(const Stmt::VarDecl& var) {
     }
 
     if (var.init) {
+        // Special case: empty array literal with explicit array type
+        if (auto* arr_lit = std::get_if<Expr::ArrayLit>(&var.init->kind)) {
+            if (arr_lit->elements.empty() && var_type && var_type->kind == ResolvedType::Kind::Array) {
+                // Use the declared type directly for empty arrays
+                if (!symbols_.declare_var(var.name, var_type, var.is_const)) {
+                    error("Variable '" + var.name + "' already declared in this scope");
+                }
+                return;
+            }
+        }
+
         auto init_type = check_expr(var.init);
 
         if (var_type) {
@@ -669,6 +680,7 @@ ResolvedTypePtr Sema::check_unary(const Expr::Unary& un) {
             return operand;
 
         case TokenKind::Not:
+        case TokenKind::Bang:
             if (operand->kind != ResolvedType::Kind::Bool) {
                 error("Unary not requires bool type");
             }
@@ -818,7 +830,7 @@ ResolvedTypePtr Sema::check_index(const Expr::Index& idx) {
     }
 
     // Map indexing
-    if (obj_type->kind == ResolvedType::Kind::Struct && obj_type->name == "Map") {
+    if (obj_type->kind == ResolvedType::Kind::Map && obj_type->type_args.size() == 2) {
         if (!is_assignable(obj_type->type_args[0], index_type)) {
             error("Map key type mismatch");
         }
@@ -857,6 +869,17 @@ ResolvedTypePtr Sema::check_field(const Expr::Field& field) {
 }
 
 ResolvedTypePtr Sema::check_struct_lit(const Expr::StructLit& lit) {
+    // Handle Map<K,V>{} builtin
+    if (lit.type_name == "Map" && lit.type_args.size() == 2) {
+        // Map literals must be empty (initialization only)
+        if (!lit.fields.empty()) {
+            error("Map literal cannot have fields; use indexing to add elements");
+        }
+        auto key_type = resolve_type(lit.type_args[0]);
+        auto val_type = resolve_type(lit.type_args[1]);
+        return ResolvedType::make_map(key_type, val_type);
+    }
+
     // Check if it's a variant construction
     if (lit.type_name.find('.') != std::string::npos) {
         // Variant.Case { ... }
@@ -1118,6 +1141,13 @@ ResolvedTypePtr Sema::resolve_type(const TypePtr& type) {
             if (t.name == "u64") return ResolvedType::make_u64();
             if (t.name == "void") return ResolvedType::make_void();
 
+            // Map<K, V> builtin
+            if (t.name == "Map" && t.type_args.size() == 2) {
+                auto key_type = resolve_type(t.type_args[0]);
+                auto val_type = resolve_type(t.type_args[1]);
+                return ResolvedType::make_map(key_type, val_type);
+            }
+
             // Type parameter?
             auto var = symbols_.lookup_var(t.name);
             if (var && var->type->kind == ResolvedType::Kind::TypeParam) {
@@ -1198,7 +1228,38 @@ ResolvedTypePtr Sema::check_pattern(const PatternPtr& pattern, ResolvedTypePtr e
             return expected;
         }
         else if constexpr (std::is_same_v<T, Pattern::Variant>) {
-            // Match variant case
+            // Match variant case - bind fields to variables
+            std::string type_name = p.type_name;
+            if (type_name.empty() && expected && expected->kind == ResolvedType::Kind::Struct) {
+                type_name = expected->name;
+            }
+
+            // Look up the variant definition
+            auto def = symbols_.lookup_variant(type_name);
+            if (def) {
+                // Find the case
+                bool found = false;
+                for (const auto& caseinfo : def->cases) {
+                    if (caseinfo.name == p.variant_name) {
+                        found = true;
+                        // Bind fields
+                        for (const auto& [field_name, var_name] : p.bindings) {
+                            for (const auto& fi : caseinfo.fields) {
+                                if (fi.name == field_name) {
+                                    symbols_.declare_var(var_name, fi.type);
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (!found) {
+                    error("Unknown variant case '" + p.variant_name + "' for type '" + type_name + "'");
+                }
+            } else {
+                error("Unknown variant type '" + type_name + "'");
+            }
             return expected;
         }
         else {

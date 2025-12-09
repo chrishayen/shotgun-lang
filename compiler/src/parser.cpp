@@ -563,8 +563,15 @@ std::vector<StmtPtr> Parser::parse_block() {
     skip_newlines();
 
     while (!check(TokenKind::RBrace) && !at_end()) {
+        size_t before = current_;
         stmts.push_back(parse_stmt());
         skip_newlines();
+
+        // Error recovery: if no progress was made, skip the problematic token
+        if (current_ == before) {
+            error("Unexpected token '" + peek().lexeme + "'");
+            advance();
+        }
     }
 
     return stmts;
@@ -623,10 +630,23 @@ StmtPtr Parser::parse_stmt() {
     } else if (check(TokenKind::Ident)) {
         // Check if this looks like a type declaration
         // Pattern: TypeName varname = ...  or  TypeName<...> varname = ...
+        //          TypeName[] varname = ... or TypeName<...>[] varname = ...
         if (peek_next().kind == TokenKind::Ident) {
             is_type_decl = true;  // TypeName varname
+        } else if (peek_next().kind == TokenKind::LBracket) {
+            // Could be TypeName[] varname - check for [] followed by Ident
+            size_t saved = current_;
+            advance(); // skip TypeName
+            advance(); // skip [
+            if (check(TokenKind::RBracket)) {
+                advance(); // skip ]
+                if (check(TokenKind::Ident)) {
+                    is_type_decl = true;
+                }
+            }
+            current_ = saved; // restore
         } else if (peek_next().kind == TokenKind::Lt) {
-            // Could be TypeName<...> varname - need to skip past <...> to check
+            // Could be TypeName<...> varname or TypeName<...>[] varname
             size_t saved = current_;
             advance(); // skip TypeName
             advance(); // skip <
@@ -635,6 +655,13 @@ StmtPtr Parser::parse_stmt() {
                 if (check(TokenKind::Lt)) depth++;
                 else if (check(TokenKind::Gt)) depth--;
                 advance();
+            }
+            // Check for optional array suffix []
+            if (check(TokenKind::LBracket)) {
+                advance(); // skip [
+                if (check(TokenKind::RBracket)) {
+                    advance(); // skip ]
+                }
             }
             // Now check if next is Ident (the variable name)
             if (check(TokenKind::Ident)) {
@@ -1082,11 +1109,15 @@ ExprPtr Parser::parse_primary_expr() {
     // Array literal
     if (match(TokenKind::LBracket)) {
         std::vector<ExprPtr> elements;
+        skip_newlines();  // Allow newline after [
         if (!check(TokenKind::RBracket)) {
             do {
+                skip_newlines();  // Allow newline before element
                 elements.push_back(parse_expr());
+                skip_newlines();  // Allow newline after element
             } while (match(TokenKind::Comma));
         }
+        skip_newlines();  // Allow newline before ]
         consume(TokenKind::RBracket, "Expected ']' after array elements");
         expr->kind = Expr::ArrayLit{std::move(elements)};
         return expr;
@@ -1095,6 +1126,13 @@ ExprPtr Parser::parse_primary_expr() {
     // Parenthesized expression or tuple
     if (match(TokenKind::LParen)) {
         auto inner = parse_expr();
+        // Skip any comma-separated values (tuple syntax not supported as expression)
+        if (check(TokenKind::Comma)) {
+            error("Tuple expressions are not supported; use separate variables");
+            while (!check(TokenKind::RParen) && !at_end()) {
+                advance();
+            }
+        }
         consume(TokenKind::RParen, "Expected ')' after expression");
         return inner;
     }
@@ -1175,22 +1213,16 @@ ExprPtr Parser::parse_primary_expr() {
             }
         }
 
-        // Check for variant construction: Option.Some { value: 42 }
-        // Only if followed by { - otherwise it's field access handled in postfix
-        if (check(TokenKind::Dot) && peek_next().kind == TokenKind::Ident) {
-            // Look ahead to see if this is variant construction (Type.Case {) or field access (obj.field)
-            size_t saved = current_;
+        // Check for variant construction: Option.Some { value: 42 } or Option.None
+        // If the identifier starts with uppercase and is followed by .Ident, treat as variant
+        if (check(TokenKind::Dot) && peek_next().kind == TokenKind::Ident &&
+            !name.empty() && std::isupper(name[0])) {
             advance(); // consume .
-            Token maybe_case = advance(); // consume ident
-            bool is_variant = check(TokenKind::LBrace);
-            current_ = saved; // restore
+            Token variant_name = advance();
+            std::vector<std::pair<std::string, ExprPtr>> fields;
 
-            if (is_variant) {
-                advance(); // consume .
-                Token variant_name = advance();
-                std::vector<std::pair<std::string, ExprPtr>> fields;
-
-                consume(TokenKind::LBrace, "Expected '{' for variant construction");
+            // Check for { to parse fields
+            if (match(TokenKind::LBrace)) {
                 skip_newlines();
                 if (!check(TokenKind::RBrace)) {
                     do {
@@ -1204,10 +1236,11 @@ ExprPtr Parser::parse_primary_expr() {
                     skip_newlines();
                 }
                 consume(TokenKind::RBrace, "Expected '}' after variant fields");
-
-                expr->kind = Expr::StructLit{name + "." + variant_name.lexeme, std::move(type_args), std::move(fields)};
-                return expr;
             }
+            // No brace = empty fields (like Option.None)
+
+            expr->kind = Expr::StructLit{name + "." + variant_name.lexeme, std::move(type_args), std::move(fields)};
+            return expr;
         }
 
         // Plain identifier
@@ -1249,6 +1282,15 @@ ExprPtr Parser::parse_match_expr() {
     if (match(TokenKind::Using)) {
         Token type_name = consume(TokenKind::Ident, "Expected type name after 'using'");
         using_type = type_name.lexeme;
+        // Skip any generic type args (e.g., Option<int>)
+        if (match(TokenKind::Lt)) {
+            int depth = 1;
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::Lt)) depth++;
+                else if (check(TokenKind::Gt)) depth--;
+                advance();
+            }
+        }
     }
 
     consume(TokenKind::LBrace, "Expected '{' after match subject");
@@ -1256,6 +1298,7 @@ ExprPtr Parser::parse_match_expr() {
 
     std::vector<std::pair<PatternPtr, ExprPtr>> arms;
     while (!check(TokenKind::RBrace) && !at_end()) {
+        size_t before = current_;
         auto pattern = parse_pattern();
         consume(TokenKind::Arrow, "Expected '->' after pattern");
 
@@ -1284,6 +1327,12 @@ ExprPtr Parser::parse_match_expr() {
 
         if (match(TokenKind::Comma)) {
             skip_newlines();
+        }
+
+        // Error recovery: if no progress was made, skip the problematic token
+        if (current_ == before) {
+            error("Unexpected token in match arm");
+            advance();
         }
     }
 

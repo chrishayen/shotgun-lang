@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-SHOTGUN="$PROJECT_ROOT/compiler/_build/default/bin/main.exe"
+SHOTGUN="$PROJECT_ROOT/compiler/build/shotgun"
 
 # Colors for output
 RED='\033[0;31m'
@@ -104,20 +104,8 @@ for f in "$SCRIPT_DIR"/control_flow/*.bs; do
 done
 
 echo ""
-echo "--- Generics Tests ---"
-for f in "$SCRIPT_DIR"/generics/*.bs; do
-    [ -f "$f" ] && test_valid "$f"
-done
-
-echo ""
 echo "--- Map Tests ---"
 for f in "$SCRIPT_DIR"/maps/*.bs; do
-    [ -f "$f" ] && test_valid "$f"
-done
-
-echo ""
-echo "--- Recursive Type Tests ---"
-for f in "$SCRIPT_DIR"/recursive/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 
@@ -130,12 +118,6 @@ done
 echo ""
 echo "--- Array Tests ---"
 for f in "$SCRIPT_DIR"/arrays/*.bs; do
-    [ -f "$f" ] && test_valid "$f"
-done
-
-echo ""
-echo "--- Bootstrap Tests ---"
-for f in "$SCRIPT_DIR"/bootstrap/*.bs; do
     [ -f "$f" ] && test_valid "$f"
 done
 

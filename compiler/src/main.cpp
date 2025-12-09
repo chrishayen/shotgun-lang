@@ -74,7 +74,11 @@ std::vector<std::string> find_bs_files(const std::string& dir) {
 
 // Find shotgun.toml and get package name
 std::string find_package_name(const std::string& start_dir) {
-    std::filesystem::path dir(start_dir);
+    // Use current directory if start_dir is empty
+    std::filesystem::path dir = start_dir.empty()
+        ? std::filesystem::current_path()
+        : std::filesystem::absolute(start_dir);
+
     while (!dir.empty()) {
         std::filesystem::path toml = dir / "shotgun.toml";
         if (std::filesystem::exists(toml)) {
@@ -103,7 +107,11 @@ std::string find_package_name(const std::string& start_dir) {
 
 // Find project root (where shotgun.toml is)
 std::string find_project_root(const std::string& start_dir) {
-    std::filesystem::path dir(start_dir);
+    // Use current directory if start_dir is empty
+    std::filesystem::path dir = start_dir.empty()
+        ? std::filesystem::current_path()
+        : std::filesystem::absolute(start_dir);
+
     while (!dir.empty()) {
         std::filesystem::path toml = dir / "shotgun.toml";
         if (std::filesystem::exists(toml)) {
@@ -112,7 +120,10 @@ std::string find_project_root(const std::string& start_dir) {
         if (dir.parent_path() == dir) break;
         dir = dir.parent_path();
     }
-    return start_dir;
+    // Return the original directory (made absolute) if no shotgun.toml found
+    return start_dir.empty()
+        ? std::filesystem::current_path().string()
+        : std::filesystem::absolute(start_dir).string();
 }
 
 // Resolve module path (e.g., "testpkg.utils" -> "/path/to/project/utils.bs")
@@ -142,7 +153,9 @@ bool process_imports(shotgun::Program& program, const std::string& source_dir,
     std::string pkg_name = find_package_name(source_dir);
 
     // Auto-import all .bs files in the same directory (Go-style package)
-    if (auto_import_same_dir && !source_dir.empty()) {
+    // Only do this if there's a shotgun.toml in the directory (i.e., it's a real package)
+    bool has_pkg_config = !pkg_name.empty();
+    if (auto_import_same_dir && !source_dir.empty() && has_pkg_config) {
         auto bs_files = find_bs_files(source_dir);
         for (const auto& file : bs_files) {
             std::string abs_path = std::filesystem::absolute(file).string();

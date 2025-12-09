@@ -50,34 +50,29 @@ mv shotgun-linux-x86_64 ~/.local/bin/shotgun</code></pre>
 
         <h3>Option 2: Build from Source</h3>
 
-        <h4>1. Install OCaml and opam</h4>
+        <h4>1. Install LLVM and CMake</h4>
 
         <p>On macOS:</p>
 
-        <pre><code>brew install opam
-opam init
-opam switch create 5.4.0</code></pre>
+        <pre><code>brew install llvm cmake</code></pre>
 
         <p>On Linux (Debian/Ubuntu):</p>
 
-        <pre><code>apt install opam
-opam init
-opam switch create 5.4.0</code></pre>
+        <pre><code>apt install llvm-dev clang cmake</code></pre>
 
         <h4>2. Clone and build</h4>
 
         <pre><code>git clone https://github.com/chrishayen/shotgun-lang.git
 cd shotgun-lang
-eval $(opam env)
-cd compiler && opam install . --deps-only -y && dune build</code></pre>
+make build</code></pre>
 
         <h4>3. Add to your PATH (optional)</h4>
 
-        <pre><code>alias shotgun="dune exec --root /path/to/shotgun/compiler -- shotgun"</code></pre>
+        <pre><code>alias shotgun="/path/to/shotgun/compiler/build/shotgun"</code></pre>
 
         <p>Or copy the binary:</p>
 
-        <pre><code>cp compiler/_build/default/bin/main.exe ~/.local/bin/shotgun</code></pre>
+        <pre><code>cp compiler/build/shotgun ~/.local/bin/shotgun</code></pre>
 
         <h2>Hello, World</h2>
 

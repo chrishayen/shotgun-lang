@@ -24,6 +24,7 @@ struct ResolvedType {
         U32,
         U64,
         Array,
+        Map,        // Map<K, V> - key and value in type_args
         Optional,
         Function,
         Channel,
@@ -62,6 +63,7 @@ struct ResolvedType {
     static ResolvedTypePtr make_u32();
     static ResolvedTypePtr make_u64();
     static ResolvedTypePtr make_array(ResolvedTypePtr elem);
+    static ResolvedTypePtr make_map(ResolvedTypePtr key, ResolvedTypePtr value);
     static ResolvedTypePtr make_optional(ResolvedTypePtr elem);
     static ResolvedTypePtr make_channel(ResolvedTypePtr elem);
     static ResolvedTypePtr make_function(std::vector<ResolvedTypePtr> params, ResolvedTypePtr ret);

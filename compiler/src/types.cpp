@@ -63,6 +63,14 @@ ResolvedTypePtr ResolvedType::make_array(ResolvedTypePtr elem) {
     return t;
 }
 
+ResolvedTypePtr ResolvedType::make_map(ResolvedTypePtr key, ResolvedTypePtr value) {
+    auto t = std::make_shared<ResolvedType>();
+    t->kind = Kind::Map;
+    t->type_args.push_back(key);    // type_args[0] = key type
+    t->type_args.push_back(value);  // type_args[1] = value type
+    return t;
+}
+
 ResolvedTypePtr ResolvedType::make_optional(ResolvedTypePtr elem) {
     auto t = std::make_shared<ResolvedType>();
     t->kind = Kind::Optional;
@@ -135,6 +143,11 @@ bool ResolvedType::equals(const ResolvedType& other) const {
         case Kind::Channel:
             return element_type->equals(*other.element_type);
 
+        case Kind::Map:
+            // Compare key and value types stored in type_args
+            return type_args[0]->equals(*other.type_args[0]) &&
+                   type_args[1]->equals(*other.type_args[1]);
+
         case Kind::Function:
             if (param_types.size() != other.param_types.size()) return false;
             for (size_t i = 0; i < param_types.size(); i++) {
@@ -172,6 +185,9 @@ std::string ResolvedType::to_string() const {
 
         case Kind::Array:
             return element_type->to_string() + "[]";
+
+        case Kind::Map:
+            return "Map<" + type_args[0]->to_string() + ", " + type_args[1]->to_string() + ">";
 
         case Kind::Optional:
             return element_type->to_string() + "?";
@@ -249,6 +265,9 @@ ResolvedTypePtr ResolvedType::substitute(const std::unordered_map<std::string, R
 
         case Kind::Array:
             return make_array(element_type->substitute(subst));
+
+        case Kind::Map:
+            return make_map(type_args[0]->substitute(subst), type_args[1]->substitute(subst));
 
         case Kind::Optional:
             return make_optional(element_type->substitute(subst));

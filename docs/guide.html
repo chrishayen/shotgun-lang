@@ -161,55 +161,6 @@ y := <span class="ty">Option</span>.<span class="ty">Some</span> { value: <span 
 b := <span class="ty">Expr</span>.<span class="ty">Int</span> { value: <span class="nu">2</span> }
 add := <span class="ty">Expr</span>.<span class="ty">Binary</span> { left: a, right: b }</code></pre>
 
-        <h2>Generics</h2>
-
-        <p>Define type-safe containers with type parameters using angle brackets:</p>
-
-        <pre><code><span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="kw">struct</span> {
-    value <span class="ty">T</span>
-}
-
-<span class="ty">Option</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="kw">variant</span> {
-    <span class="ty">Some</span> { value <span class="ty">T</span> }
-    <span class="ty">None</span>
-}</code></pre>
-
-        <p>Use generics with concrete types:</p>
-
-        <pre><code>int_box := <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">42</span> }
-str_box := <span class="ty">Box</span>&lt;<span class="ty">str</span>&gt; { value: <span class="st">"hello"</span> }
-
-maybe := <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">100</span> }
-nothing := <span class="ty">Option</span>&lt;<span class="ty">str</span>&gt;.<span class="ty">None</span></code></pre>
-
-        <h3>Multiple Type Parameters</h3>
-
-        <p>Types can have multiple type parameters:</p>
-
-        <pre><code><span class="ty">Pair</span>&lt;<span class="ty">A</span>, <span class="ty">B</span>&gt; <span class="kw">::</span> <span class="kw">struct</span> {
-    first  <span class="ty">A</span>
-    second <span class="ty">B</span>
-}
-
-<span class="ty">Result</span>&lt;<span class="ty">T</span>, <span class="ty">E</span>&gt; <span class="kw">::</span> <span class="kw">variant</span> {
-    <span class="ty">Ok</span> { value <span class="ty">T</span> }
-    <span class="ty">Err</span> { err <span class="ty">E</span> }
-}
-
-p := <span class="ty">Pair</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt; { first: <span class="nu">42</span>, second: <span class="st">"hello"</span> }
-ok := <span class="ty">Result</span>&lt;<span class="ty">int</span>, <span class="ty">str</span>&gt;.<span class="ty">Ok</span> { value: <span class="nu">100</span> }</code></pre>
-
-        <h3>Pattern Matching on Generic Variants</h3>
-
-        <p>Use the <code>using</code> clause with the concrete type:</p>
-
-        <pre><code>maybe := <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">42</span> }
-
-result := <span class="kw">match</span> maybe <span class="kw">using</span> <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt; {
-    <span class="ty">Some</span> { value: v } -> v,
-    <span class="ty">None</span> -> <span class="nu">0</span>
-}</code></pre>
-
         <h2>Methods</h2>
 
         <p>Add methods to structs with the <code>::</code> syntax:</p>
@@ -231,28 +182,6 @@ result := <span class="kw">match</span> maybe <span class="kw">using</span> <spa
         <pre><code>p := <span class="ty">Person</span> { name: <span class="st">"Alice"</span>, age: <span class="nu">30</span> }
 <span class="fn">print</span>(p.<span class="fn">greet</span>())     <span class="cm">// "Hello, I'm Alice!"</span>
 <span class="fn">print</span>(p.<span class="fn">is_adult</span>())  <span class="cm">// true</span></code></pre>
-
-        <h3>Methods on Generic Types</h3>
-
-        <p>Generic types can also have methods. The type parameter is available in the method:</p>
-
-        <pre><code><span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="kw">struct</span> {
-    value <span class="ty">T</span>
-}
-
-<span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="fn">get</span>(self) <span class="ty">T</span> {
-    <span class="kw">return</span> self.value
-}
-
-<span class="ty">Box</span>&lt;<span class="ty">T</span>&gt; <span class="kw">::</span> <span class="fn">add</span>(self, <span class="ty">T</span> other) <span class="ty">T</span> {
-    <span class="kw">return</span> self.value + other
-}
-
-<span class="kw">fn</span> <span class="fn">main</span> {
-    b := <span class="ty">Box</span>&lt;<span class="ty">int</span>&gt; { value: <span class="nu">10</span> }
-    <span class="fn">print</span>(b.<span class="fn">get</span>())        <span class="cm">// 10</span>
-    <span class="fn">print</span>(b.<span class="fn">add</span>(<span class="nu">32</span>))      <span class="cm">// 42</span>
-}</code></pre>
 
         <h2>Closures and Higher-Order Functions</h2>
 

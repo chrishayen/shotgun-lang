@@ -174,8 +174,8 @@ std::optional<FunctionSig> SymbolTable::lookup_builtin_method(ResolvedTypePtr ty
         }
     }
 
-    // Map methods (for Map<K, V> structs)
-    if (type->kind == ResolvedType::Kind::Struct && type->name == "Map" && type->type_args.size() == 2) {
+    // Map methods (for Map<K, V> type)
+    if (type->kind == ResolvedType::Kind::Map && type->type_args.size() == 2) {
         auto key_type = type->type_args[0];
         auto val_type = type->type_args[1];
 

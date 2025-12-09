@@ -16,31 +16,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup OCaml
-        uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: 5.4.0
-          dune-cache: true
-
-      - name: Install dependencies
-        run: opam install . --deps-only --with-test -y
-        working-directory: compiler
+      - name: Install LLVM
+        run: sudo apt-get update && sudo apt-get install -y llvm-dev clang cmake
 
       - name: Build compiler
-        run: opam exec -- dune build
-        working-directory: compiler
-        env:
-          SHOTGUN_VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p compiler/build
+          cd compiler/build
+          cmake ..
+          make
 
       - name: Run unit tests
-        run: opam exec -- dune test
-        working-directory: compiler
+        run: cd compiler/build && ctest --output-on-failure
 
       - name: Run integration tests
         run: ./tests/run_tests.sh
 
       - name: Prepare release binary
-        run: cp compiler/_build/default/bin/main.exe shotgun-linux-x86_64
+        run: cp compiler/build/shotgun shotgun-linux-x86_64
 
       - name: Package tree-sitter grammar
         run: |
