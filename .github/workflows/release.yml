@@ -16,14 +16,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install LLVM
-        run: sudo apt-get update && sudo apt-get install -y llvm-dev clang cmake
+      - name: Install LLVM 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y llvm-21-dev clang-21 cmake
 
       - name: Build compiler
         run: |
           mkdir -p compiler/build
           cd compiler/build
-          cmake ..
+          cmake -DLLVM_DIR=/usr/lib/llvm-21/cmake ..
           make
 
       - name: Run unit tests
