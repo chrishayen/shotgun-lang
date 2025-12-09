@@ -1,6 +1,6 @@
 // Arithmetic tests
 
-fn main {
+fn main() {
     t := new_test()
 
     // Basic arithmetic

@@ -7,13 +7,13 @@ Color :: variant {
 
 fn color_code(Color c) int {
     return match c using Color {
-        Red -> 1,
-        Green -> 2,
-        Blue -> 3
+        Red -> { 1 }
+        Green -> { 2 }
+        Blue -> { 3 }
     }
 }
 
-fn main {
+fn main() {
     Color c = Color.Green
     int code = color_code(c)
     print("Color code: {code}")

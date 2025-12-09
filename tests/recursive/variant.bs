@@ -8,7 +8,7 @@ Expr :: variant {
     }
 }
 
-fn main {
+fn main() {
     // Create leaf nodes
     Expr a = Expr.Int { value: 1 }
     Expr b = Expr.Int { value: 2 }
@@ -18,8 +18,8 @@ fn main {
 
     // Pattern match on the recursive structure
     str result = match add using Expr {
-        Int { value: v } -> "int",
-        Binary { left: l, right: r } -> "binary"
+        Int -> { "int" }
+        Binary -> { "binary" }
     }
 
     print(result)

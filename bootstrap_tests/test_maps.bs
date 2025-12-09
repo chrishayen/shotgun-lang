@@ -1,6 +1,6 @@
 // Map tests
 
-fn main {
+fn main() {
     t := new_test()
 
     // Create empty map

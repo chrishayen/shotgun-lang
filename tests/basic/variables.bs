@@ -1,5 +1,5 @@
 // Test: Variable declarations with types
-fn main {
+fn main() {
     int x = 42
     str name = "Alice"
     bool active = true

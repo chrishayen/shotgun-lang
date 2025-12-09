@@ -1,17 +1,17 @@
 // Test: Simple identifier binding pattern
 fn identity(int x) int {
     return match x {
-        n -> n
+        n -> { n }
     }
 }
 
 fn double(int x) int {
     return match x {
-        n -> n * 2
+        n -> { n * 2 }
     }
 }
 
-fn main {
+fn main() {
     int a = identity(42)
     int b = double(21)
 

@@ -295,10 +295,10 @@ let rec infer_expr_type env expr =
   | EParen e -> infer_expr_type env e
   | EAssign (_, e, _) -> infer_expr_type env e
   | EMatch (_, _, arms) ->
-    (* Type of match is the type of the first arm's result - assume all arms have same type *)
+    (* Type of match is the type of the first arm's body - assume all arms have same type *)
     (match arms with
      | [] -> None
-     | (_, first_result) :: _ -> infer_expr_type env first_result)
+     | (_, first_body) :: _ -> infer_stmts_result_type env first_body)
   | EAnonFn (params, ret_type, body, _captures) ->
     let param_types = List.map fst params in
     let inferred_ret = match ret_type with
@@ -307,6 +307,14 @@ let rec infer_expr_type env expr =
     in
     Some (TFunc (param_types, inferred_ret))
   | EIs (_, _, _) -> Some TBool
+
+(* Get result type of stmt list - type of last expr statement *)
+and infer_stmts_result_type env stmts =
+  match List.rev stmts with
+  | [] -> None
+  | SExpr e :: _ -> infer_expr_type env e
+  | SReturn (Some e) :: _ -> infer_expr_type env e
+  | _ -> None
 
 (* Infer return type from a closure body by finding return statements *)
 and infer_return_type_from_body env params body =
@@ -563,12 +571,12 @@ let rec check_expr env expr =
     (* Require all arms to return same type when present *)
     let arm_result_types = ref [] in
     (* Check each arm *)
-    List.iter (fun (pat, result_expr) ->
+    List.iter (fun (pat, body) ->
       let arm_env = push_scope env in
       bind_pattern_vars arm_env pat expr_types using_type;
-      check_expr arm_env result_expr
-      |> ignore;
-      arm_result_types := infer_expr_type arm_env result_expr :: !arm_result_types
+      (* Check all statements in arm body *)
+      List.iter (check_stmt arm_env) body;
+      arm_result_types := infer_stmts_result_type arm_env body :: !arm_result_types
     ) arms;
     (match List.filter_map (fun x -> x) !arm_result_types with
      | [] -> ()
@@ -813,7 +821,7 @@ let rec get_expr_type env locals expr =
   | EMatch (_, _, arms) ->
     (match arms with
      | [] -> None
-     | (_, first_result) :: _ -> get_expr_type env locals first_result)
+     | (_, first_body) :: _ -> get_stmts_result_type env locals first_body)
   | EAnonFn (params, ret_type, body, _captures) ->
     let param_types = List.map fst params in
     let inferred_ret = match ret_type with
@@ -822,6 +830,14 @@ let rec get_expr_type env locals expr =
     in
     Some (TFunc (param_types, inferred_ret))
   | EIs (_, _, _) -> Some TBool
+
+(* Get result type of stmt list with locals - type of last expr statement *)
+and get_stmts_result_type env locals stmts =
+  match List.rev stmts with
+  | [] -> None
+  | SExpr e :: _ -> get_expr_type env locals e
+  | SReturn (Some e) :: _ -> get_expr_type env locals e
+  | _ -> None
 
 (* Infer return type from a closure body using locals hashtable *)
 and infer_return_type_from_body_with_locals env locals params body =

@@ -12,7 +12,7 @@ Box<T> :: get(self) T {
     return self.value
 }
 
-fn main {
+fn main() {
     Box<int> b = Box<int> { value: 10 }
     int sum = b.add(32)
     int x = b.get()

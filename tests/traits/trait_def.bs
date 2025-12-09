@@ -8,6 +8,6 @@ Printable :: trait {
     debug(self) str
 }
 
-fn main {
+fn main() {
     print("Traits defined")
 }

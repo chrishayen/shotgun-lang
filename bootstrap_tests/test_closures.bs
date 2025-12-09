@@ -8,7 +8,7 @@ fn apply_twice(int x, fn(int) int f) int {
     return f(f(x))
 }
 
-fn main {
+fn main() {
     t := new_test()
 
     // Basic anonymous function

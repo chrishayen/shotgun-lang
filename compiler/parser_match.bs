@@ -3,12 +3,11 @@
 // This file handles:
 // - Match expressions with multiple arms
 // - Pattern matching including wildcards, literals, bindings, tuples, and variants
-// - Variant pattern destructuring
 
 // Parse match expression
 // Examples:
 //   match x { 0 -> "zero", 1 -> "one", _ -> "other" }
-//   match opt using Option { Some { value: v } -> v, None -> 0 }
+//   match opt using Option { Some -> v, None -> 0 }
 //   match (a, b) { (0, 0) -> "origin", (x, y) -> "point" }
 //   match ch { 'a' -> 1, 'b' -> 2, _ -> 0 }
 Parser :: parse_match(self) Expr {
@@ -57,7 +56,7 @@ Parser :: parse_match(self) Expr {
 // Parse a single match arm (pattern -> expression)
 // Examples:
 //   0 -> "zero"
-//   Some { value: v } -> v
+//   Some -> v
 //   (x, y) -> x + y
 //   _ -> default_value
 Parser :: parse_match_arm(self) MatchArm {
@@ -74,7 +73,7 @@ Parser :: parse_match_arm(self) MatchArm {
 //   42, "hello", 'c'            (literals)
 //   true, false
 //   (a, b)                      (tuple pattern)
-//   Some { value: v }           (variant pattern)
+//   Some                        (variant pattern)
 //   Option.None                 (qualified variant)
 Parser :: parse_pattern(self) Pattern {
     // Wildcard
@@ -140,11 +139,11 @@ Parser :: parse_pattern(self) Pattern {
 
 // Parse variant pattern
 // Examples:
-//   Some { value: v }           (with 'using' type inference)
-//   None                        (no fields)
-//   Option.Some { value: v }    (qualified)
-//   Option<int>.Some { value: v }  (with type args)
-//   Result.Ok { value: data }
+//   Some                        (with 'using' type inference)
+//   None
+//   Option.Some                 (qualified)
+//   Option<int>.Some            (with type args)
+//   Result.Ok
 Parser :: parse_variant_pattern(self) Pattern {
     first_name := self.get_type_ident()
     self.advance()
@@ -166,8 +165,7 @@ Parser :: parse_variant_pattern(self) Pattern {
         variant_name := self.get_type_ident()
         self.advance()
 
-        bindings := self.parse_pattern_bindings()
-        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
+        return Pattern.PVariant { typ: typ, variant_name: variant_name }
     }
 
     // Check for qualified: Enum.Variant
@@ -177,55 +175,9 @@ Parser :: parse_variant_pattern(self) Pattern {
         self.advance()
 
         typ = Type.TUser { name: first_name }
-        bindings := self.parse_pattern_bindings()
-        return Pattern.PVariant { typ: typ, variant_name: variant_name, bindings: bindings }
+        return Pattern.PVariant { typ: typ, variant_name: variant_name }
     }
 
     // Unqualified variant (with 'using')
-    bindings := self.parse_pattern_bindings()
-    return Pattern.PVariant { typ: none, variant_name: first_name, bindings: bindings }
-}
-
-// Parse pattern bindings (field destructuring in variant patterns)
-// Examples:
-//   { value: v }
-//   { name: n, age: a }
-//   { left: l, right: r, data: d }
-Parser :: parse_pattern_bindings(self) PatternBinding[] {
-    PatternBinding[] bindings = []
-
-    if self.is_lbrace() {
-        self.advance()
-        self.skip_newlines()
-
-        if !self.is_rbrace() {
-            bindings.push(self.parse_pattern_binding())
-            while self.is_comma() {
-                self.advance()
-                self.skip_newlines()
-                if self.is_rbrace() {
-                    break
-                }
-                bindings.push(self.parse_pattern_binding())
-            }
-        }
-        self.skip_newlines()
-        self.expect_rbrace()
-    }
-
-    return bindings
-}
-
-// Parse a single pattern binding (field_name: binding_name)
-// Examples:
-//   value: v
-//   name: n
-//   left: leftNode
-Parser :: parse_pattern_binding(self) PatternBinding {
-    field_name := self.get_ident()
-    self.advance()
-    self.expect_colon()
-    binding_name := self.get_ident()
-    self.advance()
-    return PatternBinding { field_name: field_name, binding_name: binding_name }
+    return Pattern.PVariant { typ: none, variant_name: first_name }
 }

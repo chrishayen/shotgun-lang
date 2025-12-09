@@ -10,6 +10,6 @@ Point :: struct {
     y f64
 }
 
-fn main {
+fn main() {
     print("Structs defined")
 }

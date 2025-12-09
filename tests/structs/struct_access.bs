@@ -4,7 +4,7 @@ Person :: struct {
     age int
 }
 
-fn main {
+fn main() {
     Person p = Person { name: "Alice", age: 30 }
 
     str n = p.name

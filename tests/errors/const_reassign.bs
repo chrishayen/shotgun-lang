@@ -1,5 +1,5 @@
 // Test: Should FAIL - reassigning a const
-fn main {
+fn main() {
     const X = 10
     X = 20
 }

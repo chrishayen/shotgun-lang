@@ -5,13 +5,13 @@ Option :: variant {
 }
 
 fn describe(Option o) str {
-    return match o {
-        Option.Some { value: v } -> "got value",
-        Option.None -> "nothing"
+    return match o using Option {
+        Some -> { "got value" }
+        None -> { "nothing" }
     }
 }
 
-fn main {
+fn main() {
     Option x = Option.Some { value: 42 }
     str result = describe(x)
     print("Result: {result}")

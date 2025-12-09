@@ -16,7 +16,6 @@ TypeList :: struct { items Type[] }
 StringList :: struct { items str[] }
 StringPartList :: struct { items StringPart[] }
 FieldInitList :: struct { items FieldInit[] }
-PatternBindingList :: struct { items PatternBinding[] }
 PatternList :: struct { items Pattern[] }
 MatchArmList :: struct { items MatchArm[] }
 ParamList :: struct { items Param[] }
@@ -103,11 +102,6 @@ FieldInit :: struct {
     value Expr
 }
 
-// Pattern binding for variant patterns
-PatternBinding :: struct {
-    field_name str
-    binding_name str
-}
 
 // Or-clause variants
 OrClause :: variant {
@@ -127,7 +121,6 @@ Pattern :: variant {
     PVariant {
         typ Type?
         variant_name str
-        bindings PatternBindingList
     }
     PWildcard
     PTuple { patterns PatternList }

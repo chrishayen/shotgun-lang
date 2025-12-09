@@ -1,6 +1,6 @@
 uses: utils
 
-fn main {
+fn main() {
     // Test calling function from same package (helpers.bs)
     int x = helper_add(10, 20)
     print(x)

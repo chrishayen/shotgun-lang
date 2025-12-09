@@ -1,5 +1,5 @@
 // Test: String literals and interpolation
-fn main {
+fn main() {
     str simple = "Hello"
     str name = "World"
     str greeting = "{simple}, {name}!"

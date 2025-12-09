@@ -7,10 +7,10 @@
 
 // Check if current token matches a keyword
 Parser :: is_keyword(self, str name) bool {
-    return match self.current.token using Token {
-        TkKeyword { name: n } -> n == name,
-        _ -> false
+    if self.current.token is TkKeyword {
+        return self.current.token.name == name
     }
+    return false
 }
 
 // Check if current token is a specific type
@@ -176,43 +176,43 @@ Parser :: expect_dot(self) bool {
 
 // Get the name from current ident token
 Parser :: get_ident(self) str {
-    return match self.current.token using Token {
-        TkIdent { name: n } -> n,
-        _ -> ""
+    if self.current.token is TkIdent {
+        return self.current.token.name
     }
+    return ""
 }
 
 Parser :: get_type_ident(self) str {
-    return match self.current.token using Token {
-        TkTypeIdent { name: n } -> n,
-        _ -> ""
+    if self.current.token is TkTypeIdent {
+        return self.current.token.name
     }
+    return ""
 }
 
 Parser :: get_int(self) int {
-    return match self.current.token using Token {
-        TkInt { value: v } -> v,
-        _ -> 0
+    if self.current.token is TkInt {
+        return self.current.token.value
     }
+    return 0
 }
 
 Parser :: get_float(self) f64 {
-    return match self.current.token using Token {
-        TkFloat { value: v } -> v,
-        _ -> 0.0
+    if self.current.token is TkFloat {
+        return self.current.token.value
     }
+    return 0.0
 }
 
 Parser :: get_string(self) str {
-    return match self.current.token using Token {
-        TkString { value: v } -> v,
-        _ -> ""
+    if self.current.token is TkString {
+        return self.current.token.value
     }
+    return ""
 }
 
 Parser :: get_char(self) char {
-    return match self.current.token using Token {
-        TkChar { value: v } -> v,
-        _ -> '\0'
+    if self.current.token is TkChar {
+        return self.current.token.value
     }
+    return '\0'
 }

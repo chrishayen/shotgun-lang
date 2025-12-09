@@ -5,21 +5,21 @@ Option<T> :: variant {
     None
 }
 
-fn main {
+fn main() {
     Option<int> empty = Option<int>.None
     Option<int> filled = Option<int>.Some { value: 42 }
 
-    int result1 = match empty using Option<int> {
-        Some { value: v } -> v,
-        None -> 0
+    str result1 = match empty using Option<int> {
+        Some -> { "some" }
+        None -> { "none" }
     }
 
-    int result2 = match filled using Option<int> {
-        Some { value: v } -> v,
-        None -> 0
+    str result2 = match filled using Option<int> {
+        Some -> { "some" }
+        None -> { "none" }
     }
 
-    if result1 == 0 && result2 == 42 {
+    if result1 == "none" && result2 == "some" {
         print("generic empty variant test passed")
     } else {
         print("FAIL: match results incorrect")

@@ -1,4 +1,4 @@
 // Test: Should FAIL - using undefined variable
-fn main {
+fn main() {
     int x = y + 1
 }

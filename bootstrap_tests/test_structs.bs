@@ -31,7 +31,7 @@ Point :: move_by(self, int dx, int dy) {
     self.y += dy
 }
 
-fn main {
+fn main() {
     t := new_test()
 
     // Struct creation

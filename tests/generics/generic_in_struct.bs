@@ -10,7 +10,7 @@ Person :: struct {
     age Option<int>
 }
 
-fn main {
+fn main() {
     Person p1 = Person {
         name: "Alice",
         age: Option<int>.Some { value: 30 }
@@ -21,17 +21,10 @@ fn main {
         age: Option<int>.None
     }
 
-    int age1 = match p1.age using Option<int> {
-        Some { value: v } -> v,
-        None -> 0
-    }
+    bool has_age1 = p1.age is Some
+    bool has_age2 = p2.age is Some
 
-    int age2 = match p2.age using Option<int> {
-        Some { value: v } -> v,
-        None -> 0
-    }
-
-    if p1.name == "Alice" && age1 == 30 && p2.name == "Unknown" && age2 == 0 {
+    if p1.name == "Alice" && has_age1 && p2.name == "Unknown" && !has_age2 {
         print("generic in struct test passed")
     } else {
         print("FAIL: values incorrect")

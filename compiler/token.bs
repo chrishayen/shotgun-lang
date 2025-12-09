@@ -134,51 +134,51 @@ Token :: variant {
 
 // Get a string representation of a token for debugging
 fn token_str(Token tok) str {
+    if tok is TkInt { return "INT({tok.value})" }
+    if tok is TkFloat { return "FLOAT({tok.value})" }
+    if tok is TkString { return "STRING({tok.value})" }
+    if tok is TkChar { return "CHAR({tok.value})" }
+    if tok is TkIdent { return "IDENT({tok.name})" }
+    if tok is TkTypeIdent { return "TYPE({tok.name})" }
+    if tok is TkKeyword { return "KW({tok.name})" }
+    if tok is TkError { return "ERROR({tok.msg})" }
     return match tok using Token {
-        TkInt { value: v } -> "INT({v})",
-        TkFloat { value: v } -> "FLOAT({v})",
-        TkString { value: v } -> "STRING({v})",
-        TkChar { value: v } -> "CHAR({v})",
-        TkIdent { name: n } -> "IDENT({n})",
-        TkTypeIdent { name: n } -> "TYPE({n})",
-        TkKeyword { name: n } -> "KW({n})",
-        TkPlus -> "PLUS",
-        TkMinus -> "MINUS",
-        TkStar -> "STAR",
-        TkSlash -> "SLASH",
-        TkPercent -> "PERCENT",
-        TkEqEq -> "EQEQ",
-        TkNeq -> "NEQ",
-        TkLt -> "LT",
-        TkGt -> "GT",
-        TkLte -> "LTE",
-        TkGte -> "GTE",
-        TkAndAnd -> "ANDAND",
-        TkOrOr -> "OROR",
-        TkBang -> "BANG",
-        TkEq -> "EQ",
-        TkPlusEq -> "PLUSEQ",
-        TkMinusEq -> "MINUSEQ",
-        TkStarEq -> "STAREQ",
-        TkSlashEq -> "SLASHEQ",
-        TkColonEq -> "COLONEQ",
-        TkLParen -> "LPAREN",
-        TkRParen -> "RPAREN",
-        TkLBrace -> "LBRACE",
-        TkRBrace -> "RBRACE",
-        TkLBracket -> "LBRACKET",
-        TkRBracket -> "RBRACKET",
-        TkComma -> "COMMA",
-        TkColon -> "COLON",
-        TkColonColon -> "COLONCOLON",
-        TkDot -> "DOT",
-        TkArrow -> "ARROW",
-        TkQuestion -> "QUESTION",
-        TkUnderscore -> "UNDERSCORE",
-        TkNewline -> "NEWLINE",
-        TkEof -> "EOF",
-        TkError { msg: m } -> "ERROR({m})",
-        _ -> "UNKNOWN"
+        TkPlus -> { "PLUS" }
+        TkMinus -> { "MINUS" }
+        TkStar -> { "STAR" }
+        TkSlash -> { "SLASH" }
+        TkPercent -> { "PERCENT" }
+        TkEqEq -> { "EQEQ" }
+        TkNeq -> { "NEQ" }
+        TkLt -> { "LT" }
+        TkGt -> { "GT" }
+        TkLte -> { "LTE" }
+        TkGte -> { "GTE" }
+        TkAndAnd -> { "ANDAND" }
+        TkOrOr -> { "OROR" }
+        TkBang -> { "BANG" }
+        TkEq -> { "EQ" }
+        TkPlusEq -> { "PLUSEQ" }
+        TkMinusEq -> { "MINUSEQ" }
+        TkStarEq -> { "STAREQ" }
+        TkSlashEq -> { "SLASHEQ" }
+        TkColonEq -> { "COLONEQ" }
+        TkLParen -> { "LPAREN" }
+        TkRParen -> { "RPAREN" }
+        TkLBrace -> { "LBRACE" }
+        TkRBrace -> { "RBRACE" }
+        TkLBracket -> { "LBRACKET" }
+        TkRBracket -> { "RBRACKET" }
+        TkComma -> { "COMMA" }
+        TkColon -> { "COLON" }
+        TkColonColon -> { "COLONCOLON" }
+        TkDot -> { "DOT" }
+        TkArrow -> { "ARROW" }
+        TkQuestion -> { "QUESTION" }
+        TkUnderscore -> { "UNDERSCORE" }
+        TkNewline -> { "NEWLINE" }
+        TkEof -> { "EOF" }
+        _ -> { "UNKNOWN" }
     }
 }
 

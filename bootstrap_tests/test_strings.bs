@@ -1,6 +1,6 @@
 // String method tests
 
-fn main {
+fn main() {
     t := new_test()
 
     // str.len

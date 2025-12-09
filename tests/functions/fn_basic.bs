@@ -1,8 +1,8 @@
 // Test: Basic function definition and call
-fn greet {
+fn greet() {
     print("Hello from greet!")
 }
 
-fn main {
+fn main() {
     greet()
 }

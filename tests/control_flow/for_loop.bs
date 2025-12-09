@@ -1,5 +1,5 @@
 // Test: For loop iteration
-fn main {
+fn main() {
     int[] numbers = [1, 2, 3, 4, 5]
 
     for n in numbers {

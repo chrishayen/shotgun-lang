@@ -1,5 +1,5 @@
 // Test: Conditional statements
-fn main {
+fn main() {
     int x = 10
 
     if x > 5 {

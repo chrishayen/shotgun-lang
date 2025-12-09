@@ -1,4 +1,4 @@
 // Test: Simple hello world print
-fn main {
+fn main() {
     print("Hello, World!")
 }

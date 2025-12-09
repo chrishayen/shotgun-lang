@@ -7,7 +7,7 @@ fn greet_person(str name) {
     print("Hello, {name}!")
 }
 
-fn main {
+fn main() {
     int result = add(5, 3)
     print("5 + 3 = {result}")
 

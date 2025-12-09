@@ -4,7 +4,7 @@ Box<T> :: struct {
     value T
 }
 
-fn main {
+fn main() {
     Box<int> int_box = Box<int> { value: 42 }
     Box<str> str_box = Box<str> { value: "hello" }
     Box<bool> bool_box = Box<bool> { value: true }

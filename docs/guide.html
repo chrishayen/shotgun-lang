@@ -239,8 +239,8 @@ ok := <span class="ty">Result</span>&lt;<span class="ty">int</span>, <span class
         <pre><code>maybe := <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt;.<span class="ty">Some</span> { value: <span class="nu">42</span> }
 
 result := <span class="kw">match</span> maybe <span class="kw">using</span> <span class="ty">Option</span>&lt;<span class="ty">int</span>&gt; {
-    <span class="ty">Some</span> { value: v } -> v,
-    <span class="ty">None</span> -> <span class="nu">0</span>
+    <span class="ty">Some</span> -> { maybe.value }
+    <span class="ty">None</span> -> { <span class="nu">0</span> }
 }</code></pre>
 
         <h2>Methods</h2>
@@ -529,10 +529,10 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
         <p>Match is an expression that returns a value. Use it with literals:</p>
 
         <pre><code>msg := <span class="kw">match</span> status {
-    <span class="nu">200</span> -> <span class="st">"OK"</span>,
-    <span class="nu">404</span> -> <span class="st">"Not found"</span>,
-    <span class="nu">500</span> -> <span class="st">"Server error"</span>,
-    _ -> <span class="st">"Unknown"</span>
+    <span class="nu">200</span> -> { <span class="st">"OK"</span> }
+    <span class="nu">404</span> -> { <span class="st">"Not found"</span> }
+    <span class="nu">500</span> -> { <span class="st">"Server error"</span> }
+    _ -> { <span class="st">"Unknown"</span> }
 }</code></pre>
 
         <p>Match on variants with destructuring:</p>
@@ -543,9 +543,9 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 }
 
 <span class="kw">fn</span> <span class="fn">unwrap_or</span>(<span class="ty">Option</span> opt, <span class="ty">int</span> default) <span class="ty">int</span> {
-    <span class="kw">return match</span> opt {
-        <span class="ty">Option</span>.<span class="ty">Some</span> { value: v } -> v,
-        <span class="ty">Option</span>.<span class="ty">None</span> -> default
+    <span class="kw">return match</span> opt <span class="kw">using</span> <span class="ty">Option</span> {
+        <span class="ty">Some</span> -> { opt.value }
+        <span class="ty">None</span> -> { default }
     }
 }</code></pre>
 
@@ -553,8 +553,8 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <pre><code><span class="kw">fn</span> <span class="fn">unwrap_or</span>(<span class="ty">Option</span> opt, <span class="ty">int</span> default) <span class="ty">int</span> {
     <span class="kw">return match</span> opt <span class="kw">using</span> <span class="ty">Option</span> {
-        <span class="ty">Some</span> { value: v } -> v,
-        <span class="ty">None</span> -> default
+        <span class="ty">Some</span> -> { opt.value }
+        <span class="ty">None</span> -> { default }
     }
 }</code></pre>
 
@@ -562,10 +562,10 @@ counts.<span class="fn">delete</span>(<span class="st">"bar"</span>)</code></pre
 
         <pre><code><span class="kw">fn</span> <span class="fn">compare</span>(<span class="ty">int</span> a, <span class="ty">int</span> b) <span class="ty">str</span> {
     <span class="kw">return match</span> (a, b) {
-        (<span class="nu">0</span>, <span class="nu">0</span>) -> <span class="st">"both zero"</span>,
-        (<span class="nu">0</span>, _) -> <span class="st">"a is zero"</span>,
-        (_, <span class="nu">0</span>) -> <span class="st">"b is zero"</span>,
-        _ -> <span class="st">"neither zero"</span>
+        (<span class="nu">0</span>, <span class="nu">0</span>) -> { <span class="st">"both zero"</span> }
+        (<span class="nu">0</span>, _) -> { <span class="st">"a is zero"</span> }
+        (_, <span class="nu">0</span>) -> { <span class="st">"b is zero"</span> }
+        _ -> { <span class="st">"neither zero"</span> }
     }
 }</code></pre>
 

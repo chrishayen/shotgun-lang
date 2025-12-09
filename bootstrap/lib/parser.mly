@@ -226,10 +226,8 @@ method_definition:
     { IMethod (type_name, method_name, tparams, params, ret, body) }
   ;
 
-(* fn main { ... } or fn name<T>(params) ret { ... } *)
+(* fn name() { ... } or fn name<T>(params) ret { ... } *)
 function_definition:
-  | FN name = IDENT body = block
-    { IFunction (name, [], [], None, body) }
   | FN name = IDENT LPAREN params = param_list RPAREN ret = option(return_type) body = block
     { IFunction (name, [], params, ret, body) }
   | FN name = IDENT tparams = type_params LPAREN params = param_list RPAREN ret = option(return_type) body = block
@@ -333,20 +331,14 @@ pattern:
   | TRUE { PLiteral (EBool true) }
   | FALSE { PLiteral (EBool false) }
   | s = INTERP_STRING { PLiteral (EString (parse_interp_string s)) }
-  (* Qualified variant: Expr.Int or Option<int>.Some { value: v } *)
+  (* Qualified variant: Option.Some or Option<int>.Some *)
   | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT
     { PVariant (Some (TUser enum_name), variant_name, []) }
-  | enum_name = TYPE_IDENT DOT variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
-    { PVariant (Some (TUser enum_name), variant_name, bindings) }
   | enum_name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT DOT variant_name = TYPE_IDENT
     { PVariant (Some (TApply (enum_name, targs)), variant_name, []) }
-  | enum_name = TYPE_IDENT LT targs = separated_nonempty_list(COMMA, typ) GT DOT variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
-    { PVariant (Some (TApply (enum_name, targs)), variant_name, bindings) }
-  (* Unqualified variant (with using): Int or Int { value: v } *)
+  (* Unqualified variant (with using): Some, None *)
   | variant_name = TYPE_IDENT
     { PVariant (None, variant_name, []) }
-  | variant_name = TYPE_IDENT LBRACE bindings = pattern_field_list RBRACE
-    { PVariant (None, variant_name, bindings) }
   (* Tuple pattern: (p1, p2) *)
   | LPAREN p1 = pattern COMMA p2 = pattern RPAREN { PTuple [p1; p2] }
   | LPAREN p1 = pattern COMMA p2 = pattern COMMA rest = pattern_list RPAREN { PTuple (p1 :: p2 :: rest) }
@@ -355,16 +347,6 @@ pattern:
 pattern_list:
   | p = pattern { [p] }
   | p = pattern COMMA rest = pattern_list { p :: rest }
-  ;
-
-pattern_field_list:
-  | (* empty *) { [] }
-  | f = pattern_field { [f] }
-  | f = pattern_field COMMA rest = pattern_field_list { f :: rest }
-  ;
-
-pattern_field:
-  | field_name = IDENT COLON binding = IDENT { (field_name, binding) }
   ;
 
 expr:
@@ -482,16 +464,15 @@ primary_expr:
       EAnonFn (named_params, Some ret, body, []) }
   ;
 
-(* Match arm list - comma separated *)
+(* Match arm list *)
 match_arm_list:
-  | newlines { [] }
-  | newlines arm = match_expr_arm newlines { [arm] }
-  | newlines arm = match_expr_arm COMMA rest = match_arm_list { arm :: rest }
+  | { [] }
+  | newlines arm = match_arm rest = match_arm_list { arm :: rest }
   ;
 
-(* Match expression arm: pattern -> expr *)
-match_expr_arm:
-  | p = pattern ARROW e = expr { (p, e) }
+(* Match arm: pattern -> { stmts } *)
+match_arm:
+  | p = pattern ARROW LBRACE stmts = list(stmt) RBRACE { (p, stmts) }
   ;
 
 string_expr:

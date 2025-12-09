@@ -5,21 +5,21 @@ Option<T> :: variant {
     None
 }
 
-fn main {
+fn main() {
     Option<int> maybe = Option<int>.Some { value: 42 }
     Option<int> empty = Option<int>.None
 
-    int result = match maybe using Option<int> {
-        Some { value: v } -> v,
-        None -> 0
+    str result = match maybe using Option<int> {
+        Some -> { "some" }
+        None -> { "none" }
     }
 
-    int result2 = match empty using Option<int> {
-        Some { value: v } -> v,
-        None -> 99
+    str result2 = match empty using Option<int> {
+        Some -> { "some" }
+        None -> { "none" }
     }
 
-    if result == 42 && result2 == 99 {
+    if result == "some" && result2 == "none" {
         print("generic match test passed")
     } else {
         print("FAIL: match results don't match")

@@ -1,22 +1,16 @@
 // Test: Wildcard pattern in match expression
-Option :: variant {
-    Some { value int }
-    None
-}
-
-fn get_or_default(Option o, int default) int {
-    return match o {
-        Option.Some { value: v } -> v,
-        _ -> default
+fn get_value(int x) str {
+    return match x {
+        1 -> { "one" }
+        2 -> { "two" }
+        _ -> { "other" }
     }
 }
 
-fn main {
-    Option has_val = Option.Some { value: 42 }
-    Option no_val = Option.None
+fn main() {
+    str a = get_value(1)
+    str b = get_value(2)
+    str c = get_value(99)
 
-    int a = get_or_default(has_val, 0)
-    int b = get_or_default(no_val, 99)
-
-    print("Some: {a}, None: {b}")
+    print("{a}, {b}, {c}")
 }

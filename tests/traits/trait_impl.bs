@@ -14,7 +14,7 @@ Person :: impl Stringer {
     }
 }
 
-fn main {
+fn main() {
     Person p = Person { name: "Alice", age: 30 }
     str s = p.to_string()
     print(s)

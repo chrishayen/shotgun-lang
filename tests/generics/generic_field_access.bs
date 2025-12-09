@@ -9,7 +9,7 @@ Pair<A, B> :: struct {
     second B
 }
 
-fn main {
+fn main() {
     Box<int> b = Box<int> { value: 42 }
     int x = b.value
 

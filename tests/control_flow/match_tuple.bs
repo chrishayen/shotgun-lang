@@ -1,14 +1,14 @@
 // Test: Tuple pattern matching
 fn compare(int a, int b) str {
     return match (a, b) {
-        (0, 0) -> "both zero",
-        (0, _) -> "a is zero",
-        (_, 0) -> "b is zero",
-        _ -> "neither zero"
+        (0, 0) -> { "both zero" }
+        (0, _) -> { "a is zero" }
+        (_, 0) -> { "b is zero" }
+        _ -> { "neither zero" }
     }
 }
 
-fn main {
+fn main() {
     str r1 = compare(0, 0)
     str r2 = compare(0, 5)
     str r3 = compare(5, 0)

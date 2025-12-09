@@ -14,7 +14,7 @@ fn is_positive(int n) bool {
     return false
 }
 
-fn main {
+fn main() {
     int d = double(21)
     str g = make_greeting("World")
     bool pos = is_positive(5)

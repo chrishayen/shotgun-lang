@@ -11,7 +11,7 @@ Counter :: increment(self) int {
     return self.value + 1
 }
 
-fn main {
+fn main() {
     Counter c = Counter { value: 10 }
     int v = c.get()
     int next = c.increment()

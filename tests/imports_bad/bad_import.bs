@@ -1,5 +1,5 @@
 uses: testpkg.nonexistent
 
-fn main {
+fn main() {
     print("should fail")
 }

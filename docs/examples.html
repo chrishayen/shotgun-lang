@@ -232,14 +232,14 @@
         <p>Match on values cleanly:</p>
 
         <pre><code><span class="kw">fn</span> <span class="fn">http_status</span>(<span class="ty">int</span> code) <span class="ty">str</span> {
-    <span class="kw">match</span> code {
-        <span class="nu">200</span> -> <span class="kw">return</span> <span class="st">"OK"</span>
-        <span class="nu">201</span> -> <span class="kw">return</span> <span class="st">"Created"</span>
-        <span class="nu">400</span> -> <span class="kw">return</span> <span class="st">"Bad Request"</span>
-        <span class="nu">401</span> -> <span class="kw">return</span> <span class="st">"Unauthorized"</span>
-        <span class="nu">404</span> -> <span class="kw">return</span> <span class="st">"Not Found"</span>
-        <span class="nu">500</span> -> <span class="kw">return</span> <span class="st">"Internal Server Error"</span>
-        _ -> <span class="kw">return</span> <span class="st">"Unknown"</span>
+    <span class="kw">return match</span> code {
+        <span class="nu">200</span> -> { <span class="st">"OK"</span> }
+        <span class="nu">201</span> -> { <span class="st">"Created"</span> }
+        <span class="nu">400</span> -> { <span class="st">"Bad Request"</span> }
+        <span class="nu">401</span> -> { <span class="st">"Unauthorized"</span> }
+        <span class="nu">404</span> -> { <span class="st">"Not Found"</span> }
+        <span class="nu">500</span> -> { <span class="st">"Internal Server Error"</span> }
+        _ -> { <span class="st">"Unknown"</span> }
     }
 }
 

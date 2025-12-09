@@ -6,7 +6,7 @@ Container<T> :: struct {
     count int
 }
 
-fn main {
+fn main() {
     Container<int> c = Container<int> {
         first: 10,
         second: 20,

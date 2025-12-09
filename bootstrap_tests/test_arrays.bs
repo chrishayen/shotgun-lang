@@ -1,6 +1,6 @@
 // Array tests
 
-fn main {
+fn main() {
     t := new_test()
 
     // Array literals

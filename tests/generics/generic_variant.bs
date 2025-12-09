@@ -5,22 +5,12 @@ Option<T> :: variant {
     None
 }
 
-fn main {
+fn main() {
     Option<int> x = Option<int>.None
     Option<int> y = Option<int>.Some { value: 42 }
     Option<str> z = Option<str>.Some { value: "hello" }
 
-    int yval = match y using Option<int> {
-        Some { value: v } -> v,
-        None -> 0
-    }
-
-    str zval = match z using Option<str> {
-        Some { value: v } -> v,
-        None -> ""
-    }
-
-    if yval == 42 && zval == "hello" {
+    if y is Some && z is Some {
         print("generic variant test passed")
     } else {
         print("FAIL: values don't match")

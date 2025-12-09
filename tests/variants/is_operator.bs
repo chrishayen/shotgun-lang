@@ -11,7 +11,7 @@ Color :: variant {
     Blue
 }
 
-fn main {
+fn main() {
     // Test bare variant name (type inferred from expression)
     opt := Option.Some { value: 42 }
     if opt is Some {

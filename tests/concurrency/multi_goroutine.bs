@@ -2,7 +2,7 @@ fn sender(chan int out, int value) {
     out.send(value)
 }
 
-fn main {
+fn main() {
     chan int ch = chan()
     go sender(ch, 10)
     go sender(ch, 20)

@@ -5,7 +5,7 @@ Node :: struct {
     children Node[]
 }
 
-fn main {
+fn main() {
     // Create a leaf node
     Node leaf = Node { value: 1, children: [] }
 

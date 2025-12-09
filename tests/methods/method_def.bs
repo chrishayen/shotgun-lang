@@ -15,7 +15,7 @@ Person :: is_adult(self) bool {
     return false
 }
 
-fn main {
+fn main() {
     Person p = Person { name: "Alice", age: 30 }
     print("Method defined")
 }

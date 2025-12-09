@@ -14,7 +14,7 @@ Option<T> :: variant {
     None
 }
 
-fn main {
+fn main() {
     Point p = Point { x: 10, y: 20 }
 
     Box<Point> boxed_point = Box<Point> { value: p }
@@ -22,12 +22,9 @@ fn main {
 
     Option<Point> maybe_point = Option<Point>.Some { value: p }
 
-    Point matched = match maybe_point using Option<Point> {
-        Some { value: v } -> v,
-        None -> Point { x: 0, y: 0 }
-    }
+    bool has_point = maybe_point is Some
 
-    if extracted.x == 10 && extracted.y == 20 && matched.x == 10 && matched.y == 20 {
+    if extracted.x == 10 && extracted.y == 20 && has_point {
         print("generic with user type test passed")
     } else {
         print("FAIL: point values incorrect")

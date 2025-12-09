@@ -1,4 +1,4 @@
 // Test: Should FAIL - using undefined struct type
-fn main {
+fn main() {
     Foo f = Foo { x: 1 }
 }

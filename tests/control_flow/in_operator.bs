@@ -1,6 +1,6 @@
 // Test 'in' operator for array membership
 
-fn main {
+fn main() {
     // Test with strings
     str kw = "fn"
     if kw in ["fn", "if", "else", "return", "while", "for"] {

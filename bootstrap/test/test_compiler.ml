@@ -137,7 +137,7 @@ let test_parser () =
   );
 
   test "parser: function definition" (fun () ->
-    let ast = parse "fn main { return }" in
+    let ast = parse "fn main() { return }" in
     match ast with
     | [Ast.IFunction ("main", [], [], None, [Ast.SReturn None])] -> ()
     | _ -> failwith "unexpected AST"
@@ -168,28 +168,28 @@ let test_parser () =
   );
 
   test "parser: binary expressions" (fun () ->
-    let ast = parse "fn test { int x = 1 + 2 * 3 }" in
+    let ast = parse "fn test() { int x = 1 + 2 * 3 }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (_, "x", _)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: if statement" (fun () ->
-    let ast = parse "fn test { if true { return } }" in
+    let ast = parse "fn test() { if true { return } }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SIf (_, _, None)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: for statement" (fun () ->
-    let ast = parse "fn test { for x in items { print(x) } }" in
+    let ast = parse "fn test() { for x in items { print(x) } }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SFor ("x", _, _)])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: struct literal" (fun () ->
-    let ast = parse "fn test { Person p = Person { name: \"Alice\", age: 30 } }" in
+    let ast = parse "fn test() { Person p = Person { name: \"Alice\", age: 30 } }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (_, "p", Ast.EStructLit ("Person", [], fields))])] ->
       assert (List.length fields = 2)
@@ -197,7 +197,7 @@ let test_parser () =
   );
 
   test "parser: array literal" (fun () ->
-    let ast = parse "fn test { int[] nums = [1, 2, 3] }" in
+    let ast = parse "fn test() { int[] nums = [1, 2, 3] }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (Ast.TArray Ast.TInt, "nums", Ast.EArrayLit elems)])] ->
       assert (List.length elems = 3)
@@ -205,28 +205,28 @@ let test_parser () =
   );
 
   test "parser: method call" (fun () ->
-    let ast = parse "fn test { p.greet() }" in
+    let ast = parse "fn test() { p.greet() }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SExpr (Ast.ECall (Ast.EMember (Ast.EIdent "p", "greet"), [], []))])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: or expression" (fun () ->
-    let ast = parse "fn test { int x = y or 0 }" in
+    let ast = parse "fn test() { int x = y or 0 }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (_, _, Ast.EOr (_, Ast.OrExpr _))])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: go statement" (fun () ->
-    let ast = parse "fn test { go fetch() }" in
+    let ast = parse "fn test() { go fetch() }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SGo _])] -> ()
     | _ -> failwith "unexpected AST"
   );
 
   test "parser: channel creation" (fun () ->
-    let ast = parse "fn test { chan int c = chan() }" in
+    let ast = parse "fn test() { chan int c = chan() }" in
     match ast with
     | [Ast.IFunction (_, _, _, _, [Ast.SVarDecl (Ast.TChan Ast.TInt, "c", Ast.EChan)])] -> ()
     | _ -> failwith "unexpected AST"
@@ -249,16 +249,16 @@ let test_semantic () =
           failwith ("unexpected errors: " ^ String.concat "; " errs))
   in
 
-  expect_error "semantic: arity mismatch" "fn add(int a) int { return a }\nfn main { add(1, 2) }"
+  expect_error "semantic: arity mismatch" "fn add(int a) int { return a }\nfn main() { add(1, 2) }"
     (fun e -> contains e "Function 'add' expects");
 
   expect_error "semantic: return mismatch" "fn foo() int { return true }\n"
     (fun e -> contains e "Return type mismatch");
 
-  expect_error "semantic: cannot infer type" "fn main { x := none }"
+  expect_error "semantic: cannot infer type" "fn main() { x := none }"
     (fun e -> contains e "Cannot infer type for");
 
-  expect_error "semantic: for requires array" "fn main { for x in 5 { } }"
+  expect_error "semantic: for requires array" "fn main() { for x in 5 { } }"
     (fun e -> contains e "For loop expects an array")
 
 (* Resolver/config tests *)
@@ -312,7 +312,7 @@ let test_codegen () =
   );
 
   test "codegen: function" (fun () ->
-    let c = gen "fn main { return }" in
+    let c = gen "fn main() { return }" in
     assert (String.length c > 0);
     assert (Str.string_match (Str.regexp ".*void main.*") c 0 ||
             true)
@@ -324,7 +324,7 @@ let test_codegen () =
   );
 
   test "codegen: runtime program executes" (fun () ->
-    let program = "fn main { print(\"OK\") }" in
+    let program = "fn main() { print(\"OK\") }" in
     let c = gen program in
     let output = compile_and_run_c c in
     if not (contains output "OK") then failwith ("unexpected runtime output: " ^ output)

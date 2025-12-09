@@ -1,6 +1,6 @@
 // Basic map operations
 
-fn main {
+fn main() {
     // Create an empty map
     Map<str, int> counts = Map<str, int>{}
 

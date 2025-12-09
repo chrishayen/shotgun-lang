@@ -19,15 +19,15 @@ fn classify(int x) str {
 
 fn grade(int score) str {
     return match score {
-        100 -> "perfect",
-        90 -> "A",
-        80 -> "B",
-        70 -> "C",
-        _ -> "other"
+        100 -> { "perfect" }
+        90 -> { "A" }
+        80 -> { "B" }
+        70 -> { "C" }
+        _ -> { "other" }
     }
 }
 
-fn main {
+fn main() {
     t := new_test()
 
     // Basic if
@@ -66,10 +66,10 @@ fn main {
     int a = 1
     int b = 0
     str tuple_result = match (a, b) {
-        (0, 0) -> "both zero",
-        (0, 1) -> "a zero",
-        (1, 0) -> "b zero",
-        _ -> "neither"
+        (0, 0) -> { "both zero" }
+        (0, 1) -> { "a zero" }
+        (1, 0) -> { "b zero" }
+        _ -> { "neither" }
     }
     t.assert_eq_str("b zero", tuple_result)
 

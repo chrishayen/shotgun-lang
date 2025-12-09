@@ -1,5 +1,5 @@
 // Test: Const declarations
-fn main {
+fn main() {
     const max_size = 100
     const pi = 3.14159
     const greeting = "Hello"

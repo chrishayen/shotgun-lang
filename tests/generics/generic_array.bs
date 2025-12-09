@@ -4,7 +4,7 @@ Box<T> :: struct {
     value T
 }
 
-fn main {
+fn main() {
     Box<int>[] boxes = [
         Box<int> { value: 1 },
         Box<int> { value: 2 },

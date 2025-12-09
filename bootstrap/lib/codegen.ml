@@ -278,11 +278,11 @@ let rec collect_expr_instantiations = function
   | EMatch (exprs, using_type, arms) ->
     List.iter collect_expr_instantiations exprs;
     (match using_type with Some t -> collect_type_instantiation t | None -> ());
-    List.iter (fun (_, e) -> collect_expr_instantiations e) arms
+    List.iter (fun (_, body) -> List.iter collect_stmt_instantiations body) arms
   | _ -> ()
 
 (* Collect instantiations from a statement *)
-let rec collect_stmt_instantiations = function
+and collect_stmt_instantiations = function
   | SVarDecl (t, _, e) ->
     collect_type_instantiation t;
     collect_expr_instantiations e
@@ -716,10 +716,10 @@ and gen_match_switch ctx indent expr using_type arms match_id =
   emit_indent (indent + 1);
   (match arms with
    | [] -> emit "int _match_result = 0"
-   | (first_pat, first_result) :: _ ->
+   | (first_pat, first_body) :: _ ->
      let bindings = get_pattern_binding_types ctx using_type first_pat in
      List.iter (fun (name, typ) -> add_local ctx name typ) bindings;
-     let result_type = get_type ctx first_result in
+     let result_type = get_stmts_result_type ctx first_body in
      let c_t = match result_type with
        | Some t -> c_type t
        | None -> "int64_t"
@@ -735,7 +735,7 @@ and gen_match_switch ctx indent expr using_type arms match_id =
   emit (string_of_int match_id);
   emitln "_0.tag) {";
 
-  List.iter (fun (pat, result) ->
+  List.iter (fun (pat, body) ->
     match pat with
     | PVariant (_, variant_name, _bindings) ->
       emit_indent (indent + 1);
@@ -746,12 +746,7 @@ and gen_match_switch ctx indent expr using_type arms match_id =
       emitln ": {";
       (* Bind pattern variables *)
       gen_pattern_bindings ctx (indent + 2) match_id [expr] using_type pat;
-      emit_indent (indent + 2);
-      emit "_match_result";
-      emit (string_of_int match_id);
-      emit " = ";
-      gen_expr ctx (indent + 2) result;
-      emitln ";";
+      gen_match_arm_body ctx (indent + 2) match_id body;
       emit_indent (indent + 2);
       emitln "break;";
       emit_indent (indent + 1);
@@ -759,12 +754,7 @@ and gen_match_switch ctx indent expr using_type arms match_id =
     | PWildcard ->
       emit_indent (indent + 1);
       emitln "default: {";
-      emit_indent (indent + 2);
-      emit "_match_result";
-      emit (string_of_int match_id);
-      emit " = ";
-      gen_expr ctx (indent + 2) result;
-      emitln ";";
+      gen_match_arm_body ctx (indent + 2) match_id body;
       emit_indent (indent + 2);
       emitln "break;";
       emit_indent (indent + 1);
@@ -807,11 +797,11 @@ and gen_match_ifelse ctx indent exprs using_type arms match_id =
   emit_indent (indent + 1);
   (match arms with
    | [] -> emit "int _match_result = 0"
-   | (first_pat, first_result) :: _ ->
+   | (first_pat, first_body) :: _ ->
      (* Add pattern bindings to ctx.locals temporarily to get correct type *)
      let bindings = get_pattern_binding_types ctx using_type first_pat in
      List.iter (fun (name, typ) -> add_local ctx name typ) bindings;
-     let result_type = get_type ctx first_result in
+     let result_type = get_stmts_result_type ctx first_body in
      let c_t = match result_type with
        | Some t -> c_type t
        | None -> "int64_t"
@@ -824,7 +814,7 @@ and gen_match_ifelse ctx indent exprs using_type arms match_id =
   (* Generate pattern matching logic *)
   let rec gen_arms first_arm = function
     | [] -> ()
-    | (pat, result) :: rest ->
+    | (pat, body) :: rest ->
       emit_indent (indent + 1);
       if not first_arm then emit "else ";
       gen_pattern_condition ctx indent match_id exprs using_type pat;
@@ -832,12 +822,7 @@ and gen_match_ifelse ctx indent exprs using_type arms match_id =
       emitln "";
       (* Bind pattern variables *)
       gen_pattern_bindings ctx (indent + 2) match_id exprs using_type pat;
-      emit_indent (indent + 2);
-      emit "_match_result";
-      emit (string_of_int match_id);
-      emit " = ";
-      gen_expr ctx (indent + 2) result;
-      emitln ";";
+      gen_match_arm_body ctx (indent + 2) match_id body;
       emit_indent (indent + 1);
       emitln "}";
       gen_arms false rest
@@ -894,7 +879,9 @@ and collect_expr_idents acc expr =
     List.fold_left (fun a p -> match p with SLiteral _ -> a | SInterp e -> collect_expr_idents a e) acc parts
   | EMatch (exprs, _, arms) ->
     let acc' = List.fold_left collect_expr_idents acc exprs in
-    List.fold_left (fun a (_, result) -> collect_expr_idents a result) acc' arms
+    List.fold_left (fun a (_, body) ->
+      let (used, _) = List.fold_left collect_stmt_idents (a, []) body in
+      used) acc' arms
   | EAnonFn _ -> acc  (* Don't descend into nested closures *)
   | _ -> acc
 
@@ -1673,7 +1660,7 @@ and gen_string_parts ctx parts =
     emit ")"
 
 (* Generate statement *)
-let rec gen_stmt ctx indent stmt =
+and gen_stmt ctx indent stmt =
   emit_indent indent;
   match stmt with
   | SVarDecl (typ, name, expr) ->
@@ -1813,6 +1800,32 @@ let rec gen_stmt ctx indent stmt =
   | SExpr e ->
     gen_expr ctx indent e;
     emitln ";"
+
+(* Get result type from stmt list - type of last expression statement *)
+and get_stmts_result_type ctx stmts =
+  match List.rev stmts with
+  | [] -> None
+  | SExpr e :: _ -> get_type ctx e
+  | SReturn (Some e) :: _ -> get_type ctx e
+  | _ -> None
+
+(* Generate match arm body - all stmts, with last expr assigned to result var *)
+and gen_match_arm_body ctx indent match_id stmts =
+  match List.rev stmts with
+  | [] -> ()
+  | SExpr last_expr :: rest ->
+    (* Generate all statements except the last *)
+    List.iter (gen_stmt ctx indent) (List.rev rest);
+    (* Assign last expression to result variable *)
+    emit_indent indent;
+    emit "_match_result";
+    emit (string_of_int match_id);
+    emit " = ";
+    gen_expr ctx indent last_expr;
+    emitln ";"
+  | _ ->
+    (* No expression at end - just generate all statements *)
+    List.iter (gen_stmt ctx indent) stmts
 
 (* Generate struct definition *)
 let gen_struct name fields =
@@ -2104,10 +2117,9 @@ let gen_monomorphized_types program =
     | EMatch (exprs, using_type, arms) ->
       List.iter scan_expr exprs;
       (match using_type with Some t -> scan_type t | None -> ());
-      List.iter (fun (_, e) -> scan_expr e) arms
+      List.iter (fun (_, body) -> List.iter scan_stmt body) arms
     | _ -> ()
-  in
-  let rec scan_stmt = function
+  and scan_stmt = function
     | SVarDecl (t, _, e) -> scan_type t; scan_expr e
     | SVarDeclInfer (_, e) -> scan_expr e
     | SConstDecl (_, e) -> scan_expr e
@@ -2243,10 +2255,9 @@ let gen_monomorphized_methods ?(decl_only=false) ctx program =
     | EMatch (exprs, using_type, arms) ->
       List.iter scan_expr exprs;
       (match using_type with Some t -> scan_type t | None -> ());
-      List.iter (fun (_, e) -> scan_expr e) arms
+      List.iter (fun (_, body) -> List.iter scan_stmt body) arms
     | _ -> ()
-  in
-  let rec scan_stmt = function
+  and scan_stmt = function
     | SVarDecl (t, _, e) -> scan_type t; scan_expr e
     | SVarDeclInfer (_, e) -> scan_expr e
     | SConstDecl (_, e) -> scan_expr e

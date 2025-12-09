@@ -1,6 +1,6 @@
 uses: utils
 
-fn main {
+fn main() {
     int result = add(1, 2)
     print(result)
 

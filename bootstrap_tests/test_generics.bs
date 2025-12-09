@@ -26,7 +26,7 @@ Maybe<T> :: variant {
     Nothing
 }
 
-fn main {
+fn main() {
     t := new_test()
 
     // Generic struct with int
@@ -54,17 +54,17 @@ fn main {
     Maybe<int> just_val = Maybe<int>.Just { value: 100 }
     Maybe<int> nothing = Maybe<int>.Nothing
 
-    int just_result = match just_val using Maybe<int> {
-        Just { value: v } -> v,
-        Nothing -> 0
+    str just_result = match just_val using Maybe<int> {
+        Just -> { "just" }
+        Nothing -> { "nothing" }
     }
-    t.assert_eq_int(100, just_result)
+    t.assert_eq_str("just", just_result)
 
-    int nothing_result = match nothing using Maybe<int> {
-        Just { value: v } -> v,
-        Nothing -> 0
+    str nothing_result = match nothing using Maybe<int> {
+        Just -> { "just" }
+        Nothing -> { "nothing" }
     }
-    t.assert_eq_int(0, nothing_result)
+    t.assert_eq_str("nothing", nothing_result)
 
     // Reusing same generic type
     Box<int> box1 = Box<int> { value: 10 }

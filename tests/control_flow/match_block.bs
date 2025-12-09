@@ -1,0 +1,22 @@
+// Test: Match with block arms (multiple statements)
+fn process(int x) int {
+    return match x {
+        1 -> {
+            int doubled = x * 2
+            int result = doubled + 10
+            result
+        }
+        _ -> {
+            int fallback = 0 - 1
+            fallback
+        }
+    }
+}
+
+fn main() {
+    int result = process(1)
+    print("Result: {result}")  // Should print 12 (1*2 + 10)
+
+    int result2 = process(99)
+    print("Result2: {result2}")  // Should print -1
+}
