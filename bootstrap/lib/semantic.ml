@@ -35,6 +35,7 @@ type env = {
   impls: (string * string, impl_method list) Hashtbl.t;  (* (type, trait) -> methods *)
   generic_enum_params: (string, string list) Hashtbl.t;  (* enum name -> type params *)
   generic_struct_params: (string, string list) Hashtbl.t;  (* struct name -> type params *)
+  narrowings: (string, string * string) Hashtbl.t;  (* var name -> (enum name, variant name) *)
   in_method: bool;
   current_type: string option;
   errors_list: string list ref;  (* Use ref so it's shared across scopes *)
@@ -50,6 +51,7 @@ let create_env () = {
   impls = Hashtbl.create 32;
   generic_enum_params = Hashtbl.create 16;
   generic_struct_params = Hashtbl.create 16;
+  narrowings = Hashtbl.create 16;
   in_method = false;
   current_type = None;
   errors_list = ref [];
@@ -66,8 +68,8 @@ let find_index pred lst =
   aux 0 lst
 
 let push_scope env =
-  (* Create a new env with a copy of symbols for scoping *)
-  { env with symbols = Hashtbl.copy env.symbols }
+  (* Create a new env with a copy of symbols and narrowings for scoping *)
+  { env with symbols = Hashtbl.copy env.symbols; narrowings = Hashtbl.copy env.narrowings }
 
 (* Check that optional params come after required params *)
 let check_param_order env params =
@@ -268,21 +270,57 @@ let rec infer_expr_type env expr =
         | _ -> None)
      | _ -> None)
   | EMember (obj, field_name) ->
-    (match infer_expr_type env obj with
-     | Some (TUser type_name) ->
-       (match Hashtbl.find_opt env.structs type_name with
-        | Some fields ->
-          List.find_opt (fun f -> f.field_name = field_name) fields
-          |> Option.map (fun f -> f.field_type)
+    (* Check for narrowed type first (from `if x is Variant` blocks) *)
+    let narrowed_type = match obj with
+      | EIdent var_name -> Hashtbl.find_opt env.narrowings var_name
+      | _ -> None
+    in
+    (match narrowed_type with
+     | Some (enum_name, variant_name) ->
+       (* Use the narrowed variant to find the field *)
+       (match Hashtbl.find_opt env.enums enum_name with
+        | Some variants ->
+          (match List.find_opt (fun v -> v.variant_name = variant_name) variants with
+           | Some v ->
+             List.find_opt (fun f -> f.field_name = field_name) v.variant_fields
+             |> Option.map (fun f -> f.field_type)
+           | None -> None)
         | None -> None)
-     | Some (TApply (type_name, type_args)) ->
-       (match Hashtbl.find_opt env.structs type_name with
-        | Some fields ->
-          let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
-          List.find_opt (fun f -> f.field_name = field_name) fields
-          |> Option.map (fun f -> substitute_type_params tparams type_args f.field_type)
-        | None -> None)
-     | _ -> None)
+     | None ->
+       (* No narrowing, use regular type inference *)
+       (match infer_expr_type env obj with
+        | Some (TUser type_name) ->
+          (match Hashtbl.find_opt env.structs type_name with
+           | Some fields ->
+             List.find_opt (fun f -> f.field_name = field_name) fields
+             |> Option.map (fun f -> f.field_type)
+           | None ->
+             (* Fall back to checking enum variants *)
+             (match Hashtbl.find_opt env.enums type_name with
+              | Some variants ->
+                (* Search all variants for the field *)
+                List.find_map (fun v ->
+                  List.find_opt (fun f -> f.field_name = field_name) v.variant_fields
+                  |> Option.map (fun f -> f.field_type)
+                ) variants
+              | None -> None))
+        | Some (TApply (type_name, type_args)) ->
+          (match Hashtbl.find_opt env.structs type_name with
+           | Some fields ->
+             let tparams = Hashtbl.find_opt env.generic_struct_params type_name |> Option.value ~default:[] in
+             List.find_opt (fun f -> f.field_name = field_name) fields
+             |> Option.map (fun f -> substitute_type_params tparams type_args f.field_type)
+           | None ->
+             (* Fall back to checking enum variants *)
+             (match Hashtbl.find_opt env.enums type_name with
+              | Some variants ->
+                let tparams = Hashtbl.find_opt env.generic_enum_params type_name |> Option.value ~default:[] in
+                List.find_map (fun v ->
+                  List.find_opt (fun f -> f.field_name = field_name) v.variant_fields
+                  |> Option.map (fun f -> substitute_type_params tparams type_args f.field_type)
+                ) variants
+              | None -> None))
+        | _ -> None))
   | EIndex (arr, _idx) ->
     (match infer_expr_type env arr with
      | Some (TArray t) -> Some t
@@ -665,6 +703,24 @@ and check_stmt env stmt =
   | SIf (cond, then_stmts, else_stmts) ->
     check_expr env cond;
     let then_env = push_scope env in
+    (* Add type narrowing if condition is an `is` check *)
+    (match cond with
+     | EIs (EIdent var_name, type_opt, variant_name) ->
+       (* Determine enum type from explicit type or inferred *)
+       let enum_name = match type_opt with
+         | Some (TUser t) -> Some t
+         | Some (TApply (t, _)) -> Some t
+         | None ->
+           (match Hashtbl.find_opt env.symbols var_name with
+            | Some (SVar (TUser t, _)) -> Some t
+            | Some (SVar (TApply (t, _), _)) -> Some t
+            | _ -> None)
+         | _ -> None
+       in
+       (match enum_name with
+        | Some ename -> Hashtbl.replace then_env.narrowings var_name (ename, variant_name)
+        | None -> ())
+     | _ -> ());
     List.iter (check_stmt then_env) then_stmts;
     (match else_stmts with
      | Some stmts ->
@@ -748,6 +804,9 @@ let rec get_expr_type env locals expr =
        let rt = get_expr_type env locals r in
        (match lt, rt with
         | Some l, Some r when types_equal l r -> Some l
+        (* String concatenation: if either side is str with Add, result is str *)
+        | Some TStr, _ when op = Add -> Some TStr
+        | _, Some TStr when op = Add -> Some TStr
         | _ -> Some TInt)
      | Eq | Neq | Lt | Gt | Lte | Gte | And | Or | In -> Some TBool)
   | EUnary (Not, _) -> Some TBool

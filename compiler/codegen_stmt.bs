@@ -138,7 +138,7 @@ fn gen_if(CodegenState state, Expr cond, Stmt[] then_block, StmtList? else_block
     emit_indent(state)
     if else_block {
         eb := else_block or StmtList { items: [] }
-        emitln(state, "} else {")
+        emitln(state, "} else \{")
         state.indent += 1
         j := 0
         while j < eb.items.len() {

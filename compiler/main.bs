@@ -1,0 +1,38 @@
+// Self-hosted Shotgun compiler entry point
+//
+// For now, this is a minimal test that reads a hardcoded file,
+// parses it, analyzes it, and outputs C code.
+
+fn main() {
+    // For testing, compile a hardcoded file
+    source := read_file("/tmp/hello.bs")
+    if !source {
+        print("Error: could not read /tmp/hello.bs")
+        return
+    }
+
+    src := source or ""
+
+    // Lex and parse
+    parser := new_parser(src, "/tmp/hello.bs")
+    program := parser.parse_program()
+
+    // Semantic analysis
+    env := analyze_with_env(program)
+
+    // Check for errors
+    if env.error_list.len() > 0 {
+        i := 0
+        while i < env.error_list.len() {
+            print(env.error_list[i])
+            i += 1
+        }
+        return
+    }
+
+    // Generate C code
+    c_code := generate(env, program)
+
+    // Output C code
+    print(c_code)
+}
