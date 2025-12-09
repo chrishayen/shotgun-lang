@@ -34,7 +34,7 @@ jobs:
         run: cd compiler/build && ctest --output-on-failure
 
       - name: Run integration tests
-        run: ./tests/run_tests.sh
+        run: ./compiler/build/shotgun test
 
       - name: Prepare release binary
         run: cp compiler/build/shotgun shotgun-linux-x86_64

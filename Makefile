@@ -9,7 +9,7 @@ build:
 
 test: build
 	cd $(BUILD_DIR) && ctest --output-on-failure
-	./tests/run_tests.sh
+	$(BUILD_DIR)/shotgun test
 
 clean:
 	rm -rf $(BUILD_DIR)
