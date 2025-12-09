@@ -179,6 +179,33 @@ llvm::Type* CodeGen::get_llvm_type(const TypePtr& ast_type) {
     return llvm::Type::getVoidTy(*context_);
 }
 
+// Helper to convert AST type to resolved type (simplified version for codegen)
+ResolvedTypePtr CodeGen::ast_type_to_resolved(const TypePtr& ast_type) {
+    if (!ast_type) return ResolvedType::make_void();
+
+    if (auto* named = std::get_if<Type::Named>(&ast_type->kind)) {
+        if (named->name == "int") return ResolvedType::make_int();
+        if (named->name == "bool") return ResolvedType::make_bool();
+        if (named->name == "str") return ResolvedType::make_str();
+        if (named->name == "char") return ResolvedType::make_char();
+        if (named->name == "f32") return ResolvedType::make_f32();
+        if (named->name == "f64") return ResolvedType::make_f64();
+        if (named->name == "u32") return ResolvedType::make_u32();
+        if (named->name == "u64") return ResolvedType::make_u64();
+        return ResolvedType::make_struct(named->name);
+    }
+
+    if (auto* arr = std::get_if<Type::Array>(&ast_type->kind)) {
+        return ResolvedType::make_array(ast_type_to_resolved(arr->element));
+    }
+
+    if (auto* opt = std::get_if<Type::Optional>(&ast_type->kind)) {
+        return ResolvedType::make_optional(ast_type_to_resolved(opt->inner));
+    }
+
+    return ResolvedType::make_void();
+}
+
 llvm::StructType* CodeGen::get_or_create_struct_type(const std::string& name) {
     auto it = struct_types_.find(name);
     if (it != struct_types_.end()) {
@@ -296,6 +323,16 @@ void CodeGen::gen_runtime_decls() {
         nullptr,
         "stderr"
     );
+
+    // strcmp for string comparison
+    auto* strcmp_type = llvm::FunctionType::get(
+        llvm::Type::getInt32Ty(*context_),
+        {llvm::PointerType::get(*context_, 0),
+         llvm::PointerType::get(*context_, 0)},
+        false
+    );
+    llvm::Function::Create(strcmp_type, llvm::Function::ExternalLinkage,
+                           "strcmp", module_.get());
 }
 
 // Declaration generation
@@ -493,6 +530,15 @@ void CodeGen::gen_var_decl(const Stmt::VarDecl& var) {
         current_function_, var.name, init_val->getType());
     builder_->CreateStore(init_val, alloca);
     named_values_[var.name] = alloca;
+
+    // Store type for later use (e.g., array element type lookup)
+    if (var.type) {
+        // Convert AST type to resolved type for array element access
+        if (auto* arr = std::get_if<Type::Array>(&var.type->kind)) {
+            var_types_[var.name] = ResolvedType::make_array(
+                ast_type_to_resolved(arr->element));
+        }
+    }
 }
 
 void CodeGen::gen_assign(const Stmt::Assign& assign) {
@@ -1185,11 +1231,12 @@ llvm::Value* CodeGen::gen_index(const Expr::Index& idx) {
     // Determine element type from the indexed object
     llvm::Type* elem_type = llvm::Type::getInt64Ty(*context_);  // default
 
-    // If object is an identifier, look up its type
+    // If object is an identifier, look up its type from our var_types_ map
     if (auto* ident = std::get_if<Expr::Ident>(&idx.object->kind)) {
-        if (auto var = symbols_->lookup_var(ident->name)) {
-            if (var->type->kind == ResolvedType::Kind::Array && var->type->element_type) {
-                elem_type = get_llvm_type(var->type->element_type);
+        auto it = var_types_.find(ident->name);
+        if (it != var_types_.end() && it->second->kind == ResolvedType::Kind::Array) {
+            if (it->second->element_type) {
+                elem_type = get_llvm_type(it->second->element_type);
             }
         }
     }
@@ -1571,10 +1618,10 @@ llvm::Value* CodeGen::gen_assert_eq(const Expr::Call& call) {
         cmp = builder_->CreateFCmpOEQ(left, right, "assert_eq_cmp");
     } else if (left->getType()->isPointerTy()) {
         // String comparison - use strcmp
-        // For now, compare pointers (works for identical string literals)
-        cmp = builder_->CreateICmpEQ(
-            builder_->CreatePtrToInt(left, llvm::Type::getInt64Ty(*context_)),
-            builder_->CreatePtrToInt(right, llvm::Type::getInt64Ty(*context_)),
+        llvm::Function* strcmp_fn = module_->getFunction("strcmp");
+        llvm::Value* result = builder_->CreateCall(strcmp_fn, {left, right}, "strcmp_result");
+        cmp = builder_->CreateICmpEQ(result,
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
             "assert_eq_cmp");
     } else {
         cmp = builder_->CreateICmpEQ(left, right, "assert_eq_cmp");

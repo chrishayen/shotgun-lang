@@ -49,12 +49,16 @@ private:
     // Type mapping
     llvm::Type* get_llvm_type(ResolvedTypePtr type);
     llvm::Type* get_llvm_type(const TypePtr& ast_type);
+    ResolvedTypePtr ast_type_to_resolved(const TypePtr& ast_type);
 
     // Struct type cache (for recursive types)
     std::unordered_map<std::string, llvm::StructType*> struct_types_;
 
     // Named values (variables) in current scope
     std::unordered_map<std::string, llvm::AllocaInst*> named_values_;
+
+    // Variable types (for arrays, we need element type info)
+    std::unordered_map<std::string, ResolvedTypePtr> var_types_;
 
     // Current function being compiled
     llvm::Function* current_function_ = nullptr;
