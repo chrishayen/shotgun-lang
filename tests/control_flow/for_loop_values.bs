@@ -1,0 +1,11 @@
+// Ensure for loops bind the actual array elements, not placeholders.
+fn test_for_loop_iterates_array_values() {
+    nums := [1, 2, 3]
+    sum := 0
+
+    for n in nums {
+        sum += n
+    }
+
+    assert_eq(sum, 6)
+}

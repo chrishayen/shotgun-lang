@@ -153,6 +153,16 @@ fn main() {
 )");
 }
 
+void test_struct_literal_missing_field_errors() {
+    expect_error(R"(
+Person :: struct { name str, age int }
+fn main() {
+    // Missing required field 'age'
+    p := Person { name: "Alice" }
+}
+)", "missing field");
+}
+
 void test_struct_field_access() {
     expect_ok(R"(
 Person :: struct { name str, age int }
@@ -241,6 +251,10 @@ void test_optional_assign() {
     expect_ok("fn main() {\n  str? name = \"Alice\"\n}");
 }
 
+void test_none_literal_in_optional_context() {
+    expect_ok("fn main() {\n  int? value = none\n}");
+}
+
 void test_or_fallback() {
     expect_ok(R"(
 fn main() {
@@ -248,6 +262,10 @@ fn main() {
     s := maybe or "default"
 }
 )");
+}
+
+void test_unknown_type_name_errors() {
+    expect_error("fn main() { UnknownType x = 1 }", "Unknown type");
 }
 
 void test_generic_struct() {
@@ -302,6 +320,7 @@ int main() {
     RUN_TEST(test_return_type_mismatch);
     RUN_TEST(test_struct_decl);
     RUN_TEST(test_struct_literal);
+    RUN_TEST(test_struct_literal_missing_field_errors);
     RUN_TEST(test_struct_field_access);
     RUN_TEST(test_unknown_struct_field);
     RUN_TEST(test_method_decl);
@@ -315,7 +334,9 @@ int main() {
     RUN_TEST(test_variant_decl);
     RUN_TEST(test_lambda);
     RUN_TEST(test_optional_assign);
+    RUN_TEST(test_none_literal_in_optional_context);
     RUN_TEST(test_or_fallback);
+    RUN_TEST(test_unknown_type_name_errors);
     RUN_TEST(test_generic_struct);
     RUN_TEST(test_match_expr);
     RUN_TEST(test_go_stmt);

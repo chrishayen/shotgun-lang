@@ -1,0 +1,19 @@
+// Optional 'or' must unwrap present values and only fall back when none.
+fn test_optional_or_uses_present_value() {
+    str? name = "Alice"
+    result := name or "fallback"
+    assert_eq(result, "Alice")
+}
+
+fn test_optional_or_fallback_when_none() {
+    str? missing = none
+    result := missing or "fallback"
+    assert_eq(result, "fallback")
+}
+
+fn test_optional_or_return_exits_on_none() {
+    str? missing = none
+    missing or return
+    // If we didn't return above, fail the test.
+    assert_true(false)
+}

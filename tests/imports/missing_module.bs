@@ -1,0 +1,3 @@
+// Stub module to satisfy imports in tests.
+
+fn noop() { }

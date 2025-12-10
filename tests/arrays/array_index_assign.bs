@@ -1,0 +1,21 @@
+// Test: Array index assignment
+
+fn test_array_index_assign() {
+    int[] nums = [1, 2, 3]
+    nums[0] = 10
+    assert_eq(nums[0], 10)
+}
+
+fn test_array_index_assign_middle() {
+    int[] nums = [1, 2, 3, 4, 5]
+    nums[2] = 100
+    assert_eq(nums[2], 100)
+    assert_eq(nums[0], 1)
+    assert_eq(nums[4], 5)
+}
+
+fn test_array_index_assign_last() {
+    int[] nums = [1, 2, 3]
+    nums[2] = 999
+    assert_eq(nums[2], 999)
+}

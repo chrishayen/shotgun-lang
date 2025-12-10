@@ -6,6 +6,46 @@
 
 namespace shotgun {
 
+// Lightweight best-effort type inference for codegen when no explicit type is available.
+static ResolvedTypePtr infer_expr_type(const ExprPtr& expr) {
+    if (!expr) return ResolvedType::make_void();
+
+    return std::visit([](const auto& e) -> ResolvedTypePtr {
+        using T = std::decay_t<decltype(e)>;
+        if constexpr (std::is_same_v<T, Expr::IntLit>) {
+            return ResolvedType::make_int();
+        } else if constexpr (std::is_same_v<T, Expr::FloatLit>) {
+            return ResolvedType::make_f64();
+        } else if constexpr (std::is_same_v<T, Expr::StringLit>) {
+            return ResolvedType::make_str();
+        } else if constexpr (std::is_same_v<T, Expr::CharLit>) {
+            return ResolvedType::make_char();
+        } else if constexpr (std::is_same_v<T, Expr::BoolLit>) {
+            return ResolvedType::make_bool();
+        } else if constexpr (std::is_same_v<T, Expr::NoneLit>) {
+            return ResolvedType::make_optional(ResolvedType::make_void());
+        } else if constexpr (std::is_same_v<T, Expr::StructLit>) {
+            // Variant construction uses Type.Case; map back to variant name
+            auto pos = e.type_name.find('.');
+            if (pos != std::string::npos) {
+                return ResolvedType::make_variant(e.type_name.substr(0, pos));
+            }
+            return ResolvedType::make_struct(e.type_name);
+        } else if constexpr (std::is_same_v<T, Expr::Ident>) {
+            // Unknown without symbol info; leave void
+            return ResolvedType::make_void();
+        } else if constexpr (std::is_same_v<T, Expr::ArrayLit>) {
+            if (e.elements.empty()) {
+                return ResolvedType::make_array(ResolvedType::make_void());
+            }
+            auto elem_type = infer_expr_type(e.elements[0]);
+            return ResolvedType::make_array(elem_type);
+        } else {
+            return ResolvedType::make_void();
+        }
+    }, expr->kind);
+}
+
 CodeGen::CodeGen(const std::string& module_name) {
     context_ = std::make_unique<llvm::LLVMContext>();
     module_ = std::make_unique<llvm::Module>(module_name, *context_);
@@ -446,10 +486,10 @@ void CodeGen::gen_impl_decl(const ImplDecl& impl) {
         // Name and store parameters
         auto arg_it = func->arg_begin();
         arg_it->setName("self");
+        // Keep self as a pointer directly to the struct
         llvm::AllocaInst* self_alloca = create_entry_alloca(func, "self", self_type);
         builder_->CreateStore(&*arg_it, self_alloca);
         named_values_["self"] = self_alloca;
-        // Store the struct type for self field access
         var_types_["self"] = ResolvedType::make_struct(impl.type_name, {});
         ++arg_it;
 
@@ -528,18 +568,51 @@ void CodeGen::gen_var_decl(const Stmt::VarDecl& var) {
     llvm::Value* init_val = var.init ? gen_expr(var.init) : nullptr;
     if (!init_val) return;
 
+    // Wrap optionals when the declaration type is an optional
+    llvm::Type* stored_type = init_val->getType();
+    if (var.type) {
+        if (auto* opt = std::get_if<Type::Optional>(&var.type->kind)) {
+            llvm::Type* opt_ty = get_llvm_type(var.type);
+            if (opt_ty) {
+                stored_type = opt_ty;
+                if (init_val->getType() != opt_ty) {
+                    llvm::Type* inner_ty = get_llvm_type(opt->inner);
+                    bool is_none = std::holds_alternative<Expr::NoneLit>(var.init->kind);
+                    llvm::Value* value_part = is_none
+                        ? llvm::Constant::getNullValue(inner_ty)
+                        : init_val;
+                    llvm::Value* opt_val = llvm::UndefValue::get(opt_ty);
+                    llvm::Value* has_flag = llvm::ConstantInt::get(
+                        llvm::Type::getInt1Ty(*context_), is_none ? 0 : 1);
+                    opt_val = builder_->CreateInsertValue(opt_val, has_flag, 0);
+                    opt_val = builder_->CreateInsertValue(opt_val, value_part, 1);
+                    init_val = opt_val;
+                }
+            }
+        }
+    }
+
     llvm::AllocaInst* alloca = create_entry_alloca(
-        current_function_, var.name, init_val->getType());
+        current_function_, var.name, stored_type);
     builder_->CreateStore(init_val, alloca);
     named_values_[var.name] = alloca;
 
-    // Store type for later use (e.g., array element type lookup)
+    // Store type for later use (e.g., array element type lookup, field assignment)
     if (var.type) {
         // Convert AST type to resolved type for array element access
         if (auto* arr = std::get_if<Type::Array>(&var.type->kind)) {
             var_types_[var.name] = ResolvedType::make_array(
                 ast_type_to_resolved(arr->element));
+        } else if (auto* named = std::get_if<Type::Named>(&var.type->kind)) {
+            // Track struct/variant types for field assignment and is-expr
+            if (symbols_->lookup_struct(named->name)) {
+                var_types_[var.name] = ResolvedType::make_struct(named->name);
+            } else if (symbols_->lookup_variant(named->name)) {
+                var_types_[var.name] = ResolvedType::make_variant(named->name);
+            }
         }
+    } else if (var.init) {
+        var_types_[var.name] = infer_expr_type(var.init);
     }
 }
 
@@ -593,18 +666,70 @@ void CodeGen::gen_assign(const Stmt::Assign& assign) {
             builder_->CreateStore(val, it->second);
         }
     } else if (auto* field = std::get_if<Expr::Field>(&assign.target->kind)) {
-        // Field assignment
-        llvm::Value* obj = gen_expr(field->object);
-        if (obj && obj->getType()->isPointerTy()) {
-            // Look up field index
-            // For now, assume we know the struct type
-            // TODO: proper field lookup
+        // Field assignment - need to get the variable alloca, not its value
+        if (auto* ident = std::get_if<Expr::Ident>(&field->object->kind)) {
+            auto alloca_it = named_values_.find(ident->name);
+            auto type_it = var_types_.find(ident->name);
+            if (alloca_it != named_values_.end() && type_it != var_types_.end() &&
+                type_it->second->kind == ResolvedType::Kind::Struct) {
+                // Base pointer to struct storage
+                llvm::Value* struct_ptr = alloca_it->second;
+                if (auto* ai = llvm::dyn_cast<llvm::AllocaInst>(struct_ptr)) {
+                    llvm::Type* alloc_ty = ai->getAllocatedType();
+                    if (alloc_ty->isPointerTy()) {
+                        struct_ptr = builder_->CreateLoad(alloc_ty, struct_ptr, ident->name + "_ptr");
+                    }
+                }
+
+                // Get struct type and find field index
+                std::string struct_name = type_it->second->name;
+                llvm::StructType* struct_ty = get_or_create_struct_type(struct_name);
+                unsigned field_idx = 0;
+
+                if (auto def = symbols_->lookup_struct(struct_name)) {
+                    for (size_t i = 0; i < def->fields.size(); ++i) {
+                        if (def->fields[i].name == field->name) {
+                            field_idx = i;
+                            break;
+                        }
+                    }
+                }
+
+                // GEP to field, store value
+                llvm::Value* field_ptr = builder_->CreateStructGEP(
+                    struct_ty, struct_ptr, field_idx, field->name + "_ptr");
+                builder_->CreateStore(val, field_ptr);
+            }
         }
     } else if (auto* idx = std::get_if<Expr::Index>(&assign.target->kind)) {
-        // Index assignment
-        llvm::Value* obj = gen_expr(idx->object);
+        // Index assignment for arrays
         llvm::Value* index = gen_expr(idx->index);
-        // TODO: array index store
+        if (!index) return;
+
+        llvm::Value* data_ptr = nullptr;
+        llvm::Type* elem_ty = val->getType();
+
+        if (auto* ident = std::get_if<Expr::Ident>(&idx->object->kind)) {
+            auto alloca_it = named_values_.find(ident->name);
+            auto type_it = var_types_.find(ident->name);
+            if (alloca_it != named_values_.end() && type_it != var_types_.end() &&
+                type_it->second->kind == ResolvedType::Kind::Array) {
+                llvm::Value* arr_val = builder_->CreateLoad(alloca_it->second->getAllocatedType(),
+                                                            alloca_it->second, ident->name + "_arr");
+                data_ptr = builder_->CreateExtractValue(arr_val, 1, "data_ptr");
+                elem_ty = get_llvm_type(type_it->second->element_type);
+            }
+        }
+
+        if (!data_ptr) {
+            // Fallback: evaluate object and try to extract data pointer
+            llvm::Value* obj = gen_expr(idx->object);
+            if (!obj || !obj->getType()->isStructTy()) return;
+            data_ptr = builder_->CreateExtractValue(obj, 1, "data_ptr");
+        }
+
+        llvm::Value* elem_ptr = builder_->CreateGEP(elem_ty, data_ptr, index, "elemptr");
+        builder_->CreateStore(val, elem_ptr);
     }
 }
 
@@ -690,8 +815,22 @@ void CodeGen::gen_for(const Stmt::For& for_stmt) {
 
     llvm::Function* func = current_function_;
 
+    // Determine element type using stored var info or best-effort inference
+    ResolvedTypePtr iter_type = infer_expr_type(for_stmt.iterable);
+    if (auto* ident = std::get_if<Expr::Ident>(&for_stmt.iterable->kind)) {
+        auto it = var_types_.find(ident->name);
+        if (it != var_types_.end()) {
+            iter_type = it->second;
+        }
+    }
+
+    llvm::Type* elem_llvm_ty = llvm::Type::getInt64Ty(*context_); // default fallback
+    if (iter_type && iter_type->kind == ResolvedType::Kind::Array && iter_type->element_type) {
+        elem_llvm_ty = get_llvm_type(iter_type->element_type);
+        var_types_[for_stmt.var] = iter_type->element_type;
+    }
+
     // For arrays: iterate from 0 to len
-    // Create index variable
     llvm::AllocaInst* idx_alloca = create_entry_alloca(func, "__idx",
         llvm::Type::getInt64Ty(*context_));
     builder_->CreateStore(llvm::ConstantInt::get(
@@ -710,7 +849,6 @@ void CodeGen::gen_for(const Stmt::For& for_stmt) {
     builder_->CreateBr(cond_bb);
     builder_->SetInsertPoint(cond_bb);
 
-    // Load index and compare with length
     llvm::Value* idx = builder_->CreateLoad(
         llvm::Type::getInt64Ty(*context_), idx_alloca, "idx");
 
@@ -719,20 +857,26 @@ void CodeGen::gen_for(const Stmt::For& for_stmt) {
     if (iterable->getType()->isStructTy()) {
         len = builder_->CreateExtractValue(iterable, 0, "len");
     } else {
-        // Assume pointer to array struct
         len = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0);
     }
-
     llvm::Value* cond = builder_->CreateICmpSLT(idx, len, "forcond");
     builder_->CreateCondBr(cond, body_bb, after_bb);
 
     func->insert(func->end(), body_bb);
     builder_->SetInsertPoint(body_bb);
 
-    // Create loop variable with current element
-    // TODO: actually get element from array
-    llvm::AllocaInst* var_alloca = create_entry_alloca(func, for_stmt.var,
-        llvm::Type::getInt64Ty(*context_));  // placeholder type
+    // Load current element and bind loop variable
+    llvm::Value* data_ptr = nullptr;
+    if (iterable->getType()->isStructTy()) {
+        data_ptr = builder_->CreateExtractValue(iterable, 1, "data");
+    } else {
+        data_ptr = llvm::ConstantPointerNull::get(llvm::PointerType::get(*context_, 0));
+    }
+    llvm::Value* elem_ptr = builder_->CreateGEP(elem_llvm_ty, data_ptr, idx, "elemptr");
+    llvm::Value* elem = builder_->CreateLoad(elem_llvm_ty, elem_ptr, for_stmt.var);
+
+    llvm::AllocaInst* var_alloca = create_entry_alloca(func, for_stmt.var, elem_llvm_ty);
+    builder_->CreateStore(elem, var_alloca);
     named_values_[for_stmt.var] = var_alloca;
 
     gen_block(for_stmt.body);
@@ -743,7 +887,6 @@ void CodeGen::gen_for(const Stmt::For& for_stmt) {
     func->insert(func->end(), incr_bb);
     builder_->SetInsertPoint(incr_bb);
 
-    // Increment index
     llvm::Value* next_idx = builder_->CreateAdd(idx,
         llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 1), "nextidx");
     builder_->CreateStore(next_idx, idx_alloca);
@@ -1187,6 +1330,16 @@ llvm::Value* CodeGen::gen_call(const Expr::Call& call) {
                 if (auto* alloca_type = llvm::dyn_cast<llvm::StructType>(it->second->getAllocatedType())) {
                     type_name = alloca_type->getName().str();
                 }
+
+                // Built-in array method: len()
+                auto vt = var_types_.find(ident->name);
+                if (vt != var_types_.end() &&
+                    vt->second->kind == ResolvedType::Kind::Array &&
+                    field_expr->name == "len" && call.args.empty()) {
+                    llvm::Type* arr_ty = it->second->getAllocatedType();
+                    llvm::Value* arr_val = builder_->CreateLoad(arr_ty, obj_ptr, ident->name + "_arr");
+                    return builder_->CreateExtractValue(arr_val, 0, "len");
+                }
             }
         }
 
@@ -1284,13 +1437,16 @@ llvm::Value* CodeGen::gen_field(const Expr::Field& field) {
     if (auto* ident = std::get_if<Expr::Ident>(&field.object->kind)) {
         auto type_it = var_types_.find(ident->name);
         if (type_it != var_types_.end() && type_it->second->kind == ResolvedType::Kind::Struct) {
-            // This is a pointer to a struct (like self in a method)
             auto it = named_values_.find(ident->name);
             if (it != named_values_.end()) {
-                // Load the pointer
-                llvm::Value* ptr = builder_->CreateLoad(
-                    llvm::PointerType::get(*context_, 0), it->second, ident->name);
-
+                llvm::Value* ptr = it->second;
+                // If the alloca holds a pointer (e.g., method self), load it
+                if (auto* ai = llvm::dyn_cast<llvm::AllocaInst>(ptr)) {
+                    llvm::Type* alloc_ty = ai->getAllocatedType();
+                    if (alloc_ty->isPointerTy()) {
+                        ptr = builder_->CreateLoad(alloc_ty, ptr, ident->name + "_ptr");
+                    }
+                }
                 // Look up struct definition to find field index
                 std::string struct_name = type_it->second->name;
                 llvm::StructType* struct_ty = get_or_create_struct_type(struct_name);
@@ -1343,6 +1499,69 @@ llvm::Value* CodeGen::gen_field(const Expr::Field& field) {
 }
 
 llvm::Value* CodeGen::gen_struct_lit(const Expr::StructLit& lit) {
+    // Variant construction: Type.Case { ... }
+    auto dot = lit.type_name.find('.');
+    if (dot != std::string::npos) {
+        std::string variant_name = lit.type_name.substr(0, dot);
+        std::string case_name = lit.type_name.substr(dot + 1);
+
+        auto def = symbols_->lookup_variant(variant_name);
+        if (!def) {
+            error("Unknown variant type: " + variant_name);
+            return nullptr;
+        }
+
+        // Determine tag index and collect field info
+        int tag_index = -1;
+        std::vector<FieldInfo> case_fields;
+        for (size_t i = 0; i < def->cases.size(); ++i) {
+            if (def->cases[i].name == case_name) {
+                tag_index = static_cast<int>(i);
+                case_fields = def->cases[i].fields;
+                break;
+            }
+        }
+        if (tag_index < 0) {
+            error("Unknown variant case: " + case_name);
+            return nullptr;
+        }
+
+        llvm::StructType* variant_ty = get_or_create_struct_type(variant_name);
+        if (!variant_ty) {
+            error("Failed to create variant type for " + variant_name);
+            return nullptr;
+        }
+
+        // Allocate variant value
+        llvm::AllocaInst* alloca = builder_->CreateAlloca(variant_ty, nullptr, "variant");
+
+        // Store tag
+        llvm::Value* tag_ptr = builder_->CreateStructGEP(variant_ty, alloca, 0, "tagptr");
+        builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), tag_index), tag_ptr);
+
+        // Payload pointer (if present)
+        if (variant_ty->getNumElements() > 1 && !case_fields.empty()) {
+            llvm::Value* payload_ptr = builder_->CreateStructGEP(variant_ty, alloca, 1, "payload");
+            llvm::Type* payload_ty = variant_ty->getElementType(1);
+            llvm::Value* base_i8 = builder_->CreateBitCast(
+                payload_ptr, llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+
+            uint64_t offset = 0;
+            for (size_t i = 0; i < case_fields.size() && i < lit.fields.size(); ++i) {
+                llvm::Value* val = gen_expr(lit.fields[i].second);
+                llvm::Type* field_ty = get_llvm_type(case_fields[i].type);
+                uint64_t field_size = module_->getDataLayout().getTypeAllocSize(field_ty);
+
+                llvm::Value* dest = builder_->CreateConstGEP1_64(llvm::Type::getInt8Ty(*context_), base_i8, offset);
+                llvm::Value* dest_typed = builder_->CreateBitCast(dest, field_ty->getPointerTo());
+                builder_->CreateStore(val, dest_typed);
+                offset += field_size;
+            }
+        }
+
+        return builder_->CreateLoad(variant_ty, alloca, "variantval");
+    }
+
     llvm::StructType* struct_type = get_or_create_struct_type(lit.type_name);
     if (!struct_type) {
         error("Unknown struct type: " + lit.type_name);
@@ -1393,13 +1612,13 @@ llvm::Value* CodeGen::gen_array_lit(const Expr::ArrayLit& lit) {
     llvm::Type* elem_type = values[0]->getType();
     size_t count = values.size();
 
-    // Allocate array data
+    // Allocate array data using element size
     llvm::Function* malloc_fn = module_->getFunction("malloc");
-    llvm::Value* size = builder_->CreateMul(
-        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), count),
-        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 8), // size per element
-        "arrsize");
-    llvm::Value* data_ptr = builder_->CreateCall(malloc_fn, {size}, "dataptr");
+    uint64_t elem_size_bytes = module_->getDataLayout().getTypeAllocSize(elem_type);
+    llvm::Value* elem_size = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), elem_size_bytes);
+    llvm::Value* count_val = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), count);
+    llvm::Value* total_size = builder_->CreateMul(count_val, elem_size, "arrsize");
+    llvm::Value* data_ptr = builder_->CreateCall(malloc_fn, {total_size}, "dataptr");
 
     // Store elements
     for (size_t i = 0; i < values.size(); i++) {
@@ -1550,32 +1769,110 @@ llvm::Value* CodeGen::gen_lambda(const Expr::Lambda& lambda) {
 }
 
 llvm::Value* CodeGen::gen_or_expr(const Expr::Or& or_expr) {
-    llvm::Value* left = gen_expr(or_expr.left);
-    if (!left) return nullptr;
+    llvm::Value* opt = gen_expr(or_expr.left);
+    if (!opt) return nullptr;
 
-    // If it's an optional, check has_value
-    // For now, just return left or right
-    if (or_expr.right) {
-        return gen_expr(or_expr.right);
+    // Optional layout: { i1 has_value, T value }
+    if (!opt->getType()->isStructTy() ||
+        opt->getType()->getStructNumElements() < 2) {
+        return opt;  // best effort fallback
     }
 
-    return left;
+    llvm::StructType* opt_ty = llvm::cast<llvm::StructType>(opt->getType());
+    llvm::Type* value_ty = opt_ty->getElementType(1);
+
+    llvm::Value* has_val = builder_->CreateExtractValue(opt, 0, "has_val");
+    llvm::Value* val = builder_->CreateExtractValue(opt, 1, "opt_value");
+
+    llvm::Function* func = current_function_;
+    llvm::BasicBlock* then_bb = llvm::BasicBlock::Create(*context_, "or.has", func);
+    llvm::BasicBlock* else_bb = llvm::BasicBlock::Create(*context_, "or.none");
+    llvm::BasicBlock* merge_bb = llvm::BasicBlock::Create(*context_, "or.merge");
+
+    builder_->CreateCondBr(has_val, then_bb, else_bb);
+
+    // has-value branch
+    builder_->SetInsertPoint(then_bb);
+    builder_->CreateBr(merge_bb);
+
+    // none branch
+    func->insert(func->end(), else_bb);
+    builder_->SetInsertPoint(else_bb);
+
+    llvm::Value* fallback_val = nullptr;
+    if (or_expr.is_return && !or_expr.right) {
+        // Early return if none
+        if (func->getReturnType()->isVoidTy()) {
+            builder_->CreateRetVoid();
+        } else {
+            builder_->CreateRet(llvm::UndefValue::get(func->getReturnType()));
+        }
+    } else {
+        fallback_val = gen_expr(or_expr.right);
+        if (!fallback_val) return nullptr;
+        builder_->CreateBr(merge_bb);
+    }
+
+    // Merge
+    func->insert(func->end(), merge_bb);
+    builder_->SetInsertPoint(merge_bb);
+
+    if (or_expr.is_return && !or_expr.right) {
+        return val;
+    }
+
+    llvm::PHINode* phi = builder_->CreatePHI(value_ty, 2, "or.result");
+    phi->addIncoming(val, then_bb);
+    if (fallback_val) {
+        phi->addIncoming(fallback_val, else_bb);
+    }
+
+    return phi;
 }
 
 llvm::Value* CodeGen::gen_is_expr(const Expr::Is& is_expr) {
     llvm::Value* val = gen_expr(is_expr.value);
     if (!val) return nullptr;
 
-    // For variants, check the tag field
-    // Tag is always the first field (i32)
-    if (val->getType()->isStructTy()) {
-        llvm::Value* tag = builder_->CreateExtractValue(val, 0, "tag");
-        // TODO: look up tag value for variant name
-        return builder_->CreateICmpEQ(tag,
-            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "istmp");
+    // Determine variant type name
+    std::string variant_name;
+    if (auto* ident = std::get_if<Expr::Ident>(&is_expr.value->kind)) {
+        auto it = var_types_.find(ident->name);
+        if (it != var_types_.end() &&
+            it->second->kind == ResolvedType::Kind::Variant) {
+            variant_name = it->second->name;
+        }
+    }
+    if (variant_name.empty()) {
+        auto inferred = infer_expr_type(is_expr.value);
+        if (inferred && inferred->kind == ResolvedType::Kind::Variant) {
+            variant_name = inferred->name;
+        }
     }
 
-    return llvm::ConstantInt::getFalse(*context_);
+    if (variant_name.empty() || !val->getType()->isStructTy()) {
+        return llvm::ConstantInt::getFalse(*context_);
+    }
+
+    auto def = symbols_->lookup_variant(variant_name);
+    if (!def) {
+        return llvm::ConstantInt::getFalse(*context_);
+    }
+
+    int tag_index = -1;
+    for (size_t i = 0; i < def->cases.size(); ++i) {
+        if (def->cases[i].name == is_expr.variant_name) {
+            tag_index = static_cast<int>(i);
+            break;
+        }
+    }
+    if (tag_index < 0) {
+        return llvm::ConstantInt::getFalse(*context_);
+    }
+
+    llvm::Value* tag = builder_->CreateExtractValue(val, 0, "tag");
+    return builder_->CreateICmpEQ(tag,
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), tag_index), "istmp");
 }
 
 llvm::Value* CodeGen::gen_cast(const Expr::Cast& cast) {

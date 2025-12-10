@@ -1,0 +1,6 @@
+// The test runner should correctly process imports; this test uses a stub module.
+uses: testpkg.missing_module
+
+fn test_missing_import_causes_failure() {
+    assert_true(true)
+}

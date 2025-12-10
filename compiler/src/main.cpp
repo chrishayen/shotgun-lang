@@ -655,7 +655,15 @@ int cmd_test(const std::string& tests_dir) {
             std::set<std::string> test_imported;
             test_imported.insert(std::filesystem::absolute(file).string());
             std::vector<std::string> test_import_errors;
-            process_imports(test_prog, get_directory(file), test_imported, test_import_errors, true);
+            if (!process_imports(test_prog, get_directory(file), test_imported, test_import_errors, true)) {
+                std::cout << "\033[0;31m[FAIL]\033[0m " << file << "::" << test_name;
+                std::cout << " (import error)\n";
+                for (const auto& err : test_import_errors) {
+                    std::cerr << "       " << err << "\n";
+                }
+                failed_tests++;
+                continue;
+            }
 
             // Remove existing main() and add test harness
             test_prog.decls.erase(

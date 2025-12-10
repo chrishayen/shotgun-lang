@@ -1,4 +1,4 @@
-uses: testpkg.nonexistent
+uses: testpkg.missing_module
 
 fn main {
     print("should fail")

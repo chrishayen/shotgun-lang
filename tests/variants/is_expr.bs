@@ -1,0 +1,42 @@
+// Test: Variant is expressions
+
+Option :: variant {
+    Some { value int }
+    None
+}
+
+Result :: variant {
+    Ok { value int }
+    Err { code int }
+    Pending
+}
+
+fn test_is_none() {
+    Option x = Option.None
+    assert_true(x is None)
+    assert_false(x is Some)
+}
+
+fn test_is_some() {
+    Option y = Option.Some { value: 42 }
+    assert_true(y is Some)
+    assert_false(y is None)
+}
+
+fn test_is_multiple_cases() {
+    Result a = Result.Ok { value: 1 }
+    Result b = Result.Err { code: 404 }
+    Result c = Result.Pending
+
+    assert_true(a is Ok)
+    assert_false(a is Err)
+    assert_false(a is Pending)
+
+    assert_false(b is Ok)
+    assert_true(b is Err)
+    assert_false(b is Pending)
+
+    assert_false(c is Ok)
+    assert_false(c is Err)
+    assert_true(c is Pending)
+}

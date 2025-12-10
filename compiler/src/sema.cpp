@@ -588,8 +588,7 @@ ResolvedTypePtr Sema::check_bool_lit(const Expr::BoolLit& lit) {
 }
 
 ResolvedTypePtr Sema::check_none_lit(const Expr::NoneLit& lit) {
-    // NoneLit needs context to determine type - for now return optional void
-    error("'none' requires type context");
+    // Represents an absent optional value; allow assignment to any optional target.
     return ResolvedType::make_optional(ResolvedType::make_void());
 }
 
@@ -1049,6 +1048,20 @@ ResolvedTypePtr Sema::check_struct_lit(const Expr::StructLit& lit) {
         }
     }
 
+    // Third pass: ensure all required fields are present
+    for (const auto& f : def->fields) {
+        bool present = false;
+        for (const auto& [fname, _] : lit.fields) {
+            if (fname == f.name) {
+                present = true;
+                break;
+            }
+        }
+        if (!present && !f.is_optional) {
+            error("Struct literal missing field '" + f.name + "'");
+        }
+    }
+
     // Build type args from inferred or remaining params
     std::vector<ResolvedTypePtr> type_args;
     for (const auto& tp : def->type_params) {
@@ -1257,7 +1270,7 @@ ResolvedTypePtr Sema::resolve_type(const TypePtr& type) {
                 return ResolvedType::make_error(t.name);
             }
 
-            // Could be a type parameter not yet in scope
+            error("Unknown type '" + t.name + "'");
             return ResolvedType::make_type_param(t.name);
         }
         else if constexpr (std::is_same_v<T, Type::Array>) {
@@ -1356,6 +1369,13 @@ bool Sema::is_assignable(ResolvedTypePtr target, ResolvedTypePtr source) {
     // T is assignable to T?
     if (target->kind == ResolvedType::Kind::Optional) {
         if (types_equal(target->element_type, source)) return true;
+
+        // Allow 'none' (optional void) to assign to any optional type
+        if (source->kind == ResolvedType::Kind::Optional &&
+            source->element_type &&
+            source->element_type->kind == ResolvedType::Kind::Void) {
+            return true;
+        }
     }
 
     return false;

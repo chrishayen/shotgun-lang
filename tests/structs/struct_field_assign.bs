@@ -1,0 +1,26 @@
+// Test: Struct field assignment
+
+Person :: struct {
+    name str
+    age int
+}
+
+fn test_struct_field_assign() {
+    Person p = Person { name: "Alice", age: 30 }
+    p.age = 31
+    assert_eq(p.age, 31)
+}
+
+fn test_struct_field_assign_string() {
+    Person p = Person { name: "Alice", age: 30 }
+    p.name = "Bob"
+    assert_eq(p.name, "Bob")
+}
+
+fn test_struct_field_assign_multiple() {
+    Person p = Person { name: "Alice", age: 30 }
+    p.name = "Carol"
+    p.age = 25
+    assert_eq(p.name, "Carol")
+    assert_eq(p.age, 25)
+}

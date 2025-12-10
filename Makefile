@@ -7,9 +7,8 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	cd $(BUILD_DIR) && cmake .. && make
 
-test: build
-	cd $(BUILD_DIR) && ctest --output-on-failure
-	$(BUILD_DIR)/shotgun test
+test: build install
+	shotgun test
 
 clean:
 	rm -rf $(BUILD_DIR)

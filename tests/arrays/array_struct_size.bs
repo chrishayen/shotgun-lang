@@ -1,0 +1,10 @@
+Pair :: struct { a int, b int }
+
+// Array literals must allocate enough space for element size.
+fn test_array_literal_handles_struct_elements() {
+    pairs := [Pair { a: 1, b: 2 }, Pair { a: 3, b: 4 }]
+
+    assert_eq(pairs.len(), 2)
+    second := pairs[1]
+    assert_eq(second.b, 4)
+}
