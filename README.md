@@ -22,23 +22,24 @@ mv shotgun-linux-x86_64 ~/.local/bin/shotgun
 
 ### Prerequisites
 
-- OCaml 5.4.0
-- opam
-- GCC
+- CMake 3.16+
+- C++17 compiler (GCC or Clang)
+- LLVM 17+ (development libraries)
+- tomlplusplus (header-only TOML library)
 
-### Install OCaml (if needed)
-
+On Arch Linux:
 ```bash
-opam switch create 5.4.0
-eval $(opam env --switch=5.4.0)
+pacman -S cmake llvm tomlplusplus
+```
+
+On Ubuntu/Debian:
+```bash
+apt install cmake llvm-dev libtomlplusplus-dev
 ```
 
 ### Build
 
 ```bash
-cd compiler
-opam install . --deps-only -y
-cd ..
 make build
 ```
 
@@ -46,7 +47,6 @@ make build
 
 ```bash
 make test
-./tests/run_tests.sh
 ```
 
 ### Install
@@ -58,10 +58,11 @@ make install  # installs to ~/.local/bin/shotgun
 ## Usage
 
 ```bash
-shotgun build file.bs           # compile to binary
+shotgun build file.bs           # compile to executable
 shotgun build file.bs -o out    # compile with custom output name
 shotgun check file.bs           # type check only
-shotgun emit-c file.bs          # output generated C code
+shotgun emit-ir file.bs         # output LLVM IR
+shotgun test                    # run test suite
 ```
 
 ## Contact

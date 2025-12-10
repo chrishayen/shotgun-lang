@@ -1,3 +1,24 @@
+/**
+ * @file main.cpp
+ * @brief Shotgun compiler command-line interface.
+ *
+ * This file implements the shotgun CLI with the following commands:
+ * - build: Compile source to native executable
+ * - check: Type check without code generation
+ * - emit-ir: Output LLVM IR for debugging
+ * - parse: Parse and show declaration count
+ * - test: Run test suite
+ *
+ * The compiler pipeline is:
+ * 1. Lexer: Source -> Tokens
+ * 2. Parser: Tokens -> AST
+ * 3. Import resolution: Merge imported modules
+ * 4. Sema: Type checking and semantic analysis
+ * 5. CodeGen: AST -> LLVM IR
+ * 6. LLVM: IR -> Object file
+ * 7. Linker: Object file -> Executable
+ */
+
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
@@ -13,6 +34,8 @@
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include <toml++/toml.hpp>
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -21,6 +44,7 @@
 #include <filesystem>
 #include <algorithm>
 
+/// Prints usage information to stderr.
 void print_usage() {
     std::cerr << "Usage: shotgun <command> [options] <file>\n";
     std::cerr << "\nCommands:\n";
@@ -32,6 +56,11 @@ void print_usage() {
     std::cerr << "  test [dir]             Run tests (default: tests/)\n";
 }
 
+/**
+ * @brief Reads entire file contents into a string.
+ * @param path Path to the file.
+ * @return File contents, or empty string on error.
+ */
 std::string read_file(const std::string& path) {
     std::ifstream file(path);
     if (!file) {
@@ -43,6 +72,11 @@ std::string read_file(const std::string& path) {
     return buffer.str();
 }
 
+/**
+ * @brief Extracts the base name from a file path (without extension).
+ * @param path File path (e.g., "/path/to/file.bs").
+ * @return Base name (e.g., "file").
+ */
 std::string get_base_name(const std::string& path) {
     size_t last_slash = path.find_last_of("/\\");
     std::string filename = (last_slash == std::string::npos) ? path : path.substr(last_slash + 1);
@@ -54,12 +88,21 @@ std::string get_base_name(const std::string& path) {
     return filename;
 }
 
+/**
+ * @brief Gets the directory containing a file.
+ * @param path File path.
+ * @return Parent directory path.
+ */
 std::string get_directory(const std::string& path) {
     std::filesystem::path p(path);
     return p.parent_path().string();
 }
 
-// Find all .bs files in a directory
+/**
+ * @brief Finds all .bs files in a directory (non-recursive).
+ * @param dir Directory to search.
+ * @return Sorted list of .bs file paths.
+ */
 std::vector<std::string> find_bs_files(const std::string& dir) {
     std::vector<std::string> files;
     if (dir.empty() || !std::filesystem::exists(dir)) {
@@ -74,7 +117,11 @@ std::vector<std::string> find_bs_files(const std::string& dir) {
     return files;
 }
 
-// Find all .bs files recursively in a directory
+/**
+ * @brief Finds all .bs files recursively in a directory.
+ * @param dir Directory to search.
+ * @return Sorted list of .bs file paths.
+ */
 std::vector<std::string> find_test_files(const std::string& dir) {
     std::vector<std::string> files;
     if (!std::filesystem::exists(dir)) {
@@ -89,7 +136,11 @@ std::vector<std::string> find_test_files(const std::string& dir) {
     return files;
 }
 
-// Find all test_* functions in a parsed program
+/**
+ * @brief Finds all test functions (prefixed with "test_") in a program.
+ * @param prog The parsed program.
+ * @return List of test function names.
+ */
 std::vector<std::string> find_test_functions(const shotgun::Program& prog) {
     std::vector<std::string> tests;
     for (const auto& decl : prog.decls) {
@@ -102,56 +153,52 @@ std::vector<std::string> find_test_functions(const shotgun::Program& prog) {
     return tests;
 }
 
-// Read tests_dir from shotgun.toml if present
+/**
+ * @brief Reads the tests_dir setting from shotgun.toml.
+ * @param project_root Project root directory.
+ * @return Configured tests directory, or "tests" as default.
+ */
 std::string read_tests_dir_config(const std::string& project_root) {
     std::filesystem::path toml_path = std::filesystem::path(project_root) / "shotgun.toml";
     if (!std::filesystem::exists(toml_path)) {
-        return "tests";  // default
+        return "tests";
     }
 
-    std::ifstream f(toml_path);
-    std::string line;
-    while (std::getline(f, line)) {
-        if (line.find("tests_dir") == 0) {
-            size_t eq = line.find('=');
-            if (eq != std::string::npos) {
-                std::string val = line.substr(eq + 1);
-                size_t start = val.find_first_not_of(" \t\"");
-                size_t end = val.find_last_not_of(" \t\"");
-                if (start != std::string::npos && end != std::string::npos) {
-                    return val.substr(start, end - start + 1);
-                }
-            }
+    try {
+        auto config = toml::parse_file(toml_path.string());
+        if (auto tests_dir = config["tests_dir"].value<std::string>()) {
+            return *tests_dir;
         }
+    } catch (const toml::parse_error&) {
+        // Silently fall back to default on parse error
     }
-    return "tests";  // default
+    return "tests";
 }
 
-// Find shotgun.toml and get package name
+/**
+ * @brief Finds the package name from shotgun.toml.
+ *
+ * Searches upward from start_dir to find shotgun.toml and
+ * reads the "name" field.
+ *
+ * @param start_dir Directory to start searching from.
+ * @return Package name, or empty string if not found.
+ */
 std::string find_package_name(const std::string& start_dir) {
-    // Use current directory if start_dir is empty
     std::filesystem::path dir = start_dir.empty()
         ? std::filesystem::current_path()
         : std::filesystem::absolute(start_dir);
 
     while (!dir.empty()) {
-        std::filesystem::path toml = dir / "shotgun.toml";
-        if (std::filesystem::exists(toml)) {
-            std::ifstream f(toml);
-            std::string line;
-            while (std::getline(f, line)) {
-                if (line.find("name") == 0) {
-                    size_t eq = line.find('=');
-                    if (eq != std::string::npos) {
-                        std::string val = line.substr(eq + 1);
-                        // Trim whitespace and quotes
-                        size_t start = val.find_first_not_of(" \t\"");
-                        size_t end = val.find_last_not_of(" \t\"");
-                        if (start != std::string::npos && end != std::string::npos) {
-                            return val.substr(start, end - start + 1);
-                        }
-                    }
+        std::filesystem::path toml_path = dir / "shotgun.toml";
+        if (std::filesystem::exists(toml_path)) {
+            try {
+                auto config = toml::parse_file(toml_path.string());
+                if (auto name = config["name"].value<std::string>()) {
+                    return *name;
                 }
+            } catch (const toml::parse_error&) {
+                // Continue searching in parent directories
             }
         }
         if (dir.parent_path() == dir) break;
@@ -160,7 +207,14 @@ std::string find_package_name(const std::string& start_dir) {
     return "";
 }
 
-// Find project root (where shotgun.toml is)
+/**
+ * @brief Finds the project root directory (where shotgun.toml is located).
+ *
+ * Searches upward from start_dir to find shotgun.toml.
+ *
+ * @param start_dir Directory to start searching from.
+ * @return Project root path, or start_dir if no shotgun.toml found.
+ */
 std::string find_project_root(const std::string& start_dir) {
     // Use current directory if start_dir is empty
     std::filesystem::path dir = start_dir.empty()
@@ -181,7 +235,17 @@ std::string find_project_root(const std::string& start_dir) {
         : std::filesystem::absolute(start_dir).string();
 }
 
-// Resolve module path (e.g., "testpkg.utils" -> "/path/to/project/utils.bs")
+/**
+ * @brief Resolves a module name to a file path.
+ *
+ * Converts module names like "testpkg.utils" to file paths
+ * like "/path/to/project/utils.bs".
+ *
+ * @param module Module name (e.g., "mypackage.utils").
+ * @param project_root Project root directory.
+ * @param pkg_name Package name to strip from module path.
+ * @return Resolved file path.
+ */
 std::string resolve_module_path(const std::string& module, const std::string& project_root, const std::string& pkg_name) {
     // Module format: pkgname.submodule or just submodule
     std::string path = module;
@@ -199,8 +263,19 @@ std::string resolve_module_path(const std::string& module, const std::string& pr
     return project_root + "/" + path + ".bs";
 }
 
-// Process imports and merge declarations
-// auto_import_same_dir: if true, auto-import all .bs files in source_dir (Go-style packages)
+/**
+ * @brief Processes imports and merges declarations into the program.
+ *
+ * Handles both explicit 'uses' imports and Go-style automatic imports
+ * of all .bs files in the same directory (when auto_import_same_dir is true).
+ *
+ * @param program The program to merge imports into.
+ * @param source_dir Source file's directory.
+ * @param imported Set of already-imported file paths (to avoid duplicates).
+ * @param errors Vector to collect error messages.
+ * @param auto_import_same_dir If true, auto-import all .bs files in source_dir.
+ * @return True on success, false on error.
+ */
 bool process_imports(shotgun::Program& program, const std::string& source_dir,
                      std::set<std::string>& imported, std::vector<std::string>& errors,
                      bool auto_import_same_dir = false) {
@@ -318,12 +393,23 @@ bool process_imports(shotgun::Program& program, const std::string& source_dir,
     return true;
 }
 
+// Forward declarations for command handlers
 int cmd_parse(const std::string& filename, const std::string& source);
 int cmd_check(const std::string& filename, const std::string& source);
 int cmd_emit_ir(const std::string& filename, const std::string& source);
 int cmd_build(const std::string& filename, const std::string& source, const std::string& output);
 int cmd_test(const std::string& tests_dir);
 
+/**
+ * @brief Main entry point for the Shotgun compiler.
+ *
+ * Parses command-line arguments and dispatches to the appropriate
+ * command handler (parse, check, emit-ir, build, or test).
+ *
+ * @param argc Argument count.
+ * @param argv Argument values.
+ * @return 0 on success, 1 on error.
+ */
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         print_usage();
@@ -395,6 +481,15 @@ int main(int argc, char* argv[]) {
     }
 }
 
+/**
+ * @brief Parses a source file and reports the number of declarations.
+ *
+ * Used for debugging the parser without type checking or code generation.
+ *
+ * @param filename Source file path (for error messages).
+ * @param source Source code contents.
+ * @return 0 on success, 1 on parse error.
+ */
 int cmd_parse(const std::string& filename, const std::string& source) {
     shotgun::Lexer lexer(source, filename);
     shotgun::Parser parser(lexer);
@@ -411,6 +506,16 @@ int cmd_parse(const std::string& filename, const std::string& source) {
     return 0;
 }
 
+/**
+ * @brief Type checks a source file without generating code.
+ *
+ * Runs the full frontend (parse, import resolution, semantic analysis)
+ * but stops before code generation.
+ *
+ * @param filename Source file path.
+ * @param source Source code contents.
+ * @return 0 on success, 1 on error.
+ */
 int cmd_check(const std::string& filename, const std::string& source) {
     shotgun::Lexer lexer(source, filename);
     shotgun::Parser parser(lexer);
@@ -446,6 +551,16 @@ int cmd_check(const std::string& filename, const std::string& source) {
     return 0;
 }
 
+/**
+ * @brief Compiles a source file and outputs LLVM IR to stdout.
+ *
+ * Useful for debugging code generation and understanding the
+ * generated LLVM IR.
+ *
+ * @param filename Source file path.
+ * @param source Source code contents.
+ * @return 0 on success, 1 on error.
+ */
 int cmd_emit_ir(const std::string& filename, const std::string& source) {
     shotgun::Lexer lexer(source, filename);
     shotgun::Parser parser(lexer);
@@ -489,6 +604,22 @@ int cmd_emit_ir(const std::string& filename, const std::string& source) {
     return 0;
 }
 
+/**
+ * @brief Compiles a source file to a native executable.
+ *
+ * Full compilation pipeline:
+ * 1. Parse source code
+ * 2. Resolve imports
+ * 3. Type check
+ * 4. Generate LLVM IR
+ * 5. Emit object file
+ * 6. Link with system linker (cc)
+ *
+ * @param filename Source file path.
+ * @param source Source code contents.
+ * @param output Output executable name.
+ * @return 0 on success, 1 on error.
+ */
 int cmd_build(const std::string& filename, const std::string& source, const std::string& output) {
     // Initialize LLVM targets
     llvm::InitializeAllTargetInfos();
@@ -594,6 +725,20 @@ int cmd_build(const std::string& filename, const std::string& source, const std:
     return 0;
 }
 
+/**
+ * @brief Runs the test suite.
+ *
+ * Finds all .bs files in the tests directory, locates functions
+ * prefixed with "test_", and runs each one as an independent test.
+ * For each test:
+ * 1. Parse the file
+ * 2. Inject a main() that calls the test function
+ * 3. Compile to temporary executable
+ * 4. Run and check exit code (0 = pass)
+ *
+ * @param tests_dir Directory containing test files.
+ * @return 0 if all tests pass, 1 if any fail.
+ */
 int cmd_test(const std::string& tests_dir) {
     // Initialize LLVM targets
     llvm::InitializeAllTargetInfos();

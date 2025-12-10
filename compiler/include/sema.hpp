@@ -1,3 +1,13 @@
+/**
+ * @file sema.hpp
+ * @brief Semantic analyzer for the Shotgun language.
+ *
+ * The Sema class performs type checking and semantic analysis on the AST.
+ * It runs in two passes:
+ * 1. Register all type and function declarations
+ * 2. Type check all code
+ */
+
 #pragma once
 
 #include "ast.hpp"
@@ -8,38 +18,77 @@
 
 namespace shotgun {
 
+/**
+ * @brief Semantic analyzer that type checks Shotgun programs.
+ *
+ * Performs:
+ * - Type inference and checking
+ * - Variable scope validation
+ * - Function signature verification
+ * - Pattern exhaustiveness (basic)
+ * - Type compatibility checking
+ *
+ * Usage:
+ * @code
+ * Sema sema;
+ * if (!sema.analyze(program)) {
+ *     for (const auto& err : sema.errors()) {
+ *         std::cerr << err << "\n";
+ *     }
+ * }
+ * // After analysis, symbol table is available for codegen
+ * CodeGen codegen;
+ * codegen.generate(program, sema.symbols());
+ * @endcode
+ */
 class Sema {
 public:
+    /// @brief Constructs a semantic analyzer with empty symbol table.
     Sema();
 
-    // Main entry point - analyze a program
+    /**
+     * @brief Analyzes a program for type correctness.
+     * @param prog The program AST to analyze.
+     * @return True if analysis succeeded with no errors.
+     */
     bool analyze(Program& prog);
 
-    // Error access
+    /// @brief Returns true if analysis encountered errors.
     bool has_errors() const { return !errors_.empty(); }
+
+    /// @brief Returns the list of error messages.
     const std::vector<std::string>& errors() const { return errors_; }
 
-    // Symbol table access (for codegen)
+    /// @brief Returns the symbol table (for use by codegen).
     SymbolTable& symbols() { return symbols_; }
 
 private:
-    // Pass 1: Register all type and function declarations
+    /// @name Pass 1: Declaration Registration
+    /// Registers all types and functions before type checking.
+    /// @{
     void register_decls(Program& prog);
     void register_decl(const Decl& decl);
+    /// @}
 
-    // Pass 2: Type check everything
+    /// @name Pass 2: Type Checking
+    /// Type checks all declarations and their bodies.
+    /// @{
     void check_decls(Program& prog);
     void check_decl(const Decl& decl);
+    /// @}
 
-    // Declaration checking
+    /// @name Declaration Checking
+    /// @{
     void check_fn_decl(const FnDecl& fn);
     void check_struct_decl(const StructDecl& s);
     void check_variant_decl(const VariantDecl& v);
     void check_impl_decl(const ImplDecl& impl);
     void check_trait_decl(const TraitDecl& t);
     void check_error_decl(const ErrorDecl& e);
+    /// @}
 
-    // Statement checking
+    /// @name Statement Checking
+    /// @{
     void check_stmt(const StmtPtr& stmt);
     void check_var_decl(const Stmt::VarDecl& var);
     void check_assign(const Stmt::Assign& assign);
@@ -49,8 +98,11 @@ private:
     void check_return(const Stmt::Return& ret);
     void check_go(const Stmt::Go& go);
     void check_block(const std::vector<StmtPtr>& block);
+    /// @}
 
-    // Expression checking - returns the type of the expression
+    /// @name Expression Checking
+    /// Each method returns the inferred type of the expression.
+    /// @{
     ResolvedTypePtr check_expr(const ExprPtr& expr);
     ResolvedTypePtr check_int_lit(const Expr::IntLit& lit);
     ResolvedTypePtr check_float_lit(const Expr::FloatLit& lit);
@@ -73,28 +125,63 @@ private:
     ResolvedTypePtr check_cast(const Expr::Cast& cast);
     ResolvedTypePtr check_block(const Expr::Block& block);
     ResolvedTypePtr check_chan_recv(const Expr::ChanRecv& recv);
+    /// @}
 
-    // Type resolution - convert AST type to resolved type
+    /// @name Type Resolution
+    /// @{
+    /**
+     * @brief Converts an AST type to a resolved type.
+     * @param type The AST type node.
+     * @return The corresponding resolved type.
+     */
     ResolvedTypePtr resolve_type(const TypePtr& type);
+    /// @}
 
-    // Pattern checking
+    /// @name Pattern Checking
+    /// @{
+    /**
+     * @brief Type checks a pattern against an expected type.
+     * @param pattern The pattern to check.
+     * @param expected The type being matched against.
+     * @return The type bound by the pattern.
+     */
     ResolvedTypePtr check_pattern(const PatternPtr& pattern, ResolvedTypePtr expected);
+    /// @}
 
-    // Type compatibility
+    /// @name Type Compatibility
+    /// @{
+    /**
+     * @brief Checks if source type can be assigned to target type.
+     * @param target The type being assigned to.
+     * @param source The type being assigned from.
+     * @return True if assignment is valid.
+     */
     bool is_assignable(ResolvedTypePtr target, ResolvedTypePtr source);
-    bool types_equal(ResolvedTypePtr a, ResolvedTypePtr b);
 
-    // Error reporting
+    /**
+     * @brief Checks if two types are structurally equal.
+     * @param a First type.
+     * @param b Second type.
+     * @return True if types are equal.
+     */
+    bool types_equal(ResolvedTypePtr a, ResolvedTypePtr b);
+    /// @}
+
+    /// @name Error Reporting
+    /// @{
     void error(const std::string& msg);
     void error_at(const SourceLoc& loc, const std::string& msg);
+    /// @}
 
-    // Current context
-    ResolvedTypePtr current_return_type_;
-    std::string current_function_;
-    bool in_loop_ = false;
+    /// @name Context Tracking
+    /// @{
+    ResolvedTypePtr current_return_type_;  ///< Expected return type of current function
+    std::string current_function_;         ///< Name of current function being checked
+    bool in_loop_ = false;                 ///< True if inside a loop (for break/continue)
+    /// @}
 
-    SymbolTable symbols_;
-    std::vector<std::string> errors_;
+    SymbolTable symbols_;              ///< Symbol table
+    std::vector<std::string> errors_;  ///< Collected error messages
 };
 
 } // namespace shotgun
