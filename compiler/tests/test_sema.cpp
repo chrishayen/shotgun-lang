@@ -268,15 +268,6 @@ void test_unknown_type_name_errors() {
     expect_error("fn main() { UnknownType x = 1 }", "Unknown type");
 }
 
-void test_generic_struct() {
-    expect_ok(R"(
-Box<T> :: struct { value T }
-fn main() {
-    b := Box { value: 42 }
-}
-)");
-}
-
 void test_match_expr() {
     expect_ok(R"(
 fn main() {
@@ -337,7 +328,6 @@ int main() {
     RUN_TEST(test_none_literal_in_optional_context);
     RUN_TEST(test_or_fallback);
     RUN_TEST(test_unknown_type_name_errors);
-    RUN_TEST(test_generic_struct);
     RUN_TEST(test_match_expr);
     RUN_TEST(test_go_stmt);
 

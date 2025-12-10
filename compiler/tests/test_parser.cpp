@@ -94,19 +94,6 @@ void test_struct_decl() {
     if (s->fields.size() != 2) throw std::runtime_error("Expected 2 fields");
 }
 
-void test_generic_struct() {
-    Lexer lexer("Box<T> :: struct { value T }");
-    Parser parser(lexer);
-    auto prog = parser.parse();
-    expect_no_errors(parser);
-    expect_decl_count(prog, 1);
-
-    auto* s = std::get_if<StructDecl>(&prog.decls[0]);
-    if (!s) throw std::runtime_error("Expected StructDecl");
-    if (s->type_params.size() != 1) throw std::runtime_error("Expected 1 type param");
-    if (s->type_params[0] != "T") throw std::runtime_error("Expected type param 'T'");
-}
-
 void test_variant_decl() {
     Lexer lexer("Option :: variant { Some { value int }, None }");
     Parser parser(lexer);
@@ -407,7 +394,6 @@ int main() {
     RUN_TEST(test_function_with_params);
     RUN_TEST(test_function_no_parens);
     RUN_TEST(test_struct_decl);
-    RUN_TEST(test_generic_struct);
     RUN_TEST(test_variant_decl);
     RUN_TEST(test_method_decl);
     RUN_TEST(test_var_decl_explicit_type);

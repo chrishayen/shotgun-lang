@@ -8,6 +8,7 @@ build:
 	cd $(BUILD_DIR) && cmake .. && make
 
 test: build install
+	cd $(BUILD_DIR) && ctest --output-on-failure
 	shotgun test
 
 clean:
